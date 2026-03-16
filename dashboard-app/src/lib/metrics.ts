@@ -1,0 +1,137 @@
+import type { CsvRow } from "@/lib/csv";
+
+export type DatasetKind = "operatori" | "dispatch";
+
+export type Filters = {
+  from?: string;
+  to?: string;
+  operatore?: string;
+  campagna?: string;
+};
+
+export function getString(row: CsvRow, key: string): string {
+  return (row[key] ?? "").toString().trim();
+}
+
+export function toNumber(value: string): number {
+  const normalized = value.replaceAll(".", "").replaceAll(",", ".");
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : 0;
+}
+
+export function toDateIso(value: string): string {
+  const v = value.trim();
+  if (!v) return "";
+
+  const vNoTime = v.split(" ")[0] ?? v;
+
+  const ymd = /^\d{4}-\d{2}-\d{2}$/;
+  if (ymd.test(vNoTime)) return vNoTime;
+
+  const dmy = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/;
+  const m = vNoTime.match(dmy);
+  if (m) {
+    const dd = m[1].padStart(2, "0");
+    const mm = m[2].padStart(2, "0");
+    const yyyy = m[3].length === 2 ? `20${m[3]}` : m[3];
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
+export function applyFilters(rows: CsvRow[], filters: Filters): CsvRow[] {
+  const from = filters.from ?? "";
+  const to = filters.to ?? "";
+  const operatore = (filters.operatore ?? "").trim();
+  const campagna = (filters.campagna ?? "").trim();
+
+  return rows.filter((r) => {
+    const date = toDateIso(getString(r, "Data"));
+
+    if (from && date && date < from) return false;
+    if (to && date && date > to) return false;
+
+    if (operatore) {
+      const op = getString(r, "Operatore");
+      if (op !== operatore) return false;
+    }
+
+    if (campagna) {
+      const c = getString(r, "Campagna");
+      if (c !== campagna) return false;
+    }
+
+    return true;
+  });
+}
+
+export function uniqueValues(rows: CsvRow[], key: string): string[] {
+  const set = new Set<string>();
+  for (const r of rows) {
+    const v = getString(r, key);
+    if (v) set.add(v);
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+export type Kpis = {
+  assegnati: number;
+  chiamate: number;
+  connessioni: number;
+  appuntamenti: number;
+  noShow: number;
+  reattivitaMediaMin: number;
+  dispatchSi: number;
+  dispatchNo: number;
+  serieA: number;
+  serieB: number;
+  proprietario: number;
+};
+
+export function computeKpis(operatori: CsvRow[], dispatch: CsvRow[]): Kpis {
+  const sum = (rows: CsvRow[], key: string) =>
+    rows.reduce((acc, r) => acc + toNumber(getString(r, key)), 0);
+
+  const sumDispatch = (rows: CsvRow[], primary: string, fallback: string) =>
+    rows.reduce((acc, r) => {
+      const v = getString(r, primary) || getString(r, fallback);
+      return acc + toNumber(v);
+    }, 0);
+
+  const assegnati = sum(operatori, "Assegnati");
+  const chiamate = sum(operatori, "Chiamate");
+  const connessioni = sum(operatori, "Connessioni");
+  const appuntamenti = sum(operatori, "Appuntamenti");
+  const noShow = sum(operatori, "No Show");
+
+  const reattivitaValues = operatori
+    .map((r) => toNumber(getString(r, "Latenza")))
+    .filter((n) => n > 0);
+  const reattivitaMediaMin =
+    reattivitaValues.length > 0
+      ? reattivitaValues.reduce((a, b) => a + b, 0) / reattivitaValues.length
+      : 0;
+
+  const dispatchSi = sumDispatch(dispatch, "Dispatch Entry", "Dispatch Sì");
+  const dispatchNo = sumDispatch(dispatch, "Dispatch Exit", "Dispatch No");
+  const serieA = sum(dispatch, "Serie A");
+  const serieB = sum(dispatch, "Serie B");
+  const proprietario = sum(dispatch, "Proprietario");
+
+  return {
+    assegnati,
+    chiamate,
+    connessioni,
+    appuntamenti,
+    noShow,
+    reattivitaMediaMin,
+    dispatchSi,
+    dispatchNo,
+    serieA,
+    serieB,
+    proprietario
+  };
+}

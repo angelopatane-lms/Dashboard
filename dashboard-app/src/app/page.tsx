@@ -1,0 +1,91 @@
+import { fetchCsv } from "@/lib/csv";
+import { uniqueValues } from "@/lib/metrics";
+import DashboardClient from "@/components/client/DashboardClient";
+import Container from "@/components/ui/Container";
+import { parseCsv } from "@/lib/csv";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+
+const SHEET_ID = "1wHpVsYwB_5PKGSYYfD0W2pYa7U_3yWI1Re10T3jGgnM";
+const GID_OPERATORI = "245526930";
+const GID_DISPATCH = "169448955";
+const GID_OPERATORI_OGGI = "2032731939";
+const GID_DISPATCH_OGGI = "1181380498";
+const GID_TRACKING_EVENTI = "2095098073";
+
+function sheetCsvUrl(gid: string) {
+  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${gid}`;
+}
+
+function normalizeName(value: string): string {
+  return value
+    .toLowerCase()
+    .replaceAll("'", "'")
+    .replaceAll("’", "'")
+    .replaceAll(/\s+/g, " ")
+    .trim();
+}
+
+export default async function Page() {
+  const [operatoriRows, dispatchRows, operatoriRowsOggi, dispatchRowsOggi, trackingEventiRows] = await Promise.all([
+    fetchCsv(sheetCsvUrl(GID_OPERATORI)),
+    fetchCsv(sheetCsvUrl(GID_DISPATCH)),
+    fetchCsv(sheetCsvUrl(GID_OPERATORI_OGGI)),
+    fetchCsv(sheetCsvUrl(GID_DISPATCH_OGGI)),
+    fetchCsv(sheetCsvUrl(GID_TRACKING_EVENTI))
+  ]);
+
+  let allowedOperatorSet: Set<string> | null = null;
+  try {
+    const hubspotPath = path.join(process.cwd(), "src", "data", "hubspot-users.csv");
+    const hubspotText = await readFile(hubspotPath, "utf-8");
+    const hubspotRows = parseCsv(hubspotText);
+
+    const allowedTeams = new Set(["advisor", "setter"]);
+    allowedOperatorSet = new Set(
+      hubspotRows
+        .filter((r) => allowedTeams.has(normalizeName((r["Team Principale"] ?? "").toString())))
+        .map((r) => normalizeName((r["User"] ?? "").toString()))
+        .filter((name) => name)
+    );
+  } catch {
+    allowedOperatorSet = null;
+  }
+
+  const operatoriRowsFiltered = allowedOperatorSet
+    ? operatoriRows.filter((r) => allowedOperatorSet!.has(normalizeName((r["Operatore"] ?? "").toString())))
+    : operatoriRows;
+  const dispatchRowsFiltered = allowedOperatorSet
+    ? dispatchRows.filter((r) => allowedOperatorSet!.has(normalizeName((r["Operatore"] ?? "").toString())))
+    : dispatchRows;
+
+  const operatoriRowsOggiFiltered = allowedOperatorSet
+    ? operatoriRowsOggi.filter((r) =>
+        allowedOperatorSet!.has(normalizeName((r["Operatore"] ?? "").toString()))
+      )
+    : operatoriRowsOggi;
+  const dispatchRowsOggiFiltered = allowedOperatorSet
+    ? dispatchRowsOggi.filter((r) =>
+        allowedOperatorSet!.has(normalizeName((r["Operatore"] ?? "").toString()))
+      )
+    : dispatchRowsOggi;
+
+  const operators = uniqueValues(operatoriRowsFiltered, "Operatore");
+  const campaigns = uniqueValues(operatoriRowsFiltered, "Campagna");
+
+  return (
+    <Container>
+      <DashboardClient
+        operatoriRows={operatoriRowsFiltered}
+        dispatchRows={dispatchRowsFiltered}
+        dispatchRowsAll={dispatchRows}
+        operatoriRowsOggi={operatoriRowsOggiFiltered}
+        dispatchRowsOggi={dispatchRowsOggiFiltered}
+        dispatchRowsAllOggi={dispatchRowsOggi}
+        trackingEventiRows={trackingEventiRows}
+        operators={operators}
+        campaigns={campaigns}
+      />
+    </Container>
+  );
+}

@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica,
+    Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+input[type="date"].filter-date-dark {
+  color-scheme: dark;
+}
+
+input[type="date"].filter-date-dark::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  filter: invert(1) brightness(1.8) contrast(1.2) !important;
+  -webkit-filter: invert(1) brightness(1.8) contrast(1.2) !important;
+  mix-blend-mode: screen;
+  color: #fff;
+  background: transparent;
+}
+
+input[type="date"].filter-date-dark.hide-native-picker::-webkit-calendar-picker-indicator {
+  opacity: 0;
+}
