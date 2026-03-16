@@ -73,7 +73,7 @@ export default function CampaignConversionPeaksChart({
         {isDeltaMode && (
           <Customized
             component={({ yAxisMap, offset }: any) => {
-              const axis = yAxisMap ? Object.values(yAxisMap)[0] : undefined;
+              const axis = (yAxisMap ? (Object.values(yAxisMap)[0] as any) : undefined) as any;
               const scale = axis?.scale as ((v: number) => number) | undefined;
               if (!scale || !offset) return null;
 
