@@ -7,12 +7,14 @@ export function FiltersBar({
   filters,
   setFilters,
   operators = [],
-  campaigns = []
+  campaigns = [],
+  operatorLabel = "Operatore"
 }: {
   filters: Filters;
   setFilters: (next: Filters) => void;
   operators?: string[];
   campaigns?: string[];
+  operatorLabel?: string;
 }) {
   const fromRef = useRef<HTMLInputElement | null>(null);
   const toRef = useRef<HTMLInputElement | null>(null);
@@ -111,7 +113,7 @@ export function FiltersBar({
           </div>
         </div>
         <div>
-          <label className="text-xs font-medium text-slate-600">Operatore</label>
+          <label className="text-xs font-medium text-slate-600">{operatorLabel}</label>
           <select
             className={controlClassName(Boolean(filters.operatore && filters.operatore.trim()))}
             value={filters.operatore ?? ""}

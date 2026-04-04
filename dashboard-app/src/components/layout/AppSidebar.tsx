@@ -102,14 +102,14 @@ export default function AppSidebar({
               {active ? (
                 <div className="mt-1 flex flex-col gap-1 pl-3">
                   {sectionsForPage(p.href).map((s) => (
-                    <Link
+                    <a
                       key={s.id}
                       className="block rounded-md px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 hover:text-white"
-                      href={`${p.href}#${s.id}`}
+                      href={`#${s.id}`}
                       onClick={() => onNavigate?.()}
                     >
                       {s.label}
-                    </Link>
+                    </a>
                   ))}
                 </div>
               ) : null}

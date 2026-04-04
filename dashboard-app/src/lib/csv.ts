@@ -17,12 +17,18 @@ export function parseCsv(text: string): CsvRow[] {
 }
 
 export async function fetchCsv(url: string, init?: RequestInit): Promise<CsvRow[]> {
+  const nextInit = (init as RequestInit & { next?: { revalidate?: number } } | undefined)?.next;
+
   const res = await fetch(url, {
     ...init,
-    cache: "no-store",
+    ...(init?.cache ? { cache: init.cache } : {}),
+    next: {
+      revalidate: 300,
+      ...(nextInit ?? {})
+    },
     headers: {
       ...(init?.headers ?? {}),
-      "accept": "text/csv"
+      accept: "text/csv"
     }
   });
 

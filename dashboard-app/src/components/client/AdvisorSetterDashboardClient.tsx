@@ -10,7 +10,8 @@ export default function AdvisorSetterDashboardClient({
   dispatchRowsAllOggi,
   trackingEventiRows,
   operators,
-  campaigns
+  campaigns,
+  operatorLabel
 }: {
   operatoriRows: CsvRow[];
   dispatchRows: CsvRow[];
@@ -21,6 +22,7 @@ export default function AdvisorSetterDashboardClient({
   trackingEventiRows: CsvRow[];
   operators: string[];
   campaigns: string[];
+  operatorLabel?: string;
 }) {
   return (
     <DashboardEnterprise
@@ -33,6 +35,7 @@ export default function AdvisorSetterDashboardClient({
       trackingEventiRows={trackingEventiRows}
       operators={operators}
       campaigns={campaigns}
+      operatorLabel={operatorLabel}
       hideDispatchment
       hideCampagne
       hideInsights

@@ -47,7 +47,8 @@ export default function DashboardEnterprise({
   hideDispatchment,
   hideCampagne,
   hideInsights,
-  hideTimelineEventi
+  hideTimelineEventi,
+  operatorLabel
 }: {
   operatoriRows: CsvRow[];
   dispatchRows: CsvRow[];
@@ -62,6 +63,7 @@ export default function DashboardEnterprise({
   hideCampagne?: boolean;
   hideInsights?: boolean;
   hideTimelineEventi?: boolean;
+  operatorLabel?: string;
 }) {
   const [filters, setFilters] = useState<Filters>({});
 
@@ -462,6 +464,7 @@ export default function DashboardEnterprise({
             setFilters={setFilters}
             operators={operators}
             campaigns={campaigns}
+            operatorLabel={operatorLabel}
           />
         </div>
 
