@@ -2,7 +2,7 @@ import { fetchCsv } from "@/lib/csv";
 import Container from "@/components/ui/Container";
 import ContactEventsTimeline from "@/components/charts/ContactEventsTimeline";
 
-export const revalidate = 300;
+export const dynamic = "force-dynamic";
 
 const SHEET_ID = "1wHpVsYwB_5PKGSYYfD0W2pYa7U_3yWI1Re10T3jGgnM";
 const GID_TRACKING_EVENTI = "2095098073";
