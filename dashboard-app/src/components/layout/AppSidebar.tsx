@@ -1,0 +1,73 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+const PAGES: Array<{ label: string; href: string }> = [
+  { label: "Generale", href: "/generale" },
+  { label: "Dispatcher", href: "/dispatcher" },
+  { label: "Campagne", href: "/campagne" },
+  { label: "Contatto", href: "/contatto" },
+  { label: "Advisor", href: "/advisor" },
+  { label: "Setter", href: "/setter" }
+];
+
+const SECTIONS: Array<{ label: string; id: string }> = [
+  { label: "Filtri", id: "filtri" },
+  { label: "KPI Principali", id: "kpi" },
+  { label: "Trend Principali", id: "trend-funnel" },
+  { label: "Dispatchment", id: "distribuzioni" },
+  { label: "Stati Lead", id: "stati-lead" },
+  { label: "Performance", id: "performance" },
+  { label: "Campagne", id: "campagne" },
+  { label: "Insights", id: "insights" },
+  { label: "Timeline Eventi", id: "timeline-eventi" }
+];
+
+function isActivePath(pathname: string, href: string) {
+  if (pathname === href) return true;
+  if (pathname.startsWith(href + "/")) return true;
+  return false;
+}
+
+export default function AppSidebar() {
+  const pathname = usePathname() ?? "/";
+
+  return (
+    <aside className="sticky top-0 flex h-screen w-[260px] shrink-0 flex-col bg-black text-white">
+      <div className="sticky top-0 z-10 bg-black px-5 py-5 text-lg font-semibold">Dashboard</div>
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-6">
+        {PAGES.map((p) => {
+          const active = isActivePath(pathname, p.href);
+
+          return (
+            <div key={p.href}>
+              <Link
+                className={`block rounded-md px-3 py-2 text-sm transition ${
+                  active ? "bg-white/10" : "hover:bg-white/10"
+                }`}
+                href={p.href}
+              >
+                {p.label}
+              </Link>
+
+              {active ? (
+                <div className="mt-1 flex flex-col gap-1 pl-3">
+                  {SECTIONS.map((s) => (
+                    <Link
+                      key={s.id}
+                      className="block rounded-md px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 hover:text-white"
+                      href={`${p.href}#${s.id}`}
+                    >
+                      {s.label}
+                    </Link>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </nav>
+    </aside>
+  );
+}

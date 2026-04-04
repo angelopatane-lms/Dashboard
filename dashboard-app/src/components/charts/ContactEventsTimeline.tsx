@@ -446,6 +446,15 @@ export default function ContactEventsTimeline({
     };
   }, [events]);
 
+  const shouldScrollTimeline = events.length > 8;
+  const baseTimelineWidth = 1000;
+  const timelinePad = 60;
+  const timelineMaxVisible = 8;
+  const timelineSpacing = (baseTimelineWidth - timelinePad * 2) / (timelineMaxVisible - 1);
+  const timelineSvgWidth = shouldScrollTimeline
+    ? Math.round(timelinePad * 2 + timelineSpacing * (events.length - 1))
+    : baseTimelineWidth;
+
   return (
     <div className="flex flex-col">
       <div className="mt-4 flex flex-col gap-6">
@@ -496,8 +505,8 @@ export default function ContactEventsTimeline({
                     return (
                       <div
                         key={`${e.tsKey}-${idx}`}
-                        className={`grid grid-cols-4 gap-x-3 px-3 py-2 text-sm text-slate-800 transition-colors ${
-                          isRowHighlighted ? "bg-orange-50" : ""
+                        className={`grid grid-cols-4 gap-x-3 px-3 py-2 text-sm text-slate-800 transition-colors ring-inset ${
+                          isRowHighlighted ? "ring-2 ring-orange-500" : "ring-1 ring-transparent"
                         }`}
                       >
                         <div className="whitespace-nowrap text-slate-700">{e.timestampRaw}</div>
@@ -520,8 +529,17 @@ export default function ContactEventsTimeline({
         </Card>
 
         <Card>
-          <div ref={timelineWrapRef} className="relative h-[240px] w-full">
-            <svg viewBox="0 0 1000 240" className="h-full w-full overflow-visible">
+          <div className="w-full overflow-x-auto">
+            <div
+              ref={timelineWrapRef}
+              className="relative h-[240px]"
+              style={{ width: shouldScrollTimeline ? timelineSvgWidth : "100%" }}
+            >
+              <svg
+                viewBox={`0 0 ${timelineSvgWidth} 240`}
+                className="h-full overflow-visible"
+                style={{ width: shouldScrollTimeline ? timelineSvgWidth : "100%" }}
+              >
               <defs>
                 <filter id="timelineDotShadow" x="-20%" y="-20%" width="140%" height="140%">
                   <feDropShadow dx="0" dy="3" stdDeviation="1.6" floodColor="#000000" floodOpacity="0.35" />
@@ -531,9 +549,9 @@ export default function ContactEventsTimeline({
                 </filter>
               </defs>
               {(() => {
-                const pad = 60;
+                const pad = timelinePad;
                 const x1 = pad;
-                const x2 = 1000 - pad;
+                const x2 = timelineSvgWidth - pad;
                 return (
                   <line
                     x1={x1}
@@ -548,8 +566,10 @@ export default function ContactEventsTimeline({
               })()}
 
               {timeline.points.map((p, idx) => {
-                const pad = 60;
-                const cx = pad + p.x * (1000 - pad * 2);
+                const pad = timelinePad;
+                const cx = shouldScrollTimeline
+                  ? pad + idx * timelineSpacing
+                  : pad + p.x * (baseTimelineWidth - pad * 2);
                 const ts = splitTimestamp(p.e.timestampRaw);
                 const trigger = p.e.trigger.trim();
                 const value = p.e.value.trim();
@@ -559,7 +579,11 @@ export default function ContactEventsTimeline({
                 const pointKey = `${p.e.tsKey}-${idx}`;
                 const isHovered = hoveredKey === pointKey;
                 const prev = idx > 0 ? timeline.points[idx - 1] : null;
-                const prevCx = prev ? pad + prev.x * (1000 - pad * 2) : null;
+                const prevCx = prev
+                  ? shouldScrollTimeline
+                    ? pad + (idx - 1) * timelineSpacing
+                    : pad + prev.x * (baseTimelineWidth - pad * 2)
+                  : null;
                 const diffLines =
                   prev && prevCx != null ? formatTimestampDiffLines(prev.e.timestampRaw, p.e.timestampRaw) : [];
                 const diffX = prevCx != null ? (prevCx + cx) / 2 : cx;
@@ -672,7 +696,8 @@ export default function ContactEventsTimeline({
                   </g>
                 );
               })}
-            </svg>
+              </svg>
+            </div>
           </div>
         </Card>
       </div>

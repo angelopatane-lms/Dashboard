@@ -446,70 +446,8 @@ export default function DashboardEnterprise({
   }, [campaignAnomalies]);
 
   return (
-    <div className="flex gap-6">
-      <aside className="hidden w-56 shrink-0 lg:block">
-        <div className="sticky top-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Dashboard</div>
-          <div className="mt-3 space-y-1 text-sm">
-            <a
-              href="#filtri"
-              className="block rounded-md px-3 py-2 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-            >
-              Filtri
-            </a>
-            <a
-              href="#kpi"
-              className="block rounded-md bg-slate-100 px-3 py-2 font-medium text-slate-900"
-            >
-              KPI Principali
-            </a>
-            <a
-              href="#trend-funnel"
-              className="block rounded-md px-3 py-2 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-            >
-              Trend Principali
-            </a>
-            <a
-              href="#distribuzioni"
-              className="block rounded-md px-3 py-2 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-            >
-              Dispatchment
-            </a>
-            <a
-              href="#stati-lead"
-              className="block rounded-md px-3 py-2 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-            >
-              Stati Lead
-            </a>
-            <a
-              href="#performance"
-              className="block rounded-md px-3 py-2 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-            >
-              Performance
-            </a>
-            <a
-              href="#campagne"
-              className="block rounded-md px-3 py-2 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-            >
-              Campagne
-            </a>
-            <a
-              href="#insights"
-              className="block rounded-md px-3 py-2 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-            >
-              Insights
-            </a>
-            <a
-              href="#timeline-eventi"
-              className="block rounded-md px-3 py-2 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-            >
-              Timeline Eventi
-            </a>
-          </div>
-        </div>
-      </aside>
-
-      <div className="min-w-0 flex-1">
+    <div>
+      <div className="min-w-0">
         <div id="filtri" className="w-full scroll-mt-6">
           <FiltersBar
             filters={filters}
@@ -1004,7 +942,7 @@ export default function DashboardEnterprise({
       <div className="mt-4">
         <ContactEventsTimeline rows={trackingEventiRows} />
       </div>
-    </div>
+      </div>
     </div>
   );
 }
