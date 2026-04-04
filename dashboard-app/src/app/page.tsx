@@ -2,16 +2,15 @@ import { fetchCsv } from "@/lib/csv";
 import { uniqueValues } from "@/lib/metrics";
 import DashboardClient from "@/components/client/DashboardClient";
 import Container from "@/components/ui/Container";
-import { parseCsv } from "@/lib/csv";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 
 const SHEET_ID = "1wHpVsYwB_5PKGSYYfD0W2pYa7U_3yWI1Re10T3jGgnM";
+const HUBSPOT_USERS_SHEET_ID = "1XKvzK20x9DkIyJVHBNTYUHxV21kmrdWH0AshNkkgLHQ";
 const GID_OPERATORI = "245526930";
 const GID_DISPATCH = "169448955";
 const GID_OPERATORI_OGGI = "2032731939";
 const GID_DISPATCH_OGGI = "1181380498";
 const GID_TRACKING_EVENTI = "2095098073";
+const GID_HUBSPOT_USERS = "0";
 
 function sheetCsvUrl(gid: string) {
   return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${gid}`;
@@ -37,13 +36,13 @@ export default async function Page() {
 
   let allowedOperatorSet: Set<string> | null = null;
   try {
-    const hubspotPath = path.join(process.cwd(), "src", "data", "hubspot-users.csv");
-    const hubspotText = await readFile(hubspotPath, "utf-8");
-    const hubspotRows = parseCsv(hubspotText);
+    const hubspotUsersRows = await fetchCsv(
+      `https://docs.google.com/spreadsheets/d/${HUBSPOT_USERS_SHEET_ID}/export?format=csv&gid=${GID_HUBSPOT_USERS}`
+    );
 
     const allowedTeams = new Set(["advisor", "setter"]);
     allowedOperatorSet = new Set(
-      hubspotRows
+      hubspotUsersRows
         .filter((r) => allowedTeams.has(normalizeName((r["Team Principale"] ?? "").toString())))
         .map((r) => normalizeName((r["User"] ?? "").toString()))
         .filter((name) => name)
