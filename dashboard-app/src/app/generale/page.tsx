@@ -3,7 +3,7 @@ import { uniqueValues } from "@/lib/metrics";
 import DashboardClient from "@/components/client/DashboardClient";
 import Container from "@/components/ui/Container";
 
-export const revalidate = 300;
+export const dynamic = "force-dynamic";
 
 function romeOffsetMinutes(at: Date): number {
   const tzPart = new Intl.DateTimeFormat("en-US", {
