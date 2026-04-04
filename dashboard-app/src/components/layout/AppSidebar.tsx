@@ -30,12 +30,28 @@ function isActivePath(pathname: string, href: string) {
   return false;
 }
 
-export default function AppSidebar() {
+export default function AppSidebar({
+  mode = "desktop",
+  onNavigate
+}: {
+  mode?: "desktop" | "drawer";
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname() ?? "/";
 
+  const asideClassName =
+    mode === "desktop"
+      ? "sticky top-0 flex h-screen w-[260px] shrink-0 flex-col bg-black text-white"
+      : "flex h-full w-[260px] shrink-0 flex-col bg-black text-white";
+
+  const headerClassName =
+    mode === "desktop"
+      ? "sticky top-0 z-10 bg-black px-5 py-5 text-lg font-semibold"
+      : "bg-black px-5 py-5 text-lg font-semibold";
+
   return (
-    <aside className="sticky top-0 flex h-screen w-[260px] shrink-0 flex-col bg-black text-white">
-      <div className="sticky top-0 z-10 bg-black px-5 py-5 text-lg font-semibold">Dashboard</div>
+    <aside className={asideClassName}>
+      <div className={headerClassName}>Dashboard</div>
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-6">
         {PAGES.map((p) => {
           const active = isActivePath(pathname, p.href);
@@ -47,6 +63,7 @@ export default function AppSidebar() {
                   active ? "bg-white/10" : "hover:bg-white/10"
                 }`}
                 href={p.href}
+                onClick={() => onNavigate?.()}
               >
                 {p.label}
               </Link>
@@ -58,6 +75,7 @@ export default function AppSidebar() {
                       key={s.id}
                       className="block rounded-md px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 hover:text-white"
                       href={`${p.href}#${s.id}`}
+                      onClick={() => onNavigate?.()}
                     >
                       {s.label}
                     </Link>
