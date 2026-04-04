@@ -7,7 +7,7 @@ const PAGES: Array<{ label: string; href: string }> = [
   { label: "Generale", href: "/generale" },
   { label: "Dispatcher", href: "/dispatcher" },
   { label: "Campagne", href: "/campagne" },
-  { label: "Contatto", href: "/contatto" },
+  { label: "Contatti", href: "/contatti" },
   { label: "Advisor", href: "/advisor" },
   { label: "Setter", href: "/setter" }
 ];
@@ -23,6 +23,37 @@ const SECTIONS: Array<{ label: string; id: string }> = [
   { label: "Insights", id: "insights" },
   { label: "Timeline Eventi", id: "timeline-eventi" }
 ];
+
+const CONTACTS_SECTIONS: Array<{ label: string; id: string }> = [
+  { label: "Timeline Eventi", id: "timeline-eventi" }
+];
+
+const DISPATCHER_SECTIONS: Array<{ label: string; id: string }> = [
+  { label: "Filtri", id: "filtri" },
+  { label: "Dispatchment", id: "distribuzioni" }
+];
+
+const CAMPAIGNS_SECTIONS: Array<{ label: string; id: string }> = [
+  { label: "Filtri", id: "filtri" },
+  { label: "Campagne", id: "campagne" }
+];
+
+const ADVISOR_SETTER_SECTIONS: Array<{ label: string; id: string }> = [
+  { label: "Filtri", id: "filtri" },
+  { label: "KPI Principali", id: "kpi" },
+  { label: "Trend Principali", id: "trend-funnel" },
+  { label: "Stati Lead", id: "stati-lead" },
+  { label: "Performance", id: "performance" }
+];
+
+function sectionsForPage(href: string) {
+  if (href === "/contatti") return CONTACTS_SECTIONS;
+  if (href === "/dispatcher") return DISPATCHER_SECTIONS;
+  if (href === "/campagne") return CAMPAIGNS_SECTIONS;
+  if (href === "/advisor") return ADVISOR_SETTER_SECTIONS;
+  if (href === "/setter") return ADVISOR_SETTER_SECTIONS;
+  return SECTIONS;
+}
 
 function isActivePath(pathname: string, href: string) {
   if (pathname === href) return true;
@@ -70,7 +101,7 @@ export default function AppSidebar({
 
               {active ? (
                 <div className="mt-1 flex flex-col gap-1 pl-3">
-                  {SECTIONS.map((s) => (
+                  {sectionsForPage(p.href).map((s) => (
                     <Link
                       key={s.id}
                       className="block rounded-md px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 hover:text-white"

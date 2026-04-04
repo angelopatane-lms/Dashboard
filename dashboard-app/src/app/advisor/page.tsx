@@ -1,6 +1,6 @@
 import { fetchCsv } from "@/lib/csv";
 import { uniqueValues } from "@/lib/metrics";
-import DashboardClient from "@/components/client/DashboardClient";
+import AdvisorSetterDashboardClient from "@/components/client/AdvisorSetterDashboardClient";
 import Container from "@/components/ui/Container";
 
 const SHEET_ID = "1wHpVsYwB_5PKGSYYfD0W2pYa7U_3yWI1Re10T3jGgnM";
@@ -41,7 +41,7 @@ export default async function Page() {
       `https://docs.google.com/spreadsheets/d/${HUBSPOT_USERS_SHEET_ID}/export?format=csv&gid=${GID_HUBSPOT_USERS}`
     );
 
-    const allowedTeams = new Set(["advisor", "setter"]);
+    const allowedTeams = new Set(["advisor"]);
     allowedOperatorSet = new Set(
       hubspotUsersRows
         .filter((r) => allowedTeams.has(normalizeName((r["Team Principale"] ?? "").toString())))
@@ -71,7 +71,7 @@ export default async function Page() {
 
   return (
     <Container>
-      <DashboardClient
+      <AdvisorSetterDashboardClient
         operatoriRows={operatoriRowsFiltered}
         dispatchRows={dispatchRowsFiltered}
         dispatchRowsAll={dispatchRows}

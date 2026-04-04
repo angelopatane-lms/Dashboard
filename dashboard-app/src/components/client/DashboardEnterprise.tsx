@@ -43,7 +43,11 @@ export default function DashboardEnterprise({
   dispatchRowsAllOggi,
   trackingEventiRows,
   operators,
-  campaigns
+  campaigns,
+  hideDispatchment,
+  hideCampagne,
+  hideInsights,
+  hideTimelineEventi
 }: {
   operatoriRows: CsvRow[];
   dispatchRows: CsvRow[];
@@ -54,6 +58,10 @@ export default function DashboardEnterprise({
   trackingEventiRows: CsvRow[];
   operators: string[];
   campaigns: string[];
+  hideDispatchment?: boolean;
+  hideCampagne?: boolean;
+  hideInsights?: boolean;
+  hideTimelineEventi?: boolean;
 }) {
   const [filters, setFilters] = useState<Filters>({});
 
@@ -614,87 +622,88 @@ export default function DashboardEnterprise({
           </Card>
         </div>
         
-      <div id="distribuzioni" className="scroll-mt-6">
-        <SectionTitle className="mt-10">Dispatchment</SectionTitle>
-      </div>
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        <Card>
-          <ChartTitle
-            title="Distribuzione Outcome"
-            description="Ripartizione della qualità (Serie A, Serie B, Proprietario) sui lead lavorati. I contatori sotto riportano i volumi di Dispatch Entry/Exit."
-          />
-          <div className="mt-4 h-[260px]">
-            <DispatchDonutChart
-              dispatchSi={dispatchKpisAll.dispatchSi}
-              dispatchNo={dispatchKpisAll.dispatchNo}
-              serieA={dispatchKpisAll.serieA}
-              serieB={dispatchKpisAll.serieB}
-              proprietario={dispatchKpisAll.proprietario}
-              showSiNo={false}
-            />
+      {hideDispatchment ? null : (
+        <>
+          <div id="distribuzioni" className="scroll-mt-6">
+            <SectionTitle className="mt-10">Dispatchment</SectionTitle>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-            <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 ring-1 ring-slate-200/70">
-              <div className="text-gray-600">Dispatch Entry</div>
-              <div className="font-semibold text-gray-900">{formatInt(dispatchKpisAll.dispatchSi)}</div>
-            </div>
-            <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 ring-1 ring-slate-200/70">
-              <div className="text-gray-600">Dispatch Exit</div>
-              <div className="font-semibold text-gray-900">{formatInt(dispatchKpisAll.dispatchNo)}</div>
-            </div>
-          </div>
-        </Card>
-        <Card>
-          <ChartTitle
-            title="Bilanciamento Attività"
-            description="Confronto tra Dispatch Entry e Dispatch Exit nel periodo selezionato."
-          />
-          <div className="mt-4 h-[260px]">
-            <DispatchEntryExitBar
-              entry={dispatchKpisAll.dispatchSi}
-              exit={dispatchKpisAll.dispatchNo}
-            />
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-            <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 ring-1 ring-slate-200/70">
-              <div className="text-gray-600">Dispatcher</div>
-              <div
-                className={`font-semibold ${
-                  dispatchmentIsEmpty
-                    ? "text-emerald-600"
-                    : dispatchmentIsBalanced
-                      ? "text-amber-600"
-                      : "text-rose-600"
-                }`}
-              >
-                {dispatchmentIsEmpty
-                  ? "Vuoto"
-                  : dispatchmentIsBalanced
-                    ? "Bilanciato"
-                    : dispatchmentDelta > 20
-                      ? "In Attesa"
-                      : "Sbilanciato"}
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <Card>
+              <ChartTitle
+                title="Distribuzione Outcome"
+                description="Ripartizione della qualità (Serie A, Serie B, Proprietario) sui lead lavorati. I contatori sotto riportano i volumi di Dispatch Entry/Exit."
+              />
+              <div className="mt-4 h-[260px]">
+                <DispatchDonutChart
+                  dispatchSi={dispatchKpisAll.dispatchSi}
+                  dispatchNo={dispatchKpisAll.dispatchNo}
+                  serieA={dispatchKpisAll.serieA}
+                  serieB={dispatchKpisAll.serieB}
+                  proprietario={dispatchKpisAll.proprietario}
+                  showSiNo={false}
+                />
               </div>
-            </div>
-            <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 ring-1 ring-slate-200/70">
-              <div className="text-gray-600">Da Dispacciare</div>
-              <div className="font-semibold text-gray-900">
-                {dispatchmentDelta >= 0 ? "+" : ""}
-                {formatInt(dispatchmentDelta)}
+              <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 ring-1 ring-slate-200/70">
+                  <div className="text-gray-600">Dispatch Entry</div>
+                  <div className="font-semibold text-gray-900">{formatInt(dispatchKpisAll.dispatchSi)}</div>
+                </div>
+                <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 ring-1 ring-slate-200/70">
+                  <div className="text-gray-600">Dispatch Exit</div>
+                  <div className="font-semibold text-gray-900">{formatInt(dispatchKpisAll.dispatchNo)}</div>
+                </div>
               </div>
-            </div>
+            </Card>
+            <Card>
+              <ChartTitle
+                title="Bilanciamento Attività"
+                description="Confronto tra Dispatch Entry e Dispatch Exit nel periodo selezionato."
+              />
+              <div className="mt-4 h-[260px]">
+                <DispatchEntryExitBar entry={dispatchKpisAll.dispatchSi} exit={dispatchKpisAll.dispatchNo} />
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 ring-1 ring-slate-200/70">
+                  <div className="text-gray-600">Dispatcher</div>
+                  <div
+                    className={`font-semibold ${
+                      dispatchmentIsEmpty
+                        ? "text-emerald-600"
+                        : dispatchmentIsBalanced
+                          ? "text-amber-600"
+                          : "text-rose-600"
+                    }`}
+                  >
+                    {dispatchmentIsEmpty
+                      ? "Vuoto"
+                      : dispatchmentIsBalanced
+                        ? "Bilanciato"
+                        : dispatchmentDelta > 20
+                          ? "In Attesa"
+                          : "Sbilanciato"}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 ring-1 ring-slate-200/70">
+                  <div className="text-gray-600">Da Dispacciare</div>
+                  <div className="font-semibold text-gray-900">
+                    {dispatchmentDelta >= 0 ? "+" : ""}
+                    {formatInt(dispatchmentDelta)}
+                  </div>
+                </div>
+              </div>
+            </Card>
+            <Card className="md:col-span-2">
+              <ChartTitle
+                title="Outcome Operatore"
+                description="Distribuzione della qualità per operatore: segmentazione in Serie A, Serie B e Proprietario."
+              />
+              <div className="mt-4 h-[340px]">
+                <DispatchQualityBar data={dispatchSummary} />
+              </div>
+            </Card>
           </div>
-        </Card>
-        <Card className="md:col-span-2">
-          <ChartTitle
-            title="Outcome Operatore"
-            description="Distribuzione della qualità per operatore: segmentazione in Serie A, Serie B e Proprietario."
-          />
-          <div className="mt-4 h-[340px]">
-            <DispatchQualityBar data={dispatchSummary} />
-          </div>
-        </Card>
-      </div>
+        </>
+      )}
 
       <div id="stati-lead" className="scroll-mt-6">
         <SectionTitle className="mt-10">Stati Lead</SectionTitle>
@@ -860,88 +869,100 @@ export default function DashboardEnterprise({
           </div>
         </Card>
 
-        <div id="campagne" className="scroll-mt-6">
-          <SectionTitle className="mt-10">Campagne</SectionTitle>
-        </div>
-        <Card>
-          <ChartTitle
-            title="KPI Campagne"
-            description="Confronto per campagna su assegnati, connessioni, appuntamenti, no show e show up."
-          />
-          <div className="mt-4 h-[340px]">
-            <CampaignSummaryBar data={campaignSummary} />
+        {hideCampagne ? null : (
+          <>
+            <div id="campagne" className="scroll-mt-6">
+              <SectionTitle className="mt-10">Campagne</SectionTitle>
+            </div>
+            <Card>
+              <ChartTitle
+                title="KPI Campagne"
+                description="Confronto per campagna su assegnati, connessioni, appuntamenti, no show e show up."
+              />
+              <div className="mt-4 h-[340px]">
+                <CampaignSummaryBar data={campaignSummary} />
+              </div>
+            </Card>
+          </>
+        )}
+      </div>
+
+      {hideInsights ? null : (
+        <>
+          <div id="insights" className="scroll-mt-6">
+            <SectionTitle className="mt-10">Insights</SectionTitle>
           </div>
-        </Card>
-      </div>
+          <div
+            className="mt-6 overflow-hidden rounded-md bg-white ring-1 ring-slate-200"
+            style={{ height: insightsTableHeightPx }}
+          >
+            <div className="grid grid-cols-12 gap-x-4 border-b border-slate-700 bg-[#64748b] px-4 py-2 text-[13px] font-semibold text-white">
+              <div className="col-span-4 whitespace-nowrap">Campagna</div>
+              <div className="col-span-3 whitespace-nowrap text-center">Conversione 7g</div>
+              <div className="col-span-3 whitespace-nowrap text-center">Conversione 90g</div>
+              <div className="col-span-2 whitespace-nowrap text-center text-[17px]">Δ</div>
+            </div>
 
-      <div id="insights" className="scroll-mt-6">
-        <SectionTitle className="mt-10">Insights</SectionTitle>
-      </div>
-      <div
-        className="mt-6 overflow-hidden rounded-md bg-white ring-1 ring-slate-200"
-        style={{ height: insightsTableHeightPx }}
-      >
-        <div className="grid grid-cols-12 gap-x-4 border-b border-slate-700 bg-[#64748b] px-4 py-2 text-[13px] font-semibold text-white">
-          <div className="col-span-4 whitespace-nowrap">Campagna</div>
-          <div className="col-span-3 whitespace-nowrap text-center">Conversione 7g</div>
-          <div className="col-span-3 whitespace-nowrap text-center">Conversione 90g</div>
-          <div className="col-span-2 whitespace-nowrap text-center text-[17px]">Δ</div>
-        </div>
+            <div className="divide-y divide-slate-200">
+              {campaignAnomalies.length === 0 ? (
+                <div className="px-4 py-6 text-sm text-slate-500">Nessuna anomalia disponibile.</div>
+              ) : (
+                campaignAnomalies.map((row) => {
+                  const delta = row.delta;
+                  const sign = delta >= 0 ? "+" : "";
+                  const deltaColor = delta < 0 ? "text-rose-700" : "text-emerald-700";
+                  const isFocused = focusedPeaksCampaign === row.campagna;
+                  const focusBg = isFocused ? "bg-slate-50" : "bg-white";
 
-        <div className="divide-y divide-slate-200">
-          {campaignAnomalies.length === 0 ? (
-            <div className="px-4 py-6 text-sm text-slate-500">Nessuna anomalia disponibile.</div>
-          ) : (
-            campaignAnomalies.map((row) => {
-              const delta = row.delta;
-              const sign = delta >= 0 ? "+" : "";
-              const deltaColor = delta < 0 ? "text-rose-700" : "text-emerald-700";
-              const isFocused = focusedPeaksCampaign === row.campagna;
-              const focusBg = isFocused ? "bg-slate-50" : "bg-white";
+                  return (
+                    <div
+                      key={row.campagna}
+                      className={`grid grid-cols-12 gap-x-4 px-4 py-2 text-sm ${focusBg}`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setFocusedPeaksCampaign(row.campagna)}
+                        className="col-span-4 truncate text-left font-medium text-slate-900 hover:underline"
+                        title={row.campagna}
+                      >
+                        {row.campagna}
+                      </button>
+                      <div className="col-span-3 text-center text-slate-700">{formatPct(row.recentRate, 1)}</div>
+                      <div className="col-span-3 text-center text-slate-700">{formatPct(row.baselineRate, 1)}</div>
+                      <div className={`col-span-2 text-center font-semibold ${deltaColor}`}>
+                        {sign}
+                        {formatPct(delta, 1)}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
 
-              return (
-                <div
-                  key={row.campagna}
-                  className={`grid grid-cols-12 gap-x-4 px-4 py-2 text-sm ${focusBg}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setFocusedPeaksCampaign(row.campagna)}
-                    className="col-span-4 truncate text-left font-medium text-slate-900 hover:underline"
-                    title={row.campagna}
-                  >
-                    {row.campagna}
-                  </button>
-                  <div className="col-span-3 text-center text-slate-700">{formatPct(row.recentRate, 1)}</div>
-                  <div className="col-span-3 text-center text-slate-700">{formatPct(row.baselineRate, 1)}</div>
-                  <div className={`col-span-2 text-center font-semibold ${deltaColor}`}>
-                    {sign}
-                    {formatPct(delta, 1)}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
+          <Card className="mt-6">
+            <div className="h-[360px]">
+              <CampaignConversionPeaksChart
+                data={campaignPeaks.data}
+                campaigns={campaignPeaks.campaigns}
+                baselineByCampaign={baselineRateByCampaign}
+                visibleCampaigns={peaksVisibleCampaigns}
+              />
+            </div>
+          </Card>
+        </>
+      )}
 
-      <Card className="mt-6">
-        <div className="h-[360px]">
-          <CampaignConversionPeaksChart
-            data={campaignPeaks.data}
-            campaigns={campaignPeaks.campaigns}
-            baselineByCampaign={baselineRateByCampaign}
-            visibleCampaigns={peaksVisibleCampaigns}
-          />
-        </div>
-      </Card>
-
-      <div id="timeline-eventi" className="scroll-mt-6">
-        <SectionTitle className="mt-10">Timeline Eventi</SectionTitle>
-      </div>
-      <div className="mt-4">
-        <ContactEventsTimeline rows={trackingEventiRows} />
-      </div>
+      {hideTimelineEventi ? null : (
+        <>
+          <div id="timeline-eventi" className="scroll-mt-6">
+            <SectionTitle className="mt-10">Timeline Eventi</SectionTitle>
+          </div>
+          <div className="mt-4">
+            <ContactEventsTimeline rows={trackingEventiRows} />
+          </div>
+        </>
+      )}
       </div>
     </div>
   );
