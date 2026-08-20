@@ -54,7 +54,7 @@ export default function OperatorStatsTable({ data }: { data: OperatorSummary[] }
   );
 
   const sorted = useMemo(
-    () => [...data].sort((a, b) => b.boom - a.boom),
+    () => [...data].sort((a, b) => b.boom - a.boom || b.appuntamenti - a.appuntamenti),
     [data]
   );
 
