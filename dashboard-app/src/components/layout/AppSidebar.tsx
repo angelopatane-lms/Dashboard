@@ -7,19 +7,7 @@ const PAGES: Array<{ label: string; href: string }> = [
   { label: "Advisor", href: "/advisor" },
   { label: "Setter", href: "/setter" },
   { label: "Contatti", href: "/contatti" },
-  { label: "Campagne", href: "/campagne" },
-  { label: "Generale", href: "/generale" }
-];
-
-const SECTIONS: Array<{ label: string; id: string }> = [
-  { label: "Filtri", id: "filtri" },
-  { label: "KPI Principali", id: "kpi" },
-  { label: "Trend Principali", id: "trend-funnel" },
-  { label: "Stati Lead", id: "stati-lead" },
-  { label: "Performance", id: "performance" },
-  { label: "Campagne", id: "campagne" },
-  { label: "Insights", id: "insights" },
-  { label: "Timeline Eventi", id: "timeline-eventi" }
+  { label: "Campagne", href: "/campagne" }
 ];
 
 const CONTACTS_SECTIONS: Array<{ label: string; id: string }> = [
@@ -28,7 +16,8 @@ const CONTACTS_SECTIONS: Array<{ label: string; id: string }> = [
 
 const CAMPAIGNS_SECTIONS: Array<{ label: string; id: string }> = [
   { label: "Filtri", id: "filtri" },
-  { label: "Campagne", id: "campagne" }
+  { label: "Campagne", id: "campagne" },
+  { label: "Insights", id: "insights" }
 ];
 
 const ADVISOR_SETTER_SECTIONS: Array<{ label: string; id: string }> = [
@@ -45,7 +34,7 @@ function sectionsForPage(href: string) {
   if (href === "/campagne") return CAMPAIGNS_SECTIONS;
   if (href === "/advisor") return ADVISOR_SETTER_SECTIONS;
   if (href === "/setter") return ADVISOR_SETTER_SECTIONS;
-  return SECTIONS;
+  return [];
 }
 
 function isActivePath(pathname: string, href: string) {
