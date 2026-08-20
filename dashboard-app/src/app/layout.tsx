@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { ReactNode } from "react";
 import AppShell from "@/components/layout/AppShell";
+import AuthProvider from "@/components/auth/AuthProvider";
 
 export const metadata = {
   title: "Dashboard",
@@ -11,7 +12,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="it">
       <body className="text-gray-900">
-        <AppShell>{children}</AppShell>
+        <AuthProvider>
+          <AppShell>{children}</AppShell>
+        </AuthProvider>
       </body>
     </html>
   );
