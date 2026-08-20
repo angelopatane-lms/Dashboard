@@ -19,13 +19,16 @@ async function fetchAllBoom(token: string, from: string, to: string): Promise<Bo
   const results: BoomRecord[] = [];
   let after: string | undefined;
 
+  const fromMs = new Date(from).getTime();
+  const toMs = new Date(to + "T23:59:59.999Z").getTime();
+
   do {
     const body: Record<string, unknown> = {
       filterGroups: [
         {
           filters: [
-            { propertyName: "data_di_pagamento", operator: "GTE", value: from },
-            { propertyName: "data_di_pagamento", operator: "LTE", value: to }
+            { propertyName: "data_di_pagamento", operator: "GTE", value: String(fromMs) },
+            { propertyName: "data_di_pagamento", operator: "LTE", value: String(toMs) }
           ]
         }
       ],
@@ -52,7 +55,8 @@ async function fetchAllBoom(token: string, from: string, to: string): Promise<Bo
     }
 
     const data = await res.json();
-    results.push(...(data.results ?? []));
+    const batch = Array.isArray(data.results) ? data.results : [];
+    results.push(...batch);
     after = data.paging?.next?.after;
   } while (after);
 
@@ -68,7 +72,8 @@ async function fetchOwners(token: string): Promise<Record<string, string>> {
 
   const data = await res.json();
   const map: Record<string, string> = {};
-  for (const owner of data.results ?? []) {
+  const owners = Array.isArray(data.results) ? data.results : [];
+  for (const owner of owners) {
     const name = [owner.firstName, owner.lastName].filter(Boolean).join(" ");
     if (owner.id && name) map[String(owner.id)] = name;
   }
@@ -130,7 +135,7 @@ export async function GET(req: NextRequest) {
       headers: { "Cache-Control": "no-store" }
     });
   } catch (err) {
-    console.error("[hubspot-boom]", err);
+    console.error("[hubspot-boom]", err instanceof Error ? err.message : err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Unknown error" },
       { status: 500 }
