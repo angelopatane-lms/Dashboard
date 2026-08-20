@@ -66,13 +66,13 @@ export default function OperatorStatsTable({ data }: { data: OperatorSummary[] }
             <th className="py-2 pr-4 pl-0 text-left">Advisor</th>
             <th className="px-3 py-2">Assegnati</th>
             <th className="px-3 py-2">Chiamate</th>
-            <th className="px-3 py-2">Risposte</th>
-            <th className="px-3 py-2">Fissati</th>
-            <th className="px-3 py-2">T. Presa Appt.</th>
-            <th className="px-3 py-2">Processati</th>
+            <th className="px-3 py-2">Connessioni</th>
+            <th className="px-3 py-2">Appuntamenti</th>
+            <th className="px-3 py-2">% Appuntamento</th>
+            <th className="px-3 py-2">Consulenze</th>
             <th className="px-3 py-2">Chiusure</th>
-            <th className="px-3 py-2">T. Chiusura</th>
-            <th className="px-3 py-2">Boom €</th>
+            <th className="px-3 py-2">% Chiusura</th>
+            <th className="px-3 py-2">Boom</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">

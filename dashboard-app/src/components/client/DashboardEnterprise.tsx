@@ -129,9 +129,14 @@ export default function DashboardEnterprise({
     [operatoriNorm]
   );
 
-  const operatorSummary = useMemo(
-    () => aggregateByOperatore(operatoriNorm).slice(0, 12),
+  const operatorSummaryAll = useMemo(
+    () => aggregateByOperatore(operatoriNorm),
     [operatoriNorm]
+  );
+
+  const operatorSummary = useMemo(
+    () => operatorSummaryAll.slice(0, 12),
+    [operatorSummaryAll]
   );
 
   const campaignSummary = useMemo(
@@ -433,21 +438,21 @@ export default function DashboardEnterprise({
           <KPICard label="Appuntamenti" value={formatInt(kpis.appuntamenti)} />
           <KPICard label="Consulenze" value={formatInt(kpis.consulenze)} />
           <KPICard label="Chiusure" value={formatInt(kpis.chiusure)} />
-          <KPICard label="Boom" value={`€ ${formatInt(kpis.boom)}`} />
+          <KPICard label="Boom" value={formatInt(kpis.boom)} />
         </div>
 
         {!hideOperatorTable && (
           <>
             <div id="tabella-operatori" className="scroll-mt-6">
-              <SectionTitle className="mt-10">Riepilogo Operatori</SectionTitle>
+              <SectionTitle className="mt-10">Riepilogo {operatorLabel ?? "Operatori"}</SectionTitle>
             </div>
             <Card>
               <ChartTitle
-                title="Performance per Operatore"
-                description="Volumi e tassi di conversione per operatore nel periodo selezionato."
+                title={`Performance per ${operatorLabel ?? "Operatore"}`}
+                description={`Volumi e tassi di conversione per ${operatorLabel?.toLowerCase() ?? "operatore"} nel periodo selezionato.`}
               />
               <div className="mt-4">
-                <OperatorStatsTable data={operatorSummary} />
+                <OperatorStatsTable data={operatorSummaryAll} />
               </div>
             </Card>
           </>
@@ -583,7 +588,7 @@ export default function DashboardEnterprise({
                       : "bg-[#14b8a6]/40 hover:bg-[#14b8a6]/60"
                   }`}
                 >
-                  Boom €
+                  Boom
                 </button>
               </div>
             </div>

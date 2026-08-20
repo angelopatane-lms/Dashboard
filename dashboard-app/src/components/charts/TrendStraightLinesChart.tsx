@@ -21,7 +21,7 @@ const SERIES: Array<{ key: TrendSeriesKey; label: string; color: string }> = [
   { key: "appuntamenti", label: "Appuntamenti", color: "#a855f7" },
   { key: "consulenze", label: "Consulenze", color: "#f59e0b" },
   { key: "chiusure", label: "Chiusure", color: "#ef4444" },
-  { key: "boom", label: "Boom €", color: "#14b8a6" }
+  { key: "boom", label: "Boom", color: "#14b8a6" }
 ];
 
 function linearRegression(xs: number[], ys: number[]) {
