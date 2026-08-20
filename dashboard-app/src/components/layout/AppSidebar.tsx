@@ -4,11 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const PAGES: Array<{ label: string; href: string }> = [
-  { label: "Generale", href: "/generale" },
-  { label: "Campagne", href: "/campagne" },
-  { label: "Contatti", href: "/contatti" },
   { label: "Advisor", href: "/advisor" },
-  { label: "Setter", href: "/setter" }
+  { label: "Setter", href: "/setter" },
+  { label: "Contatti", href: "/contatti" },
+  { label: "Campagne", href: "/campagne" },
+  { label: "Generale", href: "/generale" }
 ];
 
 const SECTIONS: Array<{ label: string; id: string }> = [

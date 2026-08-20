@@ -22,6 +22,7 @@ export default function DashboardClient({
       operators={operators}
       campaigns={campaigns}
       hideOperatorTable
+      hideInsights
     />
   );
 }
