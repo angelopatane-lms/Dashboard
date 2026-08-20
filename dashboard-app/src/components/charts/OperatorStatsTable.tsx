@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import type { OperatorSummary } from "@/lib/analytics";
-import { formatInt, formatPct } from "@/lib/format";
+import { formatInt, formatPct, formatEur } from "@/lib/format";
 
 function heatBg(value: number, max: number): string {
   if (max === 0 || value === 0) return "";
@@ -150,7 +150,7 @@ export default function OperatorStatsTable({
                   className="px-3 py-1.5 text-right tabular-nums"
                   style={{ background: heatBg(effBoom(r), maxValues.boom) }}
                 >
-                  {formatInt(effBoom(r))}
+                  {formatEur(effBoom(r))}
                 </td>
               </tr>
             );
@@ -171,7 +171,7 @@ export default function OperatorStatsTable({
             <td className="px-3 py-2 text-right tabular-nums">
               {totalTc !== null ? formatPct(totalTc, 2) : <span className="font-normal text-slate-400">–</span>}
             </td>
-            <td className="px-3 py-2 text-right tabular-nums">{formatInt(totals.boom)}</td>
+            <td className="px-3 py-2 text-right tabular-nums">{formatEur(totals.boom)}</td>
           </tr>
         </tfoot>
       </table>
