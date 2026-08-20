@@ -53,6 +53,11 @@ export default function OperatorStatsTable({ data }: { data: OperatorSummary[] }
     [data]
   );
 
+  const sorted = useMemo(
+    () => [...data].sort((a, b) => b.boom - a.boom),
+    [data]
+  );
+
   const totalTp = tassoPresa(totals.appuntamenti, totals.connessioni);
   const totalTc = tassoChiusura(totals.chiusure, totals.consulenze);
 
@@ -76,7 +81,7 @@ export default function OperatorStatsTable({ data }: { data: OperatorSummary[] }
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {data.map((r) => {
+          {sorted.map((r) => {
             const tp = tassoPresa(r.appuntamenti, r.connessioni);
             const tc = tassoChiusura(r.chiusure, r.consulenze);
             return (
