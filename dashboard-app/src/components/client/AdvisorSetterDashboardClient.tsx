@@ -27,6 +27,7 @@ export default function AdvisorSetterDashboardClient({
       hideCampagne
       hideInsights
       hideTimelineEventi
+      useHubspot
     />
   );
 }

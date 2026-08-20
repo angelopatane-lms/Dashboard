@@ -24,6 +24,7 @@ import CampaignConversionPeaksChart from "@/components/charts/CampaignConversion
 import FunnelStraightLinesChart, { type FunnelTrendKey } from "@/components/charts/FunnelStraightLinesChart";
 import ContactEventsTimeline from "@/components/charts/ContactEventsTimeline";
 import OperatorStatsTable from "@/components/charts/OperatorStatsTable";
+import type { HubspotBoomEntry } from "@/app/api/hubspot-boom/route";
 
 type CampaignPeaksDatum = {
   date: string;
@@ -40,6 +41,7 @@ export default function DashboardEnterprise({
   hideInsights,
   hideTimelineEventi,
   hideOperatorTable,
+  useHubspot,
   operatorLabel
 }: {
   operatoriRows: CsvRow[];
@@ -51,9 +53,23 @@ export default function DashboardEnterprise({
   hideInsights?: boolean;
   hideTimelineEventi?: boolean;
   hideOperatorTable?: boolean;
+  useHubspot?: boolean;
   operatorLabel?: string;
 }) {
-  const [filters, setFilters] = useState<Filters>({});
+  const defaultFrom = useMemo(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d.toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
+  }, []);
+
+  const defaultTo = useMemo(
+    () => new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Rome" }),
+    []
+  );
+
+  const [filters, setFilters] = useState<Filters>(() => ({ from: defaultFrom, to: defaultTo }));
+
+  const [hubspotOverrides, setHubspotOverrides] = useState<Record<string, { chiusure: number; boom: number }>>({});
 
   const todayIsoRome = useMemo(
     () =>
@@ -62,6 +78,22 @@ export default function DashboardEnterprise({
       }),
     []
   );
+
+  useEffect(() => {
+    if (!useHubspot) return;
+    const from = filters.from ?? defaultFrom;
+    const to = filters.to ?? defaultTo;
+    fetch(`/api/hubspot-boom?from=${from}&to=${to}`)
+      .then((r) => r.json())
+      .then((data: HubspotBoomEntry[]) => {
+        const map: Record<string, { chiusure: number; boom: number }> = {};
+        for (const entry of data) {
+          map[entry.operatore] = { chiusure: entry.chiusure, boom: entry.boom };
+        }
+        setHubspotOverrides(map);
+      })
+      .catch(console.error);
+  }, [useHubspot, filters.from, filters.to, defaultFrom, defaultTo]);
 
   const includeToday = useMemo(() => {
     const from = filters.from ?? "";
@@ -452,7 +484,7 @@ export default function DashboardEnterprise({
                 description={`Volumi e tassi di conversione per ${operatorLabel?.toLowerCase() ?? "operatore"} nel periodo selezionato.`}
               />
               <div className="mt-4">
-                <OperatorStatsTable data={operatorSummaryAll} />
+                <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} />
               </div>
             </Card>
           </>

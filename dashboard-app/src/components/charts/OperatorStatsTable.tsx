@@ -24,7 +24,16 @@ function tassoChiusura(chius: number, cons: number): number | null {
   return cons > 0 ? chius / cons : null;
 }
 
-export default function OperatorStatsTable({ data }: { data: OperatorSummary[] }) {
+export default function OperatorStatsTable({
+  data,
+  hubspotOverrides
+}: {
+  data: OperatorSummary[];
+  hubspotOverrides?: Record<string, { chiusure: number; boom: number }>;
+}) {
+  const effChiusure = (r: OperatorSummary) => hubspotOverrides?.[r.operatore]?.chiusure ?? r.chiusure;
+  const effBoom = (r: OperatorSummary) => hubspotOverrides?.[r.operatore]?.boom ?? r.boom;
+
   const totals = useMemo(() => {
     return data.reduce(
       (acc, r) => ({
@@ -33,12 +42,12 @@ export default function OperatorStatsTable({ data }: { data: OperatorSummary[] }
         connessioni: acc.connessioni + r.connessioni,
         appuntamenti: acc.appuntamenti + r.appuntamenti,
         consulenze: acc.consulenze + r.consulenze,
-        chiusure: acc.chiusure + r.chiusure,
-        boom: acc.boom + r.boom
+        chiusure: acc.chiusure + effChiusure(r),
+        boom: acc.boom + effBoom(r)
       }),
       { assegnati: 0, chiamate: 0, connessioni: 0, appuntamenti: 0, consulenze: 0, chiusure: 0, boom: 0 }
     );
-  }, [data]);
+  }, [data, hubspotOverrides]);
 
   const maxValues = useMemo(
     () => ({
@@ -47,15 +56,15 @@ export default function OperatorStatsTable({ data }: { data: OperatorSummary[] }
       connessioni: Math.max(...data.map((r) => r.connessioni), 1),
       appuntamenti: Math.max(...data.map((r) => r.appuntamenti), 1),
       consulenze: Math.max(...data.map((r) => r.consulenze), 1),
-      chiusure: Math.max(...data.map((r) => r.chiusure), 1),
-      boom: Math.max(...data.map((r) => r.boom), 1)
+      chiusure: Math.max(...data.map((r) => effChiusure(r)), 1),
+      boom: Math.max(...data.map((r) => effBoom(r)), 1)
     }),
-    [data]
+    [data, hubspotOverrides]
   );
 
   const sorted = useMemo(
-    () => [...data].sort((a, b) => b.boom - a.boom || b.appuntamenti - a.appuntamenti),
-    [data]
+    () => [...data].sort((a, b) => effBoom(b) - effBoom(a) || b.appuntamenti - a.appuntamenti),
+    [data, hubspotOverrides]
   );
 
   const totalTp = tassoPresa(totals.appuntamenti, totals.connessioni);
@@ -83,7 +92,7 @@ export default function OperatorStatsTable({ data }: { data: OperatorSummary[] }
         <tbody className="divide-y divide-slate-100">
           {sorted.map((r) => {
             const tp = tassoPresa(r.appuntamenti, r.connessioni);
-            const tc = tassoChiusura(r.chiusure, r.consulenze);
+            const tc = tassoChiusura(effChiusure(r), r.consulenze);
             return (
               <tr key={r.operatore} className="hover:bg-slate-50/70 transition-colors">
                 <td className="py-1.5 pr-4 pl-0 font-medium text-slate-800 whitespace-nowrap">
@@ -127,9 +136,9 @@ export default function OperatorStatsTable({ data }: { data: OperatorSummary[] }
                 </td>
                 <td
                   className="px-3 py-1.5 text-right tabular-nums"
-                  style={{ background: heatBg(r.chiusure, maxValues.chiusure) }}
+                  style={{ background: heatBg(effChiusure(r), maxValues.chiusure) }}
                 >
-                  {formatInt(r.chiusure)}
+                  {formatInt(effChiusure(r))}
                 </td>
                 <td
                   className="px-3 py-1.5 text-right font-semibold tabular-nums"
@@ -139,9 +148,9 @@ export default function OperatorStatsTable({ data }: { data: OperatorSummary[] }
                 </td>
                 <td
                   className="px-3 py-1.5 text-right tabular-nums"
-                  style={{ background: heatBg(r.boom, maxValues.boom) }}
+                  style={{ background: heatBg(effBoom(r), maxValues.boom) }}
                 >
-                  {formatInt(r.boom)}
+                  {formatInt(effBoom(r))}
                 </td>
               </tr>
             );
