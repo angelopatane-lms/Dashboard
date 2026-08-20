@@ -23,6 +23,7 @@ import CampaignSummaryBar from "@/components/charts/CampaignSummaryBar";
 import CampaignConversionPeaksChart from "@/components/charts/CampaignConversionPeaksChart";
 import FunnelStraightLinesChart, { type FunnelTrendKey } from "@/components/charts/FunnelStraightLinesChart";
 import ContactEventsTimeline from "@/components/charts/ContactEventsTimeline";
+import OperatorStatsTable from "@/components/charts/OperatorStatsTable";
 
 type CampaignPeaksDatum = {
   date: string;
@@ -38,6 +39,7 @@ export default function DashboardEnterprise({
   hideCampagne,
   hideInsights,
   hideTimelineEventi,
+  hideOperatorTable,
   operatorLabel
 }: {
   operatoriRows: CsvRow[];
@@ -48,6 +50,7 @@ export default function DashboardEnterprise({
   hideCampagne?: boolean;
   hideInsights?: boolean;
   hideTimelineEventi?: boolean;
+  hideOperatorTable?: boolean;
   operatorLabel?: string;
 }) {
   const [filters, setFilters] = useState<Filters>({});
@@ -432,6 +435,23 @@ export default function DashboardEnterprise({
           <KPICard label="Chiusure" value={formatInt(kpis.chiusure)} />
           <KPICard label="Boom" value={`€ ${formatInt(kpis.boom)}`} />
         </div>
+
+        {!hideOperatorTable && (
+          <>
+            <div id="tabella-operatori" className="scroll-mt-6">
+              <SectionTitle className="mt-10">Riepilogo Operatori</SectionTitle>
+            </div>
+            <Card>
+              <ChartTitle
+                title="Performance per Operatore"
+                description="Volumi e tassi di conversione per operatore nel periodo selezionato."
+              />
+              <div className="mt-4">
+                <OperatorStatsTable data={operatorSummary} />
+              </div>
+            </Card>
+          </>
+        )}
 
         <div id="trend-funnel" className="scroll-mt-6">
           <SectionTitle className="mt-10">Trend Principali</SectionTitle>

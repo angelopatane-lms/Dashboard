@@ -21,6 +21,7 @@ export default function DashboardClient({
       trackingEventiRows={trackingEventiRows}
       operators={operators}
       campaigns={campaigns}
+      hideOperatorTable
     />
   );
 }

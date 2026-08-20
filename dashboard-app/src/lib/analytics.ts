@@ -150,6 +150,9 @@ export type OperatorSummary = {
   connessioni: number;
   appuntamenti: number;
   noShow: number;
+  consulenze: number;
+  chiusure: number;
+  boom: number;
   efficienzaContatto: number;
   conversioneAppuntamenti: number;
   noShowPct: number;
@@ -165,6 +168,9 @@ export function aggregateByOperatore(operatori: OperatoriNormalized[]): Operator
       connessioni: number;
       appuntamenti: number;
       noShow: number;
+      consulenze: number;
+      chiusure: number;
+      boom: number;
       reattSum: number;
       reattCount: number;
     }
@@ -178,6 +184,9 @@ export function aggregateByOperatore(operatori: OperatoriNormalized[]): Operator
       connessioni: 0,
       appuntamenti: 0,
       noShow: 0,
+      consulenze: 0,
+      chiusure: 0,
+      boom: 0,
       reattSum: 0,
       reattCount: 0
     };
@@ -186,6 +195,9 @@ export function aggregateByOperatore(operatori: OperatoriNormalized[]): Operator
     cur.connessioni += r.connessioni;
     cur.appuntamenti += r.appuntamenti;
     cur.noShow += r.noShow;
+    cur.consulenze += r.consulenze;
+    cur.chiusure += r.chiusure;
+    cur.boom += r.boom;
     if (r.reattivitaMin > 0) {
       cur.reattSum += r.reattivitaMin;
       cur.reattCount += 1;
@@ -211,6 +223,9 @@ export function aggregateByOperatore(operatori: OperatoriNormalized[]): Operator
       connessioni: t.connessioni,
       appuntamenti: t.appuntamenti,
       noShow: t.noShow,
+      consulenze: t.consulenze,
+      chiusure: t.chiusure,
+      boom: t.boom,
       ...adv
     });
   }

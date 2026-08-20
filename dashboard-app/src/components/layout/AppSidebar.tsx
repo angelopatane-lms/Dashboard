@@ -34,6 +34,7 @@ const CAMPAIGNS_SECTIONS: Array<{ label: string; id: string }> = [
 const ADVISOR_SETTER_SECTIONS: Array<{ label: string; id: string }> = [
   { label: "Filtri", id: "filtri" },
   { label: "KPI Principali", id: "kpi" },
+  { label: "Riepilogo Operatori", id: "tabella-operatori" },
   { label: "Trend Principali", id: "trend-funnel" },
   { label: "Stati Lead", id: "stati-lead" },
   { label: "Performance", id: "performance" }
