@@ -12,6 +12,7 @@ type BoomRecord = {
     tipologia_di_incasso: string | null;
     importo: string | null;
     hubspot_owner_id: string | null;
+    id_campagna_track: string | null;
   };
 };
 
@@ -32,7 +33,7 @@ async function fetchAllBoom(token: string, from: string, to: string): Promise<Bo
           ]
         }
       ],
-      properties: ["data_di_pagamento", "tipologia_di_incasso", "importo", "hubspot_owner_id"],
+      properties: ["data_di_pagamento", "tipologia_di_incasso", "importo", "hubspot_owner_id", "id_campagna_track"],
       limit: 100,
       ...(after ? { after } : {})
     };
@@ -95,6 +96,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const from = searchParams.get("from");
   const to = searchParams.get("to");
+  const campaign = searchParams.get("campaign") ?? "";
 
   if (!from || !to) {
     return NextResponse.json({ error: "Missing from or to params" }, { status: 400 });
@@ -110,6 +112,7 @@ export async function GET(req: NextRequest) {
 
     for (const record of records) {
       const p = record.properties;
+      if (campaign && (p.id_campagna_track ?? "") !== campaign) continue;
       const ownerId = p.hubspot_owner_id ?? "";
       const operatore = ownerMap[ownerId] ?? ownerId;
       const tipologia = p.tipologia_di_incasso ?? "";

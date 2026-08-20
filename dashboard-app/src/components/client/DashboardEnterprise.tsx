@@ -83,7 +83,9 @@ export default function DashboardEnterprise({
     if (!useHubspot) return;
     const from = filters.from ?? defaultFrom;
     const to = filters.to ?? defaultTo;
-    fetch(`/api/hubspot-boom?from=${from}&to=${to}`)
+    const campaign = filters.campagna ?? "";
+    const url = `/api/hubspot-boom?from=${from}&to=${to}${campaign ? `&campaign=${encodeURIComponent(campaign)}` : ""}`;
+    fetch(url)
       .then((r) => r.json())
       .then((data: HubspotBoomEntry[]) => {
         const map: Record<string, { chiusure: number; boom: number }> = {};
@@ -93,7 +95,7 @@ export default function DashboardEnterprise({
         setHubspotOverrides(map);
       })
       .catch(console.error);
-  }, [useHubspot, filters.from, filters.to, defaultFrom, defaultTo]);
+  }, [useHubspot, filters.from, filters.to, filters.campagna, defaultFrom, defaultTo]);
 
   const includeToday = useMemo(() => {
     const from = filters.from ?? "";
