@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import type { CsvRow } from "@/lib/csv";
 import { applyFilters, type Filters } from "@/lib/metrics";
-import { aggregateByCampagna, normalizeDispatch, normalizeOperatori } from "@/lib/analytics";
+import { aggregateByCampagna, normalizeOperatori } from "@/lib/analytics";
 import { FiltersBar } from "@/components/Filters";
 import Card from "@/components/ui/Card";
 import ChartTitle from "@/components/ui/ChartTitle";
@@ -12,16 +12,12 @@ import CampaignSummaryBar from "@/components/charts/CampaignSummaryBar";
 
 export default function CampaignsDashboard({
   operatoriRows,
-  dispatchRows,
   operatoriRowsOggi,
-  dispatchRowsOggi,
   operators,
   campaigns
 }: {
   operatoriRows: CsvRow[];
-  dispatchRows: CsvRow[];
   operatoriRowsOggi: CsvRow[];
-  dispatchRowsOggi: CsvRow[];
   operators: string[];
   campaigns: string[];
 }) {
@@ -49,27 +45,16 @@ export default function CampaignsDashboard({
     [includeToday, operatoriRows, operatoriRowsOggi]
   );
 
-  const dispatchRowsWithToday = useMemo(
-    () => (includeToday ? [...dispatchRows, ...dispatchRowsOggi] : dispatchRows),
-    [includeToday, dispatchRows, dispatchRowsOggi]
-  );
-
   const operatoriFiltered = useMemo(
     () => applyFilters(operatoriRowsWithToday, filters),
     [operatoriRowsWithToday, filters]
   );
 
-  const dispatchFiltered = useMemo(
-    () => applyFilters(dispatchRowsWithToday, filters),
-    [dispatchRowsWithToday, filters]
-  );
-
   const operatoriNorm = useMemo(() => normalizeOperatori(operatoriFiltered), [operatoriFiltered]);
-  const dispatchNorm = useMemo(() => normalizeDispatch(dispatchFiltered), [dispatchFiltered]);
 
   const campaignSummary = useMemo(
-    () => aggregateByCampagna(operatoriNorm, dispatchNorm).slice(0, 12),
-    [operatoriNorm, dispatchNorm]
+    () => aggregateByCampagna(operatoriNorm).slice(0, 12),
+    [operatoriNorm]
   );
 
   return (

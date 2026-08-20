@@ -6,9 +6,7 @@ import { applyFilters, computeKpis, type Filters } from "@/lib/metrics";
 import {
   aggregateByCampagna,
   aggregateByOperatore,
-  aggregateDispatchByOperatore,
   aggregateTimeSeries,
-  normalizeDispatch,
   normalizeOperatori
 } from "@/lib/analytics";
 import { formatFloat, formatInt, formatPct } from "@/lib/format";
@@ -18,14 +16,11 @@ import KPICard from "@/components/ui/KPICard";
 import Card from "@/components/ui/Card";
 import ChartTitle from "@/components/ui/ChartTitle";
 import FunnelStagesChart from "@/components/charts/FunnelStagesChart";
-import DispatchDonutChart from "@/components/charts/DispatchDonutChart";
 import ReactivityGauge from "@/components/charts/ReactivityGauge";
 import TimeSeriesChart, { type TrendSeriesKey } from "@/components/charts/TimeSeriesChart";
 import OperatorPerformanceBar from "@/components/charts/OperatorPerformanceBar";
 import CampaignSummaryBar from "@/components/charts/CampaignSummaryBar";
-import DispatchQualityBar from "@/components/charts/DispatchQualityBar";
 import CampaignConversionPeaksChart from "@/components/charts/CampaignConversionPeaksChart";
-import DispatchEntryExitBar from "@/components/charts/DispatchEntryExitBar";
 import FunnelStraightLinesChart, { type FunnelTrendKey } from "@/components/charts/FunnelStraightLinesChart";
 import ContactEventsTimeline from "@/components/charts/ContactEventsTimeline";
 
@@ -36,30 +31,20 @@ type CampaignPeaksDatum = {
 
 export default function DashboardEnterprise({
   operatoriRows,
-  dispatchRows,
-  dispatchRowsAll,
   operatoriRowsOggi,
-  dispatchRowsOggi,
-  dispatchRowsAllOggi,
   trackingEventiRows,
   operators,
   campaigns,
-  hideDispatchment,
   hideCampagne,
   hideInsights,
   hideTimelineEventi,
   operatorLabel
 }: {
   operatoriRows: CsvRow[];
-  dispatchRows: CsvRow[];
-  dispatchRowsAll: CsvRow[];
   operatoriRowsOggi: CsvRow[];
-  dispatchRowsOggi: CsvRow[];
-  dispatchRowsAllOggi: CsvRow[];
   trackingEventiRows: CsvRow[];
   operators: string[];
   campaigns: string[];
-  hideDispatchment?: boolean;
   hideCampagne?: boolean;
   hideInsights?: boolean;
   hideTimelineEventi?: boolean;
@@ -88,22 +73,14 @@ export default function DashboardEnterprise({
     () => (includeToday ? [...operatoriRows, ...operatoriRowsOggi] : operatoriRows),
     [includeToday, operatoriRows, operatoriRowsOggi]
   );
-  const dispatchRowsWithToday = useMemo(
-    () => (includeToday ? [...dispatchRows, ...dispatchRowsOggi] : dispatchRows),
-    [includeToday, dispatchRows, dispatchRowsOggi]
-  );
-  const dispatchRowsAllWithToday = useMemo(
-    () => (includeToday ? [...dispatchRowsAll, ...dispatchRowsAllOggi] : dispatchRowsAll),
-    [includeToday, dispatchRowsAll, dispatchRowsAllOggi]
-  );
 
   const ALL_TREND_KEYS: TrendSeriesKey[] = [
     "assegnati",
     "connessioni",
     "appuntamenti",
-    "serieA",
-    "serieB",
-    "proprietario"
+    "consulenze",
+    "chiusure",
+    "boom"
   ];
 
   const ALL_FUNNEL_TREND_KEYS: FunnelTrendKey[] = [
@@ -133,43 +110,20 @@ export default function DashboardEnterprise({
     () => applyFilters(operatoriRowsWithToday, filters),
     [operatoriRowsWithToday, filters]
   );
-  const dispatchFiltered = useMemo(
-    () => applyFilters(dispatchRowsWithToday, filters),
-    [dispatchRowsWithToday, filters]
-  );
-  const dispatchAllFiltered = useMemo(
-    () => applyFilters(dispatchRowsAllWithToday, filters),
-    [dispatchRowsAllWithToday, filters]
-  );
 
   const kpis = useMemo(
-    () => computeKpis(operatoriFiltered, dispatchFiltered),
-    [operatoriFiltered, dispatchFiltered]
+    () => computeKpis(operatoriFiltered),
+    [operatoriFiltered]
   );
-
-  const dispatchKpisAll = useMemo(
-    () => computeKpis([], dispatchAllFiltered),
-    [dispatchAllFiltered]
-  );
-
-  const dispatchmentDeltaRaw = (dispatchKpisAll.dispatchSi ?? 0) - (dispatchKpisAll.dispatchNo ?? 0);
-  const dispatchmentDeltaSafe = Number.isFinite(dispatchmentDeltaRaw) ? dispatchmentDeltaRaw : 0;
-  const dispatchmentDelta = Math.round(dispatchmentDeltaSafe);
-  const dispatchmentIsEmpty = dispatchmentDelta === 0;
-  const dispatchmentIsBalanced = !dispatchmentIsEmpty && Math.abs(dispatchmentDelta) <= 20;
 
   const operatoriNorm = useMemo(
     () => normalizeOperatori(operatoriFiltered),
     [operatoriFiltered]
   );
-  const dispatchNorm = useMemo(
-    () => normalizeDispatch(dispatchFiltered),
-    [dispatchFiltered]
-  );
 
   const timeSeries = useMemo(
-    () => aggregateTimeSeries(operatoriNorm, dispatchNorm, "day"),
-    [operatoriNorm, dispatchNorm]
+    () => aggregateTimeSeries(operatoriNorm, "day"),
+    [operatoriNorm]
   );
 
   const operatorSummary = useMemo(
@@ -177,14 +131,9 @@ export default function DashboardEnterprise({
     [operatoriNorm]
   );
 
-  const dispatchSummary = useMemo(
-    () => aggregateDispatchByOperatore(dispatchNorm).slice(0, 12),
-    [dispatchNorm]
-  );
-
   const campaignSummary = useMemo(
-    () => aggregateByCampagna(operatoriNorm, dispatchNorm).slice(0, 12),
-    [operatoriNorm, dispatchNorm]
+    () => aggregateByCampagna(operatoriNorm).slice(0, 12),
+    [operatoriNorm]
   );
 
   const effContatto = useMemo(
@@ -471,15 +420,17 @@ export default function DashboardEnterprise({
         <div id="kpi" className="scroll-mt-6">
           <SectionTitle className="mt-10">KPI Principali</SectionTitle>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-5 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-4 gap-6">
           <KPICard label="Assegnati" value={formatInt(kpis.assegnati)} />
-          <KPICard
-            label="Latenza"
-            value={`${formatFloat(kpis.reattivitaMediaMin, 1)}`}
-          />
+          <KPICard label="Latenza" value={`${formatFloat(kpis.reattivitaMediaMin, 1)} min`} />
           <KPICard label="Chiamate" value={formatInt(kpis.chiamate)} />
           <KPICard label="Connessioni" value={formatInt(kpis.connessioni)} />
+        </div>
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-4 lg:grid-cols-4 gap-6">
           <KPICard label="Appuntamenti" value={formatInt(kpis.appuntamenti)} />
+          <KPICard label="Consulenze" value={formatInt(kpis.consulenze)} />
+          <KPICard label="Chiusure" value={formatInt(kpis.chiusure)} />
+          <KPICard label="Boom" value={`€ ${formatInt(kpis.boom)}`} />
         </div>
 
         <div id="trend-funnel" className="scroll-mt-6">
@@ -565,54 +516,54 @@ export default function DashboardEnterprise({
                   onClick={() =>
                     setSelectedTrendKeys((prev) => {
                       const next = new Set(prev);
-                      if (next.has("serieA")) next.delete("serieA");
-                      else next.add("serieA");
+                      if (next.has("consulenze")) next.delete("consulenze");
+                      else next.add("consulenze");
                       return next;
                     })
                   }
                   className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
-                    selectedTrendKeys.has("serieA")
+                    selectedTrendKeys.has("consulenze")
                       ? "bg-[#f59e0b]"
                       : "bg-[#f59e0b]/40 hover:bg-[#f59e0b]/60"
                   }`}
                 >
-                  Serie A
+                  Consulenze
                 </button>
                 <button
                   type="button"
                   onClick={() =>
                     setSelectedTrendKeys((prev) => {
                       const next = new Set(prev);
-                      if (next.has("serieB")) next.delete("serieB");
-                      else next.add("serieB");
+                      if (next.has("chiusure")) next.delete("chiusure");
+                      else next.add("chiusure");
                       return next;
                     })
                   }
                   className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
-                    selectedTrendKeys.has("serieB")
+                    selectedTrendKeys.has("chiusure")
                       ? "bg-[#ef4444]"
                       : "bg-[#ef4444]/40 hover:bg-[#ef4444]/60"
                   }`}
                 >
-                  Serie B
+                  Chiusure
                 </button>
                 <button
                   type="button"
                   onClick={() =>
                     setSelectedTrendKeys((prev) => {
                       const next = new Set(prev);
-                      if (next.has("proprietario")) next.delete("proprietario");
-                      else next.add("proprietario");
+                      if (next.has("boom")) next.delete("boom");
+                      else next.add("boom");
                       return next;
                     })
                   }
                   className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
-                    selectedTrendKeys.has("proprietario")
-                      ? "bg-[#64748b]"
-                      : "bg-[#64748b]/40 hover:bg-[#64748b]/60"
+                    selectedTrendKeys.has("boom")
+                      ? "bg-[#14b8a6]"
+                      : "bg-[#14b8a6]/40 hover:bg-[#14b8a6]/60"
                   }`}
                 >
-                  Proprietario
+                  Boom €
                 </button>
               </div>
             </div>
@@ -625,89 +576,6 @@ export default function DashboardEnterprise({
           </Card>
         </div>
         
-      {hideDispatchment ? null : (
-        <>
-          <div id="distribuzioni" className="scroll-mt-6">
-            <SectionTitle className="mt-10">Dispatchment</SectionTitle>
-          </div>
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            <Card>
-              <ChartTitle
-                title="Distribuzione Outcome"
-                description="Ripartizione della qualità (Serie A, Serie B, Proprietario) sui lead lavorati. I contatori sotto riportano i volumi di Dispatch Entry/Exit."
-              />
-              <div className="mt-4 h-[260px]">
-                <DispatchDonutChart
-                  dispatchSi={dispatchKpisAll.dispatchSi}
-                  dispatchNo={dispatchKpisAll.dispatchNo}
-                  serieA={dispatchKpisAll.serieA}
-                  serieB={dispatchKpisAll.serieB}
-                  proprietario={dispatchKpisAll.proprietario}
-                  showSiNo={false}
-                />
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 ring-1 ring-slate-200/70">
-                  <div className="text-gray-600">Dispatch Entry</div>
-                  <div className="font-semibold text-gray-900">{formatInt(dispatchKpisAll.dispatchSi)}</div>
-                </div>
-                <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 ring-1 ring-slate-200/70">
-                  <div className="text-gray-600">Dispatch Exit</div>
-                  <div className="font-semibold text-gray-900">{formatInt(dispatchKpisAll.dispatchNo)}</div>
-                </div>
-              </div>
-            </Card>
-            <Card>
-              <ChartTitle
-                title="Bilanciamento Attività"
-                description="Confronto tra Dispatch Entry e Dispatch Exit nel periodo selezionato."
-              />
-              <div className="mt-4 h-[260px]">
-                <DispatchEntryExitBar entry={dispatchKpisAll.dispatchSi} exit={dispatchKpisAll.dispatchNo} />
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 ring-1 ring-slate-200/70">
-                  <div className="text-gray-600">Dispatcher</div>
-                  <div
-                    className={`font-semibold ${
-                      dispatchmentIsEmpty
-                        ? "text-emerald-600"
-                        : dispatchmentIsBalanced
-                          ? "text-amber-600"
-                          : "text-rose-600"
-                    }`}
-                  >
-                    {dispatchmentIsEmpty
-                      ? "Vuoto"
-                      : dispatchmentIsBalanced
-                        ? "Bilanciato"
-                        : dispatchmentDelta > 20
-                          ? "In Attesa"
-                          : "Sbilanciato"}
-                  </div>
-                </div>
-                <div className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 ring-1 ring-slate-200/70">
-                  <div className="text-gray-600">Da Dispacciare</div>
-                  <div className="font-semibold text-gray-900">
-                    {dispatchmentDelta >= 0 ? "+" : ""}
-                    {formatInt(dispatchmentDelta)}
-                  </div>
-                </div>
-              </div>
-            </Card>
-            <Card className="md:col-span-2">
-              <ChartTitle
-                title="Outcome Operatore"
-                description="Distribuzione della qualità per operatore: segmentazione in Serie A, Serie B e Proprietario."
-              />
-              <div className="mt-4 h-[340px]">
-                <DispatchQualityBar data={dispatchSummary} />
-              </div>
-            </Card>
-          </div>
-        </>
-      )}
-
       <div id="stati-lead" className="scroll-mt-6">
         <SectionTitle className="mt-10">Stati Lead</SectionTitle>
       </div>

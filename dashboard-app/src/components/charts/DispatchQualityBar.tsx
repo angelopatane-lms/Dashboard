@@ -9,8 +9,9 @@ import {
   XAxis,
   YAxis
 } from "recharts";
-import type { DispatchSummary } from "@/lib/analytics";
 import { formatInt } from "@/lib/format";
+
+type DispatchSummary = { operatore: string; serieA: number; serieB: number; proprietario: number };
 
 export default function DispatchQualityBar({ data }: { data: DispatchSummary[] }) {
   return (

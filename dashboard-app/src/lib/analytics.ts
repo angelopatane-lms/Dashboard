@@ -18,23 +18,9 @@ export type OperatoriNormalized = {
   bin: number;
   appuntamenti: number;
   noShow: number;
-};
-
-export type DispatchNormalized = {
-  data: string;
-  operatore: string;
-  campagna: string;
-  dispatchSi: number;
-  dispatchNo: number;
-  serieA: number;
-  serieB: number;
-  proprietario: number;
-  nuovi: number;
-  nonRisposti: number;
-  interesseFuturo: number;
-  semina: number;
-  daRichiamare: number;
-  bin: number;
+  consulenze: number;
+  chiusure: number;
+  boom: number;
 };
 
 export function normalizeOperatori(rows: CsvRow[]): OperatoriNormalized[] {
@@ -47,8 +33,8 @@ export function normalizeOperatori(rows: CsvRow[]): OperatoriNormalized[] {
         campagna: getString(r, "Campagna"),
         assegnati: toNumber(getString(r, "Assegnati")),
         reattivitaMin: toNumber(getString(r, "Latenza")),
-        chiamate: toNumber(getString(r, "Chiamate")),
-        connessioni: toNumber(getString(r, "Connessioni")),
+        chiamate: toNumber(getString(r, "Chiamati") || getString(r, "Chiamate")),
+        connessioni: toNumber(getString(r, "Connessi") || getString(r, "Connessioni")),
         nuovi: toNumber(getString(r, "Nuovi")),
         nonRisposti: toNumber(getString(r, "Non Risposti")),
         interesseFuturo: toNumber(getString(r, "Interesse Futuro")),
@@ -56,33 +42,10 @@ export function normalizeOperatori(rows: CsvRow[]): OperatoriNormalized[] {
         daRichiamare: toNumber(getString(r, "Da Richiamare")),
         bin: toNumber(getString(r, "BIN")),
         appuntamenti: toNumber(getString(r, "Appuntamenti")),
-        noShow: toNumber(getString(r, "No Show"))
-      };
-    })
-    .filter((r) => r.data);
-}
-
-export function normalizeDispatch(rows: CsvRow[]): DispatchNormalized[] {
-  return rows
-    .map((r) => {
-      const data = toDateIso(getString(r, "Data"));
-      const dispatchEntryRaw = getString(r, "Dispatch Entry") || getString(r, "Dispatch Sì");
-      const dispatchExitRaw = getString(r, "Dispatch Exit") || getString(r, "Dispatch No");
-      return {
-        data,
-        operatore: getString(r, "Operatore"),
-        campagna: getString(r, "Campagna"),
-        dispatchSi: toNumber(dispatchEntryRaw),
-        dispatchNo: toNumber(dispatchExitRaw),
-        serieA: toNumber(getString(r, "Serie A")),
-        serieB: toNumber(getString(r, "Serie B")),
-        proprietario: toNumber(getString(r, "Proprietario")),
-        nuovi: toNumber(getString(r, "Nuovi")),
-        nonRisposti: toNumber(getString(r, "Non Risposti")),
-        interesseFuturo: toNumber(getString(r, "Interesse Futuro")),
-        semina: toNumber(getString(r, "Semina")),
-        daRichiamare: toNumber(getString(r, "Da Richiamare")),
-        bin: toNumber(getString(r, "BIN"))
+        noShow: toNumber(getString(r, "No Show")),
+        consulenze: toNumber(getString(r, "Consulenze")),
+        chiusure: toNumber(getString(r, "Chiusure")),
+        boom: toNumber(getString(r, "Boom"))
       };
     })
     .filter((r) => r.data);
@@ -122,16 +85,13 @@ export type TimeSeriesPoint = {
   semina: number;
   daRichiamare: number;
   bin: number;
-  dispatchSi: number;
-  dispatchNo: number;
-  serieA: number;
-  serieB: number;
-  proprietario: number;
+  consulenze: number;
+  chiusure: number;
+  boom: number;
 };
 
 export function aggregateTimeSeries(
   operatori: OperatoriNormalized[],
-  dispatch: DispatchNormalized[],
   grain: TimeGrain
 ): TimeSeriesPoint[] {
   const map = new Map<string, TimeSeriesPoint>();
@@ -152,11 +112,9 @@ export function aggregateTimeSeries(
       semina: 0,
       daRichiamare: 0,
       bin: 0,
-      dispatchSi: 0,
-      dispatchNo: 0,
-      serieA: 0,
-      serieB: 0,
-      proprietario: 0
+      consulenze: 0,
+      chiusure: 0,
+      boom: 0
     };
     map.set(bucket, created);
     return created;
@@ -176,16 +134,9 @@ export function aggregateTimeSeries(
     p.semina += r.semina;
     p.daRichiamare += r.daRichiamare;
     p.bin += r.bin;
-  }
-
-  for (const r of dispatch) {
-    const bucket = bucketDate(r.data, grain);
-    const p = ensure(bucket);
-    p.dispatchSi += r.dispatchSi;
-    p.dispatchNo += r.dispatchNo;
-    p.serieA += r.serieA;
-    p.serieB += r.serieB;
-    p.proprietario += r.proprietario;
+    p.consulenze += r.consulenze;
+    p.chiusure += r.chiusure;
+    p.boom += r.boom;
   }
 
   return Array.from(map.values()).sort((a, b) => a.bucket.localeCompare(b.bucket));
@@ -267,53 +218,6 @@ export function aggregateByOperatore(operatori: OperatoriNormalized[]): Operator
   return out.sort((a, b) => b.appuntamenti - a.appuntamenti);
 }
 
-export type DispatchSummary = {
-  operatore: string;
-  dispatchSi: number;
-  dispatchNo: number;
-  serieA: number;
-  serieB: number;
-  proprietario: number;
-  qualitaDispatch: number;
-  tassoProprietario: number;
-};
-
-export function aggregateDispatchByOperatore(dispatch: DispatchNormalized[]): DispatchSummary[] {
-  const map = new Map<
-    string,
-    {
-      dispatchSi: number;
-      dispatchNo: number;
-      serieA: number;
-      serieB: number;
-      proprietario: number;
-    }
-  >();
-
-  for (const r of dispatch) {
-    const key = r.operatore || "(vuoto)";
-    const cur = map.get(key) ?? {
-      dispatchSi: 0,
-      dispatchNo: 0,
-      serieA: 0,
-      serieB: 0,
-      proprietario: 0
-    };
-    cur.dispatchSi += r.dispatchSi;
-    cur.dispatchNo += r.dispatchNo;
-    cur.serieA += r.serieA;
-    cur.serieB += r.serieB;
-    cur.proprietario += r.proprietario;
-    map.set(key, cur);
-  }
-
-  const out: DispatchSummary[] = [];
-  for (const [operatore, t] of map.entries()) {
-    const adv = computeDispatchKpisAdvanced(t);
-    out.push({ operatore, ...t, ...adv });
-  }
-  return out.sort((a, b) => b.dispatchSi - a.dispatchSi);
-}
 
 export type CampaignSummary = {
   campagna: string;
@@ -321,14 +225,13 @@ export type CampaignSummary = {
   connessioni: number;
   appuntamenti: number;
   noShow: number;
-  serieA: number;
-  serieB: number;
-  proprietario: number;
+  consulenze: number;
+  chiusure: number;
+  boom: number;
 };
 
 export function aggregateByCampagna(
-  operatori: OperatoriNormalized[],
-  dispatch: DispatchNormalized[]
+  operatori: OperatoriNormalized[]
 ): CampaignSummary[] {
   const map = new Map<
     string,
@@ -337,9 +240,9 @@ export function aggregateByCampagna(
       connessioni: number;
       appuntamenti: number;
       noShow: number;
-      serieA: number;
-      serieB: number;
-      proprietario: number;
+      consulenze: number;
+      chiusure: number;
+      boom: number;
     }
   >();
 
@@ -349,9 +252,9 @@ export function aggregateByCampagna(
       connessioni: 0,
       appuntamenti: 0,
       noShow: 0,
-      serieA: 0,
-      serieB: 0,
-      proprietario: 0
+      consulenze: 0,
+      chiusure: 0,
+      boom: 0
     };
 
   for (const r of operatori) {
@@ -361,15 +264,9 @@ export function aggregateByCampagna(
     cur.connessioni += r.connessioni;
     cur.appuntamenti += r.appuntamenti;
     cur.noShow += r.noShow;
-    map.set(key, cur);
-  }
-
-  for (const r of dispatch) {
-    const key = r.campagna || "(vuoto)";
-    const cur = ensure(key);
-    cur.serieA += r.serieA;
-    cur.serieB += r.serieB;
-    cur.proprietario += r.proprietario;
+    cur.consulenze += r.consulenze;
+    cur.chiusure += r.chiusure;
+    cur.boom += r.boom;
     map.set(key, cur);
   }
 
@@ -405,11 +302,6 @@ export type OperatorKpisAdvanced = {
   indiceProntezza: number;
 };
 
-export type DispatchKpisAdvanced = {
-  qualitaDispatch: number;
-  tassoProprietario: number;
-};
-
 export function computeOperatorKpisAdvanced(t: {
   chiamate: number;
   connessioni: number;
@@ -425,19 +317,6 @@ export function computeOperatorKpisAdvanced(t: {
   const indiceProntezza = t.reattivitaMinAvg > 0 ? Math.min(1, 1 / t.reattivitaMinAvg) : 0;
 
   return { efficienzaContatto, conversioneAppuntamenti, noShowPct, indiceProntezza };
-}
-
-export function computeDispatchKpisAdvanced(t: {
-  dispatchSi: number;
-  dispatchNo: number;
-  serieA: number;
-  serieB: number;
-  proprietario: number;
-}): DispatchKpisAdvanced {
-  const totDispatch = t.dispatchSi + t.dispatchNo;
-  const qualitaDispatch = safeDiv(t.serieA + t.serieB, t.dispatchSi);
-  const tassoProprietario = safeDiv(t.proprietario, totDispatch);
-  return { qualitaDispatch, tassoProprietario };
 }
 
 export function pearsonCorrelation(xs: number[], ys: number[]): number {

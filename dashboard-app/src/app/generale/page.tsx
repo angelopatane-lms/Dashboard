@@ -49,9 +49,7 @@ function secondsUntilNextRome1930(nowUtc: Date = new Date()): number {
 const SHEET_ID = "1wHpVsYwB_5PKGSYYfD0W2pYa7U_3yWI1Re10T3jGgnM";
 const HUBSPOT_USERS_SHEET_ID = "1XKvzK20x9DkIyJVHBNTYUHxV21kmrdWH0AshNkkgLHQ";
 const GID_OPERATORI = "245526930";
-const GID_DISPATCH = "169448955";
 const GID_OPERATORI_OGGI = "2032731939";
-const GID_DISPATCH_OGGI = "1181380498";
 const GID_TRACKING_EVENTI = "2095098073";
 const GID_HUBSPOT_USERS = "0";
 
@@ -69,12 +67,10 @@ function normalizeName(value: string): string {
 }
 
 export default async function Page() {
-  const [operatoriRows, dispatchRows, operatoriRowsOggi, dispatchRowsOggi, trackingEventiRows] =
+  const [operatoriRows, operatoriRowsOggi, trackingEventiRows] =
     await Promise.all([
       fetchCsv(sheetCsvUrl(GID_OPERATORI)),
-      fetchCsv(sheetCsvUrl(GID_DISPATCH)),
       fetchCsv(sheetCsvUrl(GID_OPERATORI_OGGI)),
-      fetchCsv(sheetCsvUrl(GID_DISPATCH_OGGI)),
       fetchCsv(sheetCsvUrl(GID_TRACKING_EVENTI))
     ]);
 
@@ -99,16 +95,9 @@ export default async function Page() {
   const operatoriRowsFiltered = allowedOperatorSet
     ? operatoriRows.filter((r) => allowedOperatorSet!.has(normalizeName((r["Operatore"] ?? "").toString())))
     : operatoriRows;
-  const dispatchRowsFiltered = allowedOperatorSet
-    ? dispatchRows.filter((r) => allowedOperatorSet!.has(normalizeName((r["Operatore"] ?? "").toString())))
-    : dispatchRows;
-
   const operatoriRowsOggiFiltered = allowedOperatorSet
     ? operatoriRowsOggi.filter((r) => allowedOperatorSet!.has(normalizeName((r["Operatore"] ?? "").toString())))
     : operatoriRowsOggi;
-  const dispatchRowsOggiFiltered = allowedOperatorSet
-    ? dispatchRowsOggi.filter((r) => allowedOperatorSet!.has(normalizeName((r["Operatore"] ?? "").toString())))
-    : dispatchRowsOggi;
 
   const operators = uniqueValues(operatoriRowsFiltered, "Operatore");
   const campaigns = uniqueValues(operatoriRowsFiltered, "Campagna");
@@ -117,11 +106,7 @@ export default async function Page() {
     <Container>
       <DashboardClient
         operatoriRows={operatoriRowsFiltered}
-        dispatchRows={dispatchRowsFiltered}
-        dispatchRowsAll={dispatchRows}
         operatoriRowsOggi={operatoriRowsOggiFiltered}
-        dispatchRowsOggi={dispatchRowsOggiFiltered}
-        dispatchRowsAllOggi={dispatchRowsOggi}
         trackingEventiRows={trackingEventiRows}
         operators={operators}
         campaigns={campaigns}

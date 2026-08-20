@@ -13,15 +13,15 @@ import {
 import type { TimeSeriesPoint } from "@/lib/analytics";
 import { formatInt } from "@/lib/format";
 
-export type TrendSeriesKey = "assegnati" | "connessioni" | "appuntamenti" | "serieA" | "serieB" | "proprietario";
+export type TrendSeriesKey = "assegnati" | "connessioni" | "appuntamenti" | "consulenze" | "chiusure" | "boom";
 
 const SERIES: Array<{ key: TrendSeriesKey; label: string; color: string }> = [
   { key: "assegnati", label: "Assegnati", color: "#0ea5e9" },
   { key: "connessioni", label: "Connessioni", color: "#22c55e" },
   { key: "appuntamenti", label: "Appuntamenti", color: "#a855f7" },
-  { key: "serieA", label: "Serie A", color: "#f59e0b" },
-  { key: "serieB", label: "Serie B", color: "#ef4444" },
-  { key: "proprietario", label: "Proprietario", color: "#64748b" }
+  { key: "consulenze", label: "Consulenze", color: "#f59e0b" },
+  { key: "chiusure", label: "Chiusure", color: "#ef4444" },
+  { key: "boom", label: "Boom €", color: "#14b8a6" }
 ];
 
 export default function TimeSeriesChart({

@@ -1,6 +1,6 @@
 import type { CsvRow } from "@/lib/csv";
 
-export type DatasetKind = "operatori" | "dispatch";
+export type DatasetKind = "operatori";
 
 export type Filters = {
   from?: string;
@@ -84,26 +84,24 @@ export type Kpis = {
   appuntamenti: number;
   noShow: number;
   reattivitaMediaMin: number;
-  dispatchSi: number;
-  dispatchNo: number;
-  serieA: number;
-  serieB: number;
-  proprietario: number;
+  consulenze: number;
+  chiusure: number;
+  boom: number;
 };
 
-export function computeKpis(operatori: CsvRow[], dispatch: CsvRow[]): Kpis {
+export function computeKpis(operatori: CsvRow[]): Kpis {
   const sum = (rows: CsvRow[], key: string) =>
     rows.reduce((acc, r) => acc + toNumber(getString(r, key)), 0);
 
-  const sumDispatch = (rows: CsvRow[], primary: string, fallback: string) =>
+  const sumFallback = (rows: CsvRow[], primary: string, fallback: string) =>
     rows.reduce((acc, r) => {
       const v = getString(r, primary) || getString(r, fallback);
       return acc + toNumber(v);
     }, 0);
 
   const assegnati = sum(operatori, "Assegnati");
-  const chiamate = sum(operatori, "Chiamate");
-  const connessioni = sum(operatori, "Connessioni");
+  const chiamate = sumFallback(operatori, "Chiamati", "Chiamate");
+  const connessioni = sumFallback(operatori, "Connessi", "Connessioni");
   const appuntamenti = sum(operatori, "Appuntamenti");
   const noShow = sum(operatori, "No Show");
 
@@ -115,11 +113,9 @@ export function computeKpis(operatori: CsvRow[], dispatch: CsvRow[]): Kpis {
       ? reattivitaValues.reduce((a, b) => a + b, 0) / reattivitaValues.length
       : 0;
 
-  const dispatchSi = sumDispatch(dispatch, "Dispatch Entry", "Dispatch Sì");
-  const dispatchNo = sumDispatch(dispatch, "Dispatch Exit", "Dispatch No");
-  const serieA = sum(dispatch, "Serie A");
-  const serieB = sum(dispatch, "Serie B");
-  const proprietario = sum(dispatch, "Proprietario");
+  const consulenze = sum(operatori, "Consulenze");
+  const chiusure = sum(operatori, "Chiusure");
+  const boom = sum(operatori, "Boom");
 
   return {
     assegnati,
@@ -128,10 +124,8 @@ export function computeKpis(operatori: CsvRow[], dispatch: CsvRow[]): Kpis {
     appuntamenti,
     noShow,
     reattivitaMediaMin,
-    dispatchSi,
-    dispatchNo,
-    serieA,
-    serieB,
-    proprietario
+    consulenze,
+    chiusure,
+    boom
   };
 }

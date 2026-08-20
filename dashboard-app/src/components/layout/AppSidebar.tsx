@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 
 const PAGES: Array<{ label: string; href: string }> = [
   { label: "Generale", href: "/generale" },
-  { label: "Dispatcher", href: "/dispatcher" },
   { label: "Campagne", href: "/campagne" },
   { label: "Contatti", href: "/contatti" },
   { label: "Advisor", href: "/advisor" },
@@ -16,7 +15,6 @@ const SECTIONS: Array<{ label: string; id: string }> = [
   { label: "Filtri", id: "filtri" },
   { label: "KPI Principali", id: "kpi" },
   { label: "Trend Principali", id: "trend-funnel" },
-  { label: "Dispatchment", id: "distribuzioni" },
   { label: "Stati Lead", id: "stati-lead" },
   { label: "Performance", id: "performance" },
   { label: "Campagne", id: "campagne" },
@@ -26,11 +24,6 @@ const SECTIONS: Array<{ label: string; id: string }> = [
 
 const CONTACTS_SECTIONS: Array<{ label: string; id: string }> = [
   { label: "Timeline Eventi", id: "timeline-eventi" }
-];
-
-const DISPATCHER_SECTIONS: Array<{ label: string; id: string }> = [
-  { label: "Filtri", id: "filtri" },
-  { label: "Dispatchment", id: "distribuzioni" }
 ];
 
 const CAMPAIGNS_SECTIONS: Array<{ label: string; id: string }> = [
@@ -48,7 +41,6 @@ const ADVISOR_SETTER_SECTIONS: Array<{ label: string; id: string }> = [
 
 function sectionsForPage(href: string) {
   if (href === "/contatti") return CONTACTS_SECTIONS;
-  if (href === "/dispatcher") return DISPATCHER_SECTIONS;
   if (href === "/campagne") return CAMPAIGNS_SECTIONS;
   if (href === "/advisor") return ADVISOR_SETTER_SECTIONS;
   if (href === "/setter") return ADVISOR_SETTER_SECTIONS;
