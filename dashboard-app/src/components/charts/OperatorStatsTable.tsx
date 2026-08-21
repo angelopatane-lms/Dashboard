@@ -28,12 +28,14 @@ export default function OperatorStatsTable({
   data,
   hubspotOverrides,
   precomputedTotals,
-  hubspotLoading
+  hubspotLoading,
+  operatorLabel = "Advisor"
 }: {
   data: OperatorSummary[];
   hubspotOverrides?: Record<string, { chiusure: number; boom: number }>;
   precomputedTotals?: { chiusure: number; boom: number };
   hubspotLoading?: boolean;
+  operatorLabel?: string;
 }) {
   const effChiusure = (r: OperatorSummary) => hubspotOverrides?.[r.operatore]?.chiusure ?? r.chiusure;
   const effBoom = (r: OperatorSummary) => hubspotOverrides?.[r.operatore]?.boom ?? r.boom;
@@ -86,7 +88,7 @@ export default function OperatorStatsTable({
       <table className="min-w-full border-collapse text-sm">
         <thead>
           <tr className="border-b-2 border-slate-200 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-            <th className="py-2 pr-4 pl-0 text-left">Advisor</th>
+            <th className="py-2 pr-4 pl-0 text-left">{operatorLabel}</th>
             <th className="px-3 py-2">Assegnati</th>
             <th className="px-3 py-2">Chiamate</th>
             <th className="px-3 py-2">Connessioni</th>
