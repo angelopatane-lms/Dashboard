@@ -519,10 +519,10 @@ export default function DashboardEnterprise({
                       return next;
                     })
                   }
-                  className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
+                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
                     selectedTrendKeys.has("assegnati")
-                      ? "bg-[#0ea5e9]"
-                      : "bg-[#0ea5e9]/40 hover:bg-[#0ea5e9]/60"
+                      ? "bg-white border-2 border-[#0ea5e9] text-[#0ea5e9]"
+                      : "bg-white border border-[#0ea5e9]/40 text-[#0ea5e9]/50 hover:border-[#0ea5e9]/70 hover:text-[#0ea5e9]/80"
                   }`}
                 >
                   Assegnati
@@ -537,10 +537,10 @@ export default function DashboardEnterprise({
                       return next;
                     })
                   }
-                  className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
+                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
                     selectedTrendKeys.has("chiamate")
-                      ? "bg-[#06b6d4]"
-                      : "bg-[#06b6d4]/40 hover:bg-[#06b6d4]/60"
+                      ? "bg-white border-2 border-[#06b6d4] text-[#06b6d4]"
+                      : "bg-white border border-[#06b6d4]/40 text-[#06b6d4]/50 hover:border-[#06b6d4]/70 hover:text-[#06b6d4]/80"
                   }`}
                 >
                   Chiamate
@@ -555,10 +555,10 @@ export default function DashboardEnterprise({
                       return next;
                     })
                   }
-                  className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
+                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
                     selectedTrendKeys.has("connessioni")
-                      ? "bg-[#10b981]"
-                      : "bg-[#10b981]/40 hover:bg-[#10b981]/60"
+                      ? "bg-white border-2 border-[#10b981] text-[#10b981]"
+                      : "bg-white border border-[#10b981]/40 text-[#10b981]/50 hover:border-[#10b981]/70 hover:text-[#10b981]/80"
                   }`}
                 >
                   Connessioni
@@ -573,10 +573,10 @@ export default function DashboardEnterprise({
                       return next;
                     })
                   }
-                  className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
+                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
                     selectedTrendKeys.has("appuntamenti")
-                      ? "bg-[#84cc16]"
-                      : "bg-[#84cc16]/40 hover:bg-[#84cc16]/60"
+                      ? "bg-white border-2 border-[#84cc16] text-[#84cc16]"
+                      : "bg-white border border-[#84cc16]/40 text-[#84cc16]/50 hover:border-[#84cc16]/70 hover:text-[#84cc16]/80"
                   }`}
                 >
                   Appuntamenti
@@ -591,10 +591,10 @@ export default function DashboardEnterprise({
                       return next;
                     })
                   }
-                  className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
+                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
                     selectedTrendKeys.has("consulenze")
-                      ? "bg-[#f59e0b]"
-                      : "bg-[#f59e0b]/40 hover:bg-[#f59e0b]/60"
+                      ? "bg-white border-2 border-[#f59e0b] text-[#f59e0b]"
+                      : "bg-white border border-[#f59e0b]/40 text-[#f59e0b]/50 hover:border-[#f59e0b]/70 hover:text-[#f59e0b]/80"
                   }`}
                 >
                   Consulenze
@@ -609,10 +609,10 @@ export default function DashboardEnterprise({
                       return next;
                     })
                   }
-                  className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
+                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
                     selectedTrendKeys.has("chiusure")
-                      ? "bg-[#f97316]"
-                      : "bg-[#f97316]/40 hover:bg-[#f97316]/60"
+                      ? "bg-white border-2 border-[#f97316] text-[#f97316]"
+                      : "bg-white border border-[#f97316]/40 text-[#f97316]/50 hover:border-[#f97316]/70 hover:text-[#f97316]/80"
                   }`}
                 >
                   Chiusure
@@ -627,10 +627,10 @@ export default function DashboardEnterprise({
                       return next;
                     })
                   }
-                  className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
+                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
                     selectedTrendKeys.has("boom")
-                      ? "bg-[#ef4444]"
-                      : "bg-[#ef4444]/40 hover:bg-[#ef4444]/60"
+                      ? "bg-white border-2 border-[#ef4444] text-[#ef4444]"
+                      : "bg-white border border-[#ef4444]/40 text-[#ef4444]/50 hover:border-[#ef4444]/70 hover:text-[#ef4444]/80"
                   }`}
                 >
                   Boom
