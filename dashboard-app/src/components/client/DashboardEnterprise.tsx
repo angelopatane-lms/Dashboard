@@ -532,6 +532,24 @@ export default function DashboardEnterprise({
                   onClick={() =>
                     setSelectedTrendKeys((prev) => {
                       const next = new Set(prev);
+                      if (next.has("chiamate")) next.delete("chiamate");
+                      else next.add("chiamate");
+                      return next;
+                    })
+                  }
+                  className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
+                    selectedTrendKeys.has("chiamate")
+                      ? "bg-[#06b6d4]"
+                      : "bg-[#06b6d4]/40 hover:bg-[#06b6d4]/60"
+                  }`}
+                >
+                  Chiamate
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelectedTrendKeys((prev) => {
+                      const next = new Set(prev);
                       if (next.has("connessioni")) next.delete("connessioni");
                       else next.add("connessioni");
                       return next;
