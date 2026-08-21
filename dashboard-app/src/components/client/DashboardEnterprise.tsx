@@ -70,6 +70,7 @@ export default function DashboardEnterprise({
   const [filters, setFilters] = useState<Filters>(() => ({ from: defaultFrom, to: defaultTo }));
 
   const [hubspotOverrides, setHubspotOverrides] = useState<Record<string, { chiusure: number; boom: number }>>({});
+  const [hubspotLoading, setHubspotLoading] = useState<boolean>(!!useHubspot);
 
   const todayIsoRome = useMemo(
     () =>
@@ -81,6 +82,7 @@ export default function DashboardEnterprise({
 
   useEffect(() => {
     if (!useHubspot) return;
+    setHubspotLoading(true);
     const from = filters.from ?? defaultFrom;
     const to = filters.to ?? defaultTo;
     const campaign = filters.campagna ?? "";
@@ -94,19 +96,9 @@ export default function DashboardEnterprise({
         }
         setHubspotOverrides(map);
       })
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => setHubspotLoading(false));
   }, [useHubspot, filters.from, filters.to, filters.campagna, defaultFrom, defaultTo]);
-
-  const hubspotTotals = useMemo(() => {
-    if (!useHubspot || Object.keys(hubspotOverrides).length === 0) return null;
-    let chiusure = 0;
-    let boom = 0;
-    for (const v of Object.values(hubspotOverrides)) {
-      chiusure += v.chiusure;
-      boom += v.boom;
-    }
-    return { chiusure, boom };
-  }, [useHubspot, hubspotOverrides]);
 
   const includeToday = useMemo(() => {
     const from = filters.from ?? "";
@@ -178,6 +170,17 @@ export default function DashboardEnterprise({
     () => aggregateByOperatore(operatoriNorm),
     [operatoriNorm]
   );
+
+  const hubspotTotals = useMemo(() => {
+    if (!useHubspot) return null;
+    let chiusure = 0;
+    let boom = 0;
+    for (const r of operatorSummaryAll) {
+      chiusure += hubspotOverrides[r.operatore]?.chiusure ?? r.chiusure;
+      boom += hubspotOverrides[r.operatore]?.boom ?? r.boom;
+    }
+    return { chiusure, boom };
+  }, [useHubspot, hubspotOverrides, operatorSummaryAll]);
 
   const operatorSummary = useMemo(
     () => operatorSummaryAll.slice(0, 12),
@@ -482,8 +485,8 @@ export default function DashboardEnterprise({
         <div className="mt-6 grid grid-cols-1 md:grid-cols-4 lg:grid-cols-4 gap-6">
           <KPICard label="Appuntamenti" value={formatInt(kpis.appuntamenti)} />
           <KPICard label="Consulenze" value={formatInt(kpis.consulenze)} />
-          <KPICard label="Chiusure" value={formatInt(hubspotTotals?.chiusure ?? kpis.chiusure)} />
-          <KPICard label="Boom" value={formatEur(hubspotTotals?.boom ?? kpis.boom)} />
+          <KPICard label="Chiusure" value={hubspotLoading ? "–" : formatInt(hubspotTotals?.chiusure ?? kpis.chiusure)} />
+          <KPICard label="Boom" value={hubspotLoading ? "–" : formatEur(hubspotTotals?.boom ?? kpis.boom)} />
         </div>
 
         {!hideOperatorTable && (
@@ -497,7 +500,7 @@ export default function DashboardEnterprise({
                 description={`Volumi e tassi di conversione per ${operatorLabel?.toLowerCase() ?? "operatore"} nel periodo selezionato.`}
               />
               <div className="mt-4">
-                <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} />
+                <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? hubspotLoading : false} />
               </div>
             </Card>
           </>

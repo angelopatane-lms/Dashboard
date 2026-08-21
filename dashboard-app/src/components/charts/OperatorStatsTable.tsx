@@ -26,16 +26,20 @@ function tassoChiusura(chius: number, cons: number): number | null {
 
 export default function OperatorStatsTable({
   data,
-  hubspotOverrides
+  hubspotOverrides,
+  precomputedTotals,
+  hubspotLoading
 }: {
   data: OperatorSummary[];
   hubspotOverrides?: Record<string, { chiusure: number; boom: number }>;
+  precomputedTotals?: { chiusure: number; boom: number };
+  hubspotLoading?: boolean;
 }) {
   const effChiusure = (r: OperatorSummary) => hubspotOverrides?.[r.operatore]?.chiusure ?? r.chiusure;
   const effBoom = (r: OperatorSummary) => hubspotOverrides?.[r.operatore]?.boom ?? r.boom;
 
   const totals = useMemo(() => {
-    return data.reduce(
+    const base = data.reduce(
       (acc, r) => ({
         assegnati: acc.assegnati + r.assegnati,
         chiamate: acc.chiamate + r.chiamate,
@@ -47,7 +51,12 @@ export default function OperatorStatsTable({
       }),
       { assegnati: 0, chiamate: 0, connessioni: 0, appuntamenti: 0, consulenze: 0, chiusure: 0, boom: 0 }
     );
-  }, [data, hubspotOverrides]);
+    return {
+      ...base,
+      chiusure: precomputedTotals?.chiusure ?? base.chiusure,
+      boom: precomputedTotals?.boom ?? base.boom
+    };
+  }, [data, hubspotOverrides, precomputedTotals]);
 
   const maxValues = useMemo(
     () => ({
@@ -136,21 +145,21 @@ export default function OperatorStatsTable({
                 </td>
                 <td
                   className="px-3 py-1.5 text-right tabular-nums"
-                  style={{ background: heatBg(effChiusure(r), maxValues.chiusure) }}
+                  style={{ background: hubspotLoading ? undefined : heatBg(effChiusure(r), maxValues.chiusure) }}
                 >
-                  {formatInt(effChiusure(r))}
+                  {hubspotLoading ? <span className="text-slate-400">–</span> : formatInt(effChiusure(r))}
                 </td>
                 <td
                   className="px-3 py-1.5 text-right font-semibold tabular-nums"
-                  style={{ background: rateBg(tc) }}
+                  style={{ background: hubspotLoading ? undefined : rateBg(tc) }}
                 >
-                  {tc !== null ? formatPct(tc, 2) : <span className="text-slate-400">–</span>}
+                  {hubspotLoading ? <span className="text-slate-400">–</span> : tc !== null ? formatPct(tc, 2) : <span className="text-slate-400">–</span>}
                 </td>
                 <td
                   className="px-3 py-1.5 text-right tabular-nums"
-                  style={{ background: heatBg(effBoom(r), maxValues.boom) }}
+                  style={{ background: hubspotLoading ? undefined : heatBg(effBoom(r), maxValues.boom) }}
                 >
-                  {formatEur(effBoom(r))}
+                  {hubspotLoading ? <span className="text-slate-400">–</span> : formatEur(effBoom(r))}
                 </td>
               </tr>
             );
@@ -167,11 +176,11 @@ export default function OperatorStatsTable({
               {totalTp !== null ? formatPct(totalTp, 2) : <span className="font-normal text-slate-400">–</span>}
             </td>
             <td className="px-3 py-2 text-right tabular-nums">{formatInt(totals.consulenze)}</td>
-            <td className="px-3 py-2 text-right tabular-nums">{formatInt(totals.chiusure)}</td>
+            <td className="px-3 py-2 text-right tabular-nums">{hubspotLoading ? <span className="font-normal text-slate-400">–</span> : formatInt(totals.chiusure)}</td>
             <td className="px-3 py-2 text-right tabular-nums">
-              {totalTc !== null ? formatPct(totalTc, 2) : <span className="font-normal text-slate-400">–</span>}
+              {hubspotLoading ? <span className="font-normal text-slate-400">–</span> : totalTc !== null ? formatPct(totalTc, 2) : <span className="font-normal text-slate-400">–</span>}
             </td>
-            <td className="px-3 py-2 text-right tabular-nums">{formatEur(totals.boom)}</td>
+            <td className="px-3 py-2 text-right tabular-nums">{hubspotLoading ? <span className="font-normal text-slate-400">–</span> : formatEur(totals.boom)}</td>
           </tr>
         </tfoot>
       </table>
