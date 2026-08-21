@@ -20,10 +20,17 @@ const CAMPAIGNS_SECTIONS: Array<{ label: string; id: string }> = [
   { label: "Insights", id: "insights" }
 ];
 
-const ADVISOR_SETTER_SECTIONS: Array<{ label: string; id: string }> = [
+const ADVISOR_SECTIONS: Array<{ label: string; id: string }> = [
   { label: "Filtri", id: "filtri" },
-  { label: "KPI Principali", id: "kpi" },
-  { label: "Riepilogo Operatori", id: "tabella-operatori" },
+  { label: "KPI Advisor", id: "tabella-operatori" },
+  { label: "Trend Principali", id: "trend-funnel" },
+  { label: "Stati Lead", id: "stati-lead" },
+  { label: "Performance", id: "performance" }
+];
+
+const SETTER_SECTIONS: Array<{ label: string; id: string }> = [
+  { label: "Filtri", id: "filtri" },
+  { label: "KPI Setter", id: "tabella-operatori" },
   { label: "Trend Principali", id: "trend-funnel" },
   { label: "Stati Lead", id: "stati-lead" },
   { label: "Performance", id: "performance" }
@@ -32,8 +39,8 @@ const ADVISOR_SETTER_SECTIONS: Array<{ label: string; id: string }> = [
 function sectionsForPage(href: string) {
   if (href === "/contatti") return CONTACTS_SECTIONS;
   if (href === "/campagne") return CAMPAIGNS_SECTIONS;
-  if (href === "/advisor") return ADVISOR_SETTER_SECTIONS;
-  if (href === "/setter") return ADVISOR_SETTER_SECTIONS;
+  if (href === "/advisor") return ADVISOR_SECTIONS;
+  if (href === "/setter") return SETTER_SECTIONS;
   return [];
 }
 

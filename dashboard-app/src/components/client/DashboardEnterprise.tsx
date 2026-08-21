@@ -473,35 +473,13 @@ export default function DashboardEnterprise({
           />
         </div>
 
-        <div id="kpi" className="scroll-mt-6">
-          <SectionTitle className="mt-10">KPI Principali</SectionTitle>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-4 gap-6">
-          <KPICard label="Assegnati" value={formatInt(kpis.assegnati)} />
-          <KPICard label="Latenza" value={`${formatFloat(kpis.reattivitaMediaMin, 1)} min`} />
-          <KPICard label="Chiamate" value={formatInt(kpis.chiamate)} />
-          <KPICard label="Connessioni" value={formatInt(kpis.connessioni)} />
-        </div>
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-4 lg:grid-cols-4 gap-6">
-          <KPICard label="Appuntamenti" value={formatInt(kpis.appuntamenti)} />
-          <KPICard label="Consulenze" value={formatInt(kpis.consulenze)} />
-          <KPICard label="Chiusure" value={hubspotLoading ? "–" : formatInt(hubspotTotals?.chiusure ?? kpis.chiusure)} />
-          <KPICard label="Boom" value={hubspotLoading ? "–" : formatEur(hubspotTotals?.boom ?? kpis.boom)} />
-        </div>
-
         {!hideOperatorTable && (
           <>
             <div id="tabella-operatori" className="scroll-mt-6">
-              <SectionTitle className="mt-10">Riepilogo {operatorLabel ?? "Operatori"}</SectionTitle>
+              <SectionTitle className="mt-10">KPI {operatorLabel ?? "Operatori"}</SectionTitle>
             </div>
             <Card>
-              <ChartTitle
-                title={`Performance per ${operatorLabel ?? "Operatore"}`}
-                description={`Volumi e tassi di conversione per ${operatorLabel?.toLowerCase() ?? "operatore"} nel periodo selezionato.`}
-              />
-              <div className="mt-4">
-                <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? hubspotLoading : false} operatorLabel={operatorLabel ?? "Advisor"} />
-              </div>
+              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? hubspotLoading : false} operatorLabel={operatorLabel ?? "Advisor"} />
             </Card>
           </>
         )}
