@@ -116,6 +116,7 @@ export default function DashboardEnterprise({
 
   const ALL_TREND_KEYS: TrendSeriesKey[] = [
     "assegnati",
+    "chiamate",
     "connessioni",
     "appuntamenti",
     "consulenze",

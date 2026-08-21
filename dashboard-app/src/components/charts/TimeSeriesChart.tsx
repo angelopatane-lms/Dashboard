@@ -13,10 +13,11 @@ import {
 import type { TimeSeriesPoint } from "@/lib/analytics";
 import { formatInt } from "@/lib/format";
 
-export type TrendSeriesKey = "assegnati" | "connessioni" | "appuntamenti" | "consulenze" | "chiusure" | "boom";
+export type TrendSeriesKey = "assegnati" | "chiamate" | "connessioni" | "appuntamenti" | "consulenze" | "chiusure" | "boom";
 
 const SERIES: Array<{ key: TrendSeriesKey; label: string; color: string }> = [
   { key: "assegnati", label: "Assegnati", color: "#0ea5e9" },
+  { key: "chiamate", label: "Chiamate", color: "#06b6d4" },
   { key: "connessioni", label: "Connessioni", color: "#22c55e" },
   { key: "appuntamenti", label: "Appuntamenti", color: "#a855f7" },
   { key: "consulenze", label: "Consulenze", color: "#f59e0b" },
