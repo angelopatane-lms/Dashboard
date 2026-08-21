@@ -18,11 +18,11 @@ export type TrendSeriesKey = "assegnati" | "chiamate" | "connessioni" | "appunta
 const SERIES: Array<{ key: TrendSeriesKey; label: string; color: string }> = [
   { key: "assegnati", label: "Assegnati", color: "#0ea5e9" },
   { key: "chiamate", label: "Chiamate", color: "#06b6d4" },
-  { key: "connessioni", label: "Connessioni", color: "#22c55e" },
-  { key: "appuntamenti", label: "Appuntamenti", color: "#a855f7" },
+  { key: "connessioni", label: "Connessioni", color: "#10b981" },
+  { key: "appuntamenti", label: "Appuntamenti", color: "#84cc16" },
   { key: "consulenze", label: "Consulenze", color: "#f59e0b" },
-  { key: "chiusure", label: "Chiusure", color: "#ef4444" },
-  { key: "boom", label: "Boom", color: "#14b8a6" }
+  { key: "chiusure", label: "Chiusure", color: "#f97316" },
+  { key: "boom", label: "Boom", color: "#ef4444" }
 ];
 
 function linearRegression(xs: number[], ys: number[]) {

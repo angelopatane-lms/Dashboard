@@ -557,8 +557,8 @@ export default function DashboardEnterprise({
                   }
                   className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
                     selectedTrendKeys.has("connessioni")
-                      ? "bg-[#22c55e]"
-                      : "bg-[#22c55e]/40 hover:bg-[#22c55e]/60"
+                      ? "bg-[#10b981]"
+                      : "bg-[#10b981]/40 hover:bg-[#10b981]/60"
                   }`}
                 >
                   Connessioni
@@ -575,8 +575,8 @@ export default function DashboardEnterprise({
                   }
                   className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
                     selectedTrendKeys.has("appuntamenti")
-                      ? "bg-[#a855f7]"
-                      : "bg-[#a855f7]/40 hover:bg-[#a855f7]/60"
+                      ? "bg-[#84cc16]"
+                      : "bg-[#84cc16]/40 hover:bg-[#84cc16]/60"
                   }`}
                 >
                   Appuntamenti
@@ -611,8 +611,8 @@ export default function DashboardEnterprise({
                   }
                   className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
                     selectedTrendKeys.has("chiusure")
-                      ? "bg-[#ef4444]"
-                      : "bg-[#ef4444]/40 hover:bg-[#ef4444]/60"
+                      ? "bg-[#f97316]"
+                      : "bg-[#f97316]/40 hover:bg-[#f97316]/60"
                   }`}
                 >
                   Chiusure
@@ -629,8 +629,8 @@ export default function DashboardEnterprise({
                   }
                   className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
                     selectedTrendKeys.has("boom")
-                      ? "bg-[#14b8a6]"
-                      : "bg-[#14b8a6]/40 hover:bg-[#14b8a6]/60"
+                      ? "bg-[#ef4444]"
+                      : "bg-[#ef4444]/40 hover:bg-[#ef4444]/60"
                   }`}
                 >
                   Boom
