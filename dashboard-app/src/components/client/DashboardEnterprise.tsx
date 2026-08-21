@@ -9,7 +9,7 @@ import {
   aggregateTimeSeries,
   normalizeOperatori
 } from "@/lib/analytics";
-import { formatFloat, formatInt, formatPct } from "@/lib/format";
+import { formatFloat, formatInt, formatPct, formatEur } from "@/lib/format";
 import { FiltersBar } from "@/components/Filters";
 import SectionTitle from "@/components/ui/SectionTitle";
 import KPICard from "@/components/ui/KPICard";
@@ -96,6 +96,17 @@ export default function DashboardEnterprise({
       })
       .catch(console.error);
   }, [useHubspot, filters.from, filters.to, filters.campagna, defaultFrom, defaultTo]);
+
+  const hubspotTotals = useMemo(() => {
+    if (!useHubspot || Object.keys(hubspotOverrides).length === 0) return null;
+    let chiusure = 0;
+    let boom = 0;
+    for (const v of Object.values(hubspotOverrides)) {
+      chiusure += v.chiusure;
+      boom += v.boom;
+    }
+    return { chiusure, boom };
+  }, [useHubspot, hubspotOverrides]);
 
   const includeToday = useMemo(() => {
     const from = filters.from ?? "";
@@ -471,8 +482,8 @@ export default function DashboardEnterprise({
         <div className="mt-6 grid grid-cols-1 md:grid-cols-4 lg:grid-cols-4 gap-6">
           <KPICard label="Appuntamenti" value={formatInt(kpis.appuntamenti)} />
           <KPICard label="Consulenze" value={formatInt(kpis.consulenze)} />
-          <KPICard label="Chiusure" value={formatInt(kpis.chiusure)} />
-          <KPICard label="Boom" value={formatInt(kpis.boom)} />
+          <KPICard label="Chiusure" value={formatInt(hubspotTotals?.chiusure ?? kpis.chiusure)} />
+          <KPICard label="Boom" value={formatEur(hubspotTotals?.boom ?? kpis.boom)} />
         </div>
 
         {!hideOperatorTable && (
