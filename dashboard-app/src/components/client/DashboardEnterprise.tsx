@@ -84,14 +84,16 @@ export default function DashboardEnterprise({
 
   useEffect(() => {
     if (!useHubspot) return;
-    fetch("/api/hubspot-boom-options")
+    const from = filters.from ?? defaultFrom;
+    const to = filters.to ?? defaultTo;
+    fetch(`/api/hubspot-boom-options?from=${from}&to=${to}`)
       .then((r) => r.json())
       .then((data: { vendite?: Array<{ label: string; value: string }>; prodotti?: Array<{ label: string; value: string }> }) => {
         setVendite(data.vendite ?? []);
         setProdotti(data.prodotti ?? []);
       })
       .catch(console.error);
-  }, [useHubspot]);
+  }, [useHubspot, filters.from, filters.to, defaultFrom, defaultTo]);
 
   useEffect(() => {
     if (!useHubspot) return;
