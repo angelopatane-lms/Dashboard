@@ -8,14 +8,19 @@ export function FiltersBar({
   setFilters,
   operators = [],
   campaigns = [],
+  vendite = [],
+  prodotti = [],
   operatorLabel = "Operatore"
 }: {
   filters: Filters;
   setFilters: (next: Filters) => void;
   operators?: string[];
   campaigns?: string[];
+  vendite?: string[];
+  prodotti?: string[];
   operatorLabel?: string;
 }) {
+  const hasExtra = vendite.length > 0 || prodotti.length > 0;
   const fromRef = useRef<HTMLInputElement | null>(null);
   const toRef = useRef<HTMLInputElement | null>(null);
 
@@ -41,7 +46,7 @@ export function FiltersBar({
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${hasExtra ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}>
         <div>
           <label className="text-xs font-medium text-slate-600">Da</label>
           <div className="relative">
@@ -144,6 +149,40 @@ export function FiltersBar({
             ))}
           </select>
         </div>
+        {vendite.length > 0 && (
+          <div>
+            <label className="text-xs font-medium text-slate-600">Vendita</label>
+            <select
+              className={controlClassName(Boolean(filters.vendita && filters.vendita.trim()))}
+              value={filters.vendita ?? ""}
+              onChange={(e) => setFilters({ ...filters, vendita: e.target.value || undefined })}
+            >
+              <option value="">Tutte</option>
+              {vendite.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        {prodotti.length > 0 && (
+          <div>
+            <label className="text-xs font-medium text-slate-600">Prodotto</label>
+            <select
+              className={controlClassName(Boolean(filters.prodotto && filters.prodotto.trim()))}
+              value={filters.prodotto ?? ""}
+              onChange={(e) => setFilters({ ...filters, prodotto: e.target.value || undefined })}
+            >
+              <option value="">Tutti</option>
+              {prodotti.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
     </div>
   );

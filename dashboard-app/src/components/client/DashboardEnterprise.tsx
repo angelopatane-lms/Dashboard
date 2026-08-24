@@ -71,6 +71,8 @@ export default function DashboardEnterprise({
 
   const [hubspotOverrides, setHubspotOverrides] = useState<Record<string, { chiusure: number; boom: number }>>({});
   const [hubspotLoading, setHubspotLoading] = useState<boolean>(!!useHubspot);
+  const [vendite, setVendite] = useState<string[]>([]);
+  const [prodotti, setProdotti] = useState<string[]>([]);
 
   const todayIsoRome = useMemo(
     () =>
@@ -82,11 +84,26 @@ export default function DashboardEnterprise({
 
   useEffect(() => {
     if (!useHubspot) return;
+    const from = filters.from ?? defaultFrom;
+    const to = filters.to ?? defaultTo;
+    fetch(`/api/hubspot-boom-options?from=${from}&to=${to}`)
+      .then((r) => r.json())
+      .then((data: { vendite?: string[]; prodotti?: string[] }) => {
+        setVendite(data.vendite ?? []);
+        setProdotti(data.prodotti ?? []);
+      })
+      .catch(console.error);
+  }, [useHubspot, filters.from, filters.to, defaultFrom, defaultTo]);
+
+  useEffect(() => {
+    if (!useHubspot) return;
     setHubspotLoading(true);
     const from = filters.from ?? defaultFrom;
     const to = filters.to ?? defaultTo;
     const campaign = filters.campagna ?? "";
-    const url = `/api/hubspot-boom?from=${from}&to=${to}${campaign ? `&campaign=${encodeURIComponent(campaign)}` : ""}`;
+    const vendita = filters.vendita ?? "";
+    const prodotto = filters.prodotto ?? "";
+    const url = `/api/hubspot-boom?from=${from}&to=${to}${campaign ? `&campaign=${encodeURIComponent(campaign)}` : ""}${vendita ? `&vendita=${encodeURIComponent(vendita)}` : ""}${prodotto ? `&prodotto=${encodeURIComponent(prodotto)}` : ""}`;
     fetch(url)
       .then((r) => r.json())
       .then((data: HubspotBoomEntry[]) => {
@@ -98,7 +115,7 @@ export default function DashboardEnterprise({
       })
       .catch(console.error)
       .finally(() => setHubspotLoading(false));
-  }, [useHubspot, filters.from, filters.to, filters.campagna, defaultFrom, defaultTo]);
+  }, [useHubspot, filters.from, filters.to, filters.campagna, filters.vendita, filters.prodotto, defaultFrom, defaultTo]);
 
   const includeToday = useMemo(() => {
     const from = filters.from ?? "";
@@ -470,6 +487,8 @@ export default function DashboardEnterprise({
             setFilters={setFilters}
             operators={operators}
             campaigns={campaigns}
+            vendite={useHubspot ? vendite : []}
+            prodotti={useHubspot ? prodotti : []}
             operatorLabel={operatorLabel}
           />
         </div>

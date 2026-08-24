@@ -7,6 +7,8 @@ export type Filters = {
   to?: string;
   operatore?: string;
   campagna?: string;
+  vendita?: string;
+  prodotto?: string;
 };
 
 export function getString(row: CsvRow, key: string): string {
