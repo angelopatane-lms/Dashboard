@@ -19,6 +19,14 @@ async function getPropertyOptions(token: string, propName: string): Promise<Prop
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 
+function swapOptionsByLabel(opts: PropOption[], labelA: string, labelB: string): PropOption[] {
+  const result = [...opts];
+  const idxA = result.findIndex((o) => o.label === labelA);
+  const idxB = result.findIndex((o) => o.label === labelB);
+  if (idxA !== -1 && idxB !== -1) [result[idxA], result[idxB]] = [result[idxB], result[idxA]];
+  return result;
+}
+
 async function getProdottiFromRecords(
   token: string,
   from: string,
@@ -77,10 +85,11 @@ export async function GET(req: NextRequest) {
         ? getProdottiFromRecords(token, from, to)
         : Promise.resolve<PropOption[]>([]);
 
-    const [vendite, prodotti] = await Promise.all([
+    const [venditeRaw, prodotti] = await Promise.all([
       getPropertyOptions(token, "tipo_di_vendita"),
       prodottiPromise
     ]);
+    const vendite = swapOptionsByLabel(venditeRaw, "Contatto Personale", "Telefonica");
 
     return NextResponse.json(
       { vendite, prodotti },
