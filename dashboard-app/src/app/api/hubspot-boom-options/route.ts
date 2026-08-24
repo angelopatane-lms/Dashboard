@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
             ]
           }
         ],
-        properties: ["tipologia_di_vendita", "prodotto"],
+        properties: ["tipo_di_vendita", "prodotto"],
         limit: 100,
         ...(after ? { after } : {})
       };
@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
 
       const data = await res.json();
       for (const r of data.results ?? []) {
-        const v = (r.properties?.tipologia_di_vendita ?? "").trim();
+        const v = (r.properties?.tipo_di_vendita ?? "").trim();
         const p = (r.properties?.prodotto ?? "").trim();
         if (v) vendite.add(v);
         if (p) prodotti.add(p);

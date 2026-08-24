@@ -8,8 +8,8 @@ export function FiltersBar({
   setFilters,
   operators = [],
   campaigns = [],
-  vendite = [],
-  prodotti = [],
+  vendite,
+  prodotti,
   operatorLabel = "Operatore"
 }: {
   filters: Filters;
@@ -20,7 +20,7 @@ export function FiltersBar({
   prodotti?: string[];
   operatorLabel?: string;
 }) {
-  const hasExtra = vendite.length > 0 || prodotti.length > 0;
+  const hasExtra = vendite !== undefined || prodotti !== undefined;
   const fromRef = useRef<HTMLInputElement | null>(null);
   const toRef = useRef<HTMLInputElement | null>(null);
 
@@ -46,7 +46,7 @@ export function FiltersBar({
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-      <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${hasExtra ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}>
+      <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${hasExtra ? "lg:grid-cols-6" : "lg:grid-cols-4"}`}>
         <div>
           <label className="text-xs font-medium text-slate-600">Da</label>
           <div className="relative">
@@ -149,9 +149,9 @@ export function FiltersBar({
             ))}
           </select>
         </div>
-        {vendite.length > 0 && (
+        {vendite !== undefined && (
           <div>
-            <label className="text-xs font-medium text-slate-600">Vendita</label>
+            <label className="text-xs font-medium text-slate-600">Tipologia</label>
             <select
               className={controlClassName(Boolean(filters.vendita && filters.vendita.trim()))}
               value={filters.vendita ?? ""}
@@ -166,7 +166,7 @@ export function FiltersBar({
             </select>
           </div>
         )}
-        {prodotti.length > 0 && (
+        {prodotti !== undefined && (
           <div>
             <label className="text-xs font-medium text-slate-600">Prodotto</label>
             <select

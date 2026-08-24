@@ -13,7 +13,7 @@ type BoomRecord = {
     importo: string | null;
     hubspot_owner_id: string | null;
     id_campagna_track: string | null;
-    tipologia_di_vendita: string | null;
+    tipo_di_vendita: string | null;
     prodotto: string | null;
   };
 };
@@ -35,7 +35,7 @@ async function fetchAllBoom(token: string, from: string, to: string): Promise<Bo
           ]
         }
       ],
-      properties: ["data_di_pagamento", "tipologia_di_incasso", "importo", "hubspot_owner_id", "id_campagna_track", "tipologia_di_vendita", "prodotto"],
+      properties: ["data_di_pagamento", "tipologia_di_incasso", "importo", "hubspot_owner_id", "id_campagna_track", "tipo_di_vendita", "prodotto"],
       limit: 100,
       ...(after ? { after } : {})
     };
@@ -117,7 +117,7 @@ export async function GET(req: NextRequest) {
     for (const record of records) {
       const p = record.properties;
       if (campaign && (p.id_campagna_track ?? "") !== campaign) continue;
-      if (vendita && (p.tipologia_di_vendita ?? "").trim() !== vendita) continue;
+      if (vendita && (p.tipo_di_vendita ?? "").trim() !== vendita) continue;
       if (prodotto && (p.prodotto ?? "").trim() !== prodotto) continue;
       const ownerId = p.hubspot_owner_id ?? "";
       const operatore = ownerMap[ownerId] ?? ownerId;

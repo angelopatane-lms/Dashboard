@@ -487,8 +487,8 @@ export default function DashboardEnterprise({
             setFilters={setFilters}
             operators={operators}
             campaigns={campaigns}
-            vendite={useHubspot ? vendite : []}
-            prodotti={useHubspot ? prodotti : []}
+            vendite={useHubspot ? vendite : undefined}
+            prodotti={useHubspot ? prodotti : undefined}
             operatorLabel={operatorLabel}
           />
         </div>
