@@ -16,8 +16,8 @@ export function FiltersBar({
   setFilters: (next: Filters) => void;
   operators?: string[];
   campaigns?: string[];
-  vendite?: string[];
-  prodotti?: string[];
+  vendite?: Array<{ label: string; value: string }>;
+  prodotti?: Array<{ label: string; value: string }>;
   operatorLabel?: string;
 }) {
   const hasExtra = vendite !== undefined || prodotti !== undefined;
@@ -159,8 +159,8 @@ export function FiltersBar({
             >
               <option value="">Tutte</option>
               {vendite.map((v) => (
-                <option key={v} value={v}>
-                  {v}
+                <option key={v.value} value={v.value}>
+                  {v.label}
                 </option>
               ))}
             </select>
@@ -176,8 +176,8 @@ export function FiltersBar({
             >
               <option value="">Tutti</option>
               {prodotti.map((p) => (
-                <option key={p} value={p}>
-                  {p}
+                <option key={p.value} value={p.value}>
+                  {p.label}
                 </option>
               ))}
             </select>

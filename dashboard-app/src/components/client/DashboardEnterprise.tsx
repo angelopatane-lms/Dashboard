@@ -71,8 +71,8 @@ export default function DashboardEnterprise({
 
   const [hubspotOverrides, setHubspotOverrides] = useState<Record<string, { chiusure: number; boom: number }>>({});
   const [hubspotLoading, setHubspotLoading] = useState<boolean>(!!useHubspot);
-  const [vendite, setVendite] = useState<string[]>([]);
-  const [prodotti, setProdotti] = useState<string[]>([]);
+  const [vendite, setVendite] = useState<Array<{ label: string; value: string }>>([]);
+  const [prodotti, setProdotti] = useState<Array<{ label: string; value: string }>>([]); 
 
   const todayIsoRome = useMemo(
     () =>
@@ -84,16 +84,14 @@ export default function DashboardEnterprise({
 
   useEffect(() => {
     if (!useHubspot) return;
-    const from = filters.from ?? defaultFrom;
-    const to = filters.to ?? defaultTo;
-    fetch(`/api/hubspot-boom-options?from=${from}&to=${to}`)
+    fetch("/api/hubspot-boom-options")
       .then((r) => r.json())
-      .then((data: { vendite?: string[]; prodotti?: string[] }) => {
+      .then((data: { vendite?: Array<{ label: string; value: string }>; prodotti?: Array<{ label: string; value: string }> }) => {
         setVendite(data.vendite ?? []);
         setProdotti(data.prodotti ?? []);
       })
       .catch(console.error);
-  }, [useHubspot, filters.from, filters.to, defaultFrom, defaultTo]);
+  }, [useHubspot]);
 
   useEffect(() => {
     if (!useHubspot) return;
@@ -499,7 +497,7 @@ export default function DashboardEnterprise({
               <SectionTitle className="mt-10">KPI {operatorLabel ?? "Operatori"}</SectionTitle>
             </div>
             <Card>
-              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? hubspotLoading : false} operatorLabel={operatorLabel ?? "Advisor"} />
+              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? hubspotLoading : false} hubspotFiltered={useHubspot && !hubspotLoading && !!(filters.vendita || filters.prodotto)} operatorLabel={operatorLabel ?? "Advisor"} />
             </Card>
           </>
         )}
