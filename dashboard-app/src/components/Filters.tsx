@@ -151,7 +151,7 @@ export function FiltersBar({
         </div>
         {vendite !== undefined && (
           <div>
-            <label className="text-xs font-medium text-slate-600">Tipologia</label>
+            <label className="text-xs font-medium text-slate-600">Vendita</label>
             <select
               className={controlClassName(Boolean(filters.vendita && filters.vendita.trim()))}
               value={filters.vendita ?? ""}
