@@ -41,9 +41,10 @@ export default function OperatorStatsTable({
   trattativeLoading?: boolean;
   operatorLabel?: string;
 }) {
-  const effChiusure = (r: OperatorSummary) => hubspotOverrides?.[r.operatore]?.chiusure ?? 0;
-  const effBoom = (r: OperatorSummary) => hubspotOverrides?.[r.operatore]?.boom ?? 0;
-  const effAppuntamenti = (r: OperatorSummary) => trattativeOverrides?.[r.operatore] ?? 0;
+  const normKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+  const effChiusure = (r: OperatorSummary) => hubspotOverrides?.[normKey(r.operatore)]?.chiusure ?? 0;
+  const effBoom = (r: OperatorSummary) => hubspotOverrides?.[normKey(r.operatore)]?.boom ?? 0;
+  const effAppuntamenti = (r: OperatorSummary) => trattativeOverrides?.[normKey(r.operatore)] ?? 0;
 
   const totals = useMemo(() => {
     const base = data.reduce(

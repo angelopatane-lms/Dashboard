@@ -218,10 +218,11 @@ export default function DashboardEnterprise({
       }
       if (filters.vendita && r.tipo_di_vendita.trim().toLowerCase() !== filters.vendita.trim().toLowerCase()) continue;
       if (filters.prodotto && r.prodotto !== filters.prodotto) continue;
-      const cur = agg[r.operatore] ?? { chiusure: 0, boom: 0 };
+      const key = r.operatore.trim().toLowerCase().replace(/\s+/g, " ");
+      const cur = agg[key] ?? { chiusure: 0, boom: 0 };
       if (CHIUSURE_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.chiusure += 1;
       if (BOOM_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.boom += r.importo;
-      agg[r.operatore] = cur;
+      agg[key] = cur;
     }
     return agg;
   }, [useHubspot, rawBoomRecords, filters, defaultFrom, defaultTo]);
@@ -237,7 +238,8 @@ export default function DashboardEnterprise({
         const normalized = filters.campagna.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
         if (normalized && !r.id_campagna_track.toLowerCase().includes(normalized)) continue;
       }
-      agg[r.operatore] = (agg[r.operatore] ?? 0) + 1;
+      const keyD = r.operatore.trim().toLowerCase().replace(/\s+/g, " ");
+      agg[keyD] = (agg[keyD] ?? 0) + 1;
     }
     return agg;
   }, [useHubspot, rawDealRecords, filters, defaultFrom, defaultTo]);

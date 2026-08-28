@@ -96,9 +96,8 @@ export async function GET(req: NextRequest) {
       if (after) await new Promise((r) => setTimeout(r, 200));
     } while (after);
 
-    console.log(`[hubspot-deals] ${records.length} deal records`);
-    const uniqueCampaigns = [...new Set(records.map((r) => r.id_campagna_track || "(empty)"))].slice(0, 20);
-    console.log(`[hubspot-deals] unique id_campagna_track:`, uniqueCampaigns);
+    const uniqueOperatori = [...new Set(records.map((r) => r.operatore || "(empty)"))];
+    console.log(`[hubspot-deals] deals:${records.length} | operatori:${uniqueOperatori.join(" / ")}`);
     return NextResponse.json(
       { dealRecords: records },
       { headers: { "Cache-Control": "no-store" } }
