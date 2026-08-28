@@ -92,7 +92,12 @@ async function fetchBoomRecords(
         tipo_di_vendita: (p.tipo_di_vendita ?? "").trim(),
         prodotto: (p.prodotto ?? "").trim(),
         id_campagna_track: p.id_campagna_track ?? "",
-        data_di_pagamento_ms: parseInt(p.data_di_pagamento ?? "0") || 0
+        data_di_pagamento_ms: (() => {
+          const val = (p.data_di_pagamento ?? "").trim();
+          if (!val || val === "0") return 0;
+          if (/^\d+$/.test(val)) return parseInt(val);
+          return new Date(val).getTime();
+        })()
       });
     }
     after = data.paging?.next?.after;
