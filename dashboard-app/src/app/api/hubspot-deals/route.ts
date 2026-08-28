@@ -75,15 +75,23 @@ export async function GET(req: NextRequest) {
 
       const data = await searchWithRetry(token, `${HUBSPOT_API}/crm/v3/objects/deals/search`, body);
 
-      for (const r of data.results ?? []) {
+      const rawResults = data.results ?? [];
+      if (records.length === 0) {
+        console.log(`[hubspot-deals] first page: ${rawResults.length} results, sample createdate: ${rawResults[0]?.properties?.createdate}`);
+      }
+      for (const r of rawResults) {
         const p = r.properties;
         const setterId = (p.setter ?? "").trim() || (p.hubspot_owner_id ?? "").trim();
         const operatore = ownerMap[setterId] ?? setterId;
         if (!operatore) continue;
+        const rawDate = p.createdate ?? "";
+        const createdate_ms = rawDate
+          ? (/^\d+$/.test(rawDate) ? parseInt(rawDate) : new Date(rawDate).getTime())
+          : 0;
         records.push({
           operatore,
           id_campagna_track: p.id_campagna_track ?? "",
-          createdate_ms: parseInt(p.createdate ?? "0") || 0
+          createdate_ms
         });
       }
 

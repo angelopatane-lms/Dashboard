@@ -109,7 +109,8 @@ export default function DashboardEnterprise({
 
     fetch(`/api/hubspot-deals?from=${currentFrom}&to=${currentTo}`)
       .then((r) => r.json())
-      .then((data: { dealRecords?: RawDealRecord[] }) => {
+      .then((data: { dealRecords?: RawDealRecord[]; error?: string }) => {
+        if (data.error) { console.error("[hubspot-deals]", data.error); return; }
         setRawDealRecords(data.dealRecords ?? []);
       })
       .catch(console.error)
