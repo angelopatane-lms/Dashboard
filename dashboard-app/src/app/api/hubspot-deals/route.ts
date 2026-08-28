@@ -76,11 +76,6 @@ export async function GET(req: NextRequest) {
       const data = await searchWithRetry(token, `${HUBSPOT_API}/crm/v3/objects/deals/search`, body);
 
       const rawResults = data.results ?? [];
-      if (records.length === 0) {
-        console.log(`[hubspot-deals] first page: ${rawResults.length} results, sample createdate: ${rawResults[0]?.properties?.createdate}`);
-        const uniqueCampaigns = [...new Set(rawResults.map((r) => r.properties?.id_campagna_track ?? "(null)"))].slice(0, 10);
-        console.log(`[hubspot-deals] unique id_campagna_track (first page):`, uniqueCampaigns);
-      }
       for (const r of rawResults) {
         const p = r.properties;
         const setterId = (p.setter ?? "").trim() || (p.hubspot_owner_id ?? "").trim();
@@ -102,6 +97,8 @@ export async function GET(req: NextRequest) {
     } while (after);
 
     console.log(`[hubspot-deals] ${records.length} deal records`);
+    const uniqueCampaigns = [...new Set(records.map((r) => r.id_campagna_track || "(empty)"))].slice(0, 20);
+    console.log(`[hubspot-deals] unique id_campagna_track:`, uniqueCampaigns);
     return NextResponse.json(
       { dealRecords: records },
       { headers: { "Cache-Control": "no-store" } }
