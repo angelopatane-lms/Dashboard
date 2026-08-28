@@ -61,7 +61,7 @@ async function fetchBoomRecords(
   token: string,
   fromMs: number,
   toMs: number,
-  ownerMap: Record<string, string>
+  _ownerMap: Record<string, string>
 ): Promise<RawBoomRecord[]> {
   const records: RawBoomRecord[] = [];
   let after: string | undefined;
@@ -83,7 +83,7 @@ async function fetchBoomRecords(
 
     for (const r of data.results ?? []) {
       const p = r.properties;
-      const operatore = ownerMap[p.hubspot_owner_id ?? ""] ?? "";
+      const operatore = (p.hubspot_owner_id ?? "").trim();
       if (!operatore) continue;
       records.push({
         operatore,
@@ -119,10 +119,10 @@ export async function GET(req: NextRequest) {
     const ownerMap = await fetchOwners(token);
     const boomRecords = await fetchBoomRecords(token, fromMs, toMs, ownerMap);
     console.log(`[hubspot-data] boom: ${boomRecords.length} records`);
-    const uniqueBoomCampaigns = [...new Set(boomRecords.map((r) => r.id_campagna_track || "(empty)"))].slice(0, 10);
-    console.log(`[hubspot-data] unique boom id_campagna_track:`, uniqueBoomCampaigns);
-    const uniqueVendita = [...new Set(boomRecords.map((r) => r.tipo_di_vendita || "(empty)"))].slice(0, 10);
-    console.log(`[hubspot-data] unique tipo_di_vendita:`, uniqueVendita);
+    const uniqueOperatori = [...new Set(boomRecords.map((r) => r.operatore))].slice(0, 15);
+    console.log(`[hubspot-data] unique boom operatori:`, uniqueOperatori);
+    const uniqueTipologie = [...new Set(boomRecords.map((r) => r.tipologia_di_incasso || "(empty)"))];
+    console.log(`[hubspot-data] unique tipologia_di_incasso:`, uniqueTipologie);
 
     return NextResponse.json(
       { boomRecords },

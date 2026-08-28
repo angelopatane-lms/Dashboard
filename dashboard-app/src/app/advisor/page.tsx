@@ -75,6 +75,7 @@ export default async function Page() {
     ]);
 
   let allowedOperatorSet: Set<string> | null = null;
+  let hubspotIdToName: Record<string, string> = {};
   try {
     const hubspotUsersRows = await fetchCsv(
       `https://docs.google.com/spreadsheets/d/${HUBSPOT_USERS_SHEET_ID}/export?format=csv&gid=${GID_HUBSPOT_USERS}`,
@@ -88,6 +89,12 @@ export default async function Page() {
         .map((r) => normalizeName((r["User"] ?? "").toString()))
         .filter((name) => name)
     );
+
+    for (const r of hubspotUsersRows) {
+      const id = (r["ID Hubspot"] ?? "").trim();
+      const name = (r["User"] ?? "").trim();
+      if (id && name) hubspotIdToName[id] = name;
+    }
   } catch {
     allowedOperatorSet = null;
   }
@@ -111,6 +118,7 @@ export default async function Page() {
         operators={operators}
         campaigns={campaigns}
         operatorLabel="Advisor"
+        hubspotIdToName={hubspotIdToName}
       />
     </Container>
   );

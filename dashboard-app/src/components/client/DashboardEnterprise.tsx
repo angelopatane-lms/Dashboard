@@ -45,7 +45,8 @@ export default function DashboardEnterprise({
   hideTimelineEventi,
   hideOperatorTable,
   useHubspot,
-  operatorLabel
+  operatorLabel,
+  hubspotIdToName: hubspotIdToNameProp
 }: {
   operatoriRows: CsvRow[];
   operatoriRowsOggi: CsvRow[];
@@ -58,6 +59,7 @@ export default function DashboardEnterprise({
   hideOperatorTable?: boolean;
   useHubspot?: boolean;
   operatorLabel?: string;
+  hubspotIdToName?: Record<string, string>;
 }) {
   const defaultFrom = useMemo(() => {
     const d = new Date();
@@ -78,6 +80,8 @@ export default function DashboardEnterprise({
   const [rawBoomRecords, setRawBoomRecords] = useState<RawBoomRecord[]>([]);
   const [rawDealRecords, setRawDealRecords] = useState<RawDealRecord[] | null>(null);
   const fetchedRangeRef = useRef<{ from: string; to: string } | null>(null);
+
+  const hubspotIdToName = hubspotIdToNameProp ?? {};
 
   const todayIsoRome = useMemo(
     () =>
@@ -214,13 +218,14 @@ export default function DashboardEnterprise({
       }
       if (filters.vendita && r.tipo_di_vendita.trim().toLowerCase() !== filters.vendita.trim().toLowerCase()) continue;
       if (filters.prodotto && r.prodotto !== filters.prodotto) continue;
-      const cur = agg[r.operatore] ?? { chiusure: 0, boom: 0 };
+      const nome = hubspotIdToName[r.operatore] ?? r.operatore;
+      const cur = agg[nome] ?? { chiusure: 0, boom: 0 };
       if (CHIUSURE_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.chiusure += 1;
       if (BOOM_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.boom += r.importo;
-      agg[r.operatore] = cur;
+      agg[nome] = cur;
     }
     return agg;
-  }, [useHubspot, rawBoomRecords, filters, defaultFrom, defaultTo]);
+  }, [useHubspot, rawBoomRecords, filters, defaultFrom, defaultTo, hubspotIdToName]);
 
   const trattativeOverrides = useMemo((): Record<string, number> | null => {
     if (!useHubspot || rawDealRecords === null) return null;
@@ -233,10 +238,11 @@ export default function DashboardEnterprise({
         const normalized = filters.campagna.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
         if (normalized && !r.id_campagna_track.toLowerCase().includes(normalized)) continue;
       }
-      agg[r.operatore] = (agg[r.operatore] ?? 0) + 1;
+      const nomeD = hubspotIdToName[r.operatore] ?? r.operatore;
+      agg[nomeD] = (agg[nomeD] ?? 0) + 1;
     }
     return agg;
-  }, [useHubspot, rawDealRecords, filters, defaultFrom, defaultTo]);
+  }, [useHubspot, rawDealRecords, filters, defaultFrom, defaultTo, hubspotIdToName]);
 
   const prodotti = useMemo((): Array<{ label: string; value: string }> => {
     if (!useHubspot || rawBoomRecords.length === 0) return [];

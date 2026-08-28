@@ -7,7 +7,8 @@ export default function AdvisorSetterDashboardClient({
   trackingEventiRows,
   operators,
   campaigns,
-  operatorLabel
+  operatorLabel,
+  hubspotIdToName
 }: {
   operatoriRows: CsvRow[];
   operatoriRowsOggi: CsvRow[];
@@ -15,6 +16,7 @@ export default function AdvisorSetterDashboardClient({
   operators: string[];
   campaigns: string[];
   operatorLabel?: string;
+  hubspotIdToName?: Record<string, string>;
 }) {
   return (
     <DashboardEnterprise
@@ -24,6 +26,7 @@ export default function AdvisorSetterDashboardClient({
       operators={operators}
       campaigns={campaigns}
       operatorLabel={operatorLabel}
+      hubspotIdToName={hubspotIdToName}
       hideCampagne
       hideInsights
       hideTimelineEventi
