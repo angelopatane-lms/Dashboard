@@ -78,6 +78,8 @@ export async function GET(req: NextRequest) {
       const rawResults = data.results ?? [];
       if (records.length === 0) {
         console.log(`[hubspot-deals] first page: ${rawResults.length} results, sample createdate: ${rawResults[0]?.properties?.createdate}`);
+        const uniqueCampaigns = [...new Set(rawResults.map((r) => r.properties?.id_campagna_track ?? "(null)"))].slice(0, 10);
+        console.log(`[hubspot-deals] unique id_campagna_track (first page):`, uniqueCampaigns);
       }
       for (const r of rawResults) {
         const p = r.properties;
