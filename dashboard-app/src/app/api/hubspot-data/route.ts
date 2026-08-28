@@ -119,6 +119,8 @@ export async function GET(req: NextRequest) {
     const ownerMap = await fetchOwners(token);
     const boomRecords = await fetchBoomRecords(token, fromMs, toMs, ownerMap);
     console.log(`[hubspot-data] boom: ${boomRecords.length} records`);
+    const uniqueBoomCampaigns = [...new Set(boomRecords.map((r) => r.id_campagna_track || "(empty)"))].slice(0, 10);
+    console.log(`[hubspot-data] unique boom id_campagna_track:`, uniqueBoomCampaigns);
 
     return NextResponse.json(
       { boomRecords },

@@ -208,7 +208,10 @@ export default function DashboardEnterprise({
     const agg: Record<string, { chiusure: number; boom: number }> = {};
     for (const r of rawBoomRecords) {
       if (r.data_di_pagamento_ms < fromMs || r.data_di_pagamento_ms > toMs) continue;
-      if (filters.campagna && r.id_campagna_track !== filters.campagna) continue;
+      if (filters.campagna) {
+        const normalized = filters.campagna.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+        if (normalized && !r.id_campagna_track.toLowerCase().includes(normalized)) continue;
+      }
       if (filters.vendita && r.tipo_di_vendita !== filters.vendita) continue;
       if (filters.prodotto && r.prodotto !== filters.prodotto) continue;
       const cur = agg[r.operatore] ?? { chiusure: 0, boom: 0 };
@@ -226,7 +229,10 @@ export default function DashboardEnterprise({
     const agg: Record<string, number> = {};
     for (const r of rawDealRecords) {
       if (r.createdate_ms < fromMs || r.createdate_ms > toMs) continue;
-      if (filters.campagna && r.id_campagna_track !== filters.campagna) continue;
+      if (filters.campagna) {
+        const normalized = filters.campagna.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+        if (normalized && !r.id_campagna_track.toLowerCase().includes(normalized)) continue;
+      }
       agg[r.operatore] = (agg[r.operatore] ?? 0) + 1;
     }
     return agg;
