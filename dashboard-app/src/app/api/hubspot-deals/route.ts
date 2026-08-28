@@ -55,6 +55,7 @@ export async function GET(req: NextRequest) {
   const toMs = new Date(to + "T23:59:59.999Z").getTime();
 
   try {
+    const ownerMap = await fetchOwners(token);
     const records: RawDealRecord[] = [];
     let after: string | undefined;
 
@@ -77,7 +78,8 @@ export async function GET(req: NextRequest) {
       const rawResults = data.results ?? [];
       for (const r of rawResults) {
         const p = r.properties;
-        const operatore = (p.setter ?? "").trim() || (p.hubspot_owner_id ?? "").trim();
+        const setterId = (p.setter ?? "").trim() || (p.hubspot_owner_id ?? "").trim();
+        const operatore = ownerMap[setterId] ?? setterId;
         if (!operatore) continue;
         const rawDate = p.createdate ?? "";
         const createdate_ms = rawDate

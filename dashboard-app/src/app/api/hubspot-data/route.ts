@@ -61,7 +61,7 @@ async function fetchBoomRecords(
   token: string,
   fromMs: number,
   toMs: number,
-  _ownerMap: Record<string, string>
+  ownerMap: Record<string, string>
 ): Promise<RawBoomRecord[]> {
   const records: RawBoomRecord[] = [];
   let after: string | undefined;
@@ -83,7 +83,7 @@ async function fetchBoomRecords(
 
     for (const r of data.results ?? []) {
       const p = r.properties;
-      const operatore = (p.hubspot_owner_id ?? "").trim();
+      const operatore = ownerMap[(p.hubspot_owner_id ?? "").trim()] ?? "";
       if (!operatore) continue;
       records.push({
         operatore,
