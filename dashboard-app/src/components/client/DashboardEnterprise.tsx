@@ -73,6 +73,8 @@ export default function DashboardEnterprise({
   const [hubspotLoading, setHubspotLoading] = useState<boolean>(!!useHubspot);
   const [vendite, setVendite] = useState<Array<{ label: string; value: string }>>([]);
   const [prodotti, setProdotti] = useState<Array<{ label: string; value: string }>>([]); 
+  const [trattativeOverrides, setTrattativeOverrides] = useState<Record<string, number>>({});
+  const [trattativeLoading, setTrattativeLoading] = useState<boolean>(!!useHubspot);
 
   const todayIsoRome = useMemo(
     () =>
@@ -116,6 +118,24 @@ export default function DashboardEnterprise({
       .catch(console.error)
       .finally(() => setHubspotLoading(false));
   }, [useHubspot, filters.from, filters.to, filters.campagna, filters.vendita, filters.prodotto, defaultFrom, defaultTo]);
+
+  useEffect(() => {
+    if (!useHubspot) return;
+    setTrattativeLoading(true);
+    const from = filters.from ?? defaultFrom;
+    const to = filters.to ?? defaultTo;
+    const campaign = filters.campagna ?? "";
+    const url = `/api/hubspot-trattative?from=${from}&to=${to}${campaign ? `&campaign=${encodeURIComponent(campaign)}` : ""}`;
+    fetch(url)
+      .then((r) => r.json())
+      .then((data: Array<{ operatore: string; appuntamenti: number }>) => {
+        const map: Record<string, number> = {};
+        for (const entry of data) map[entry.operatore] = entry.appuntamenti;
+        setTrattativeOverrides(map);
+      })
+      .catch(console.error)
+      .finally(() => setTrattativeLoading(false));
+  }, [useHubspot, filters.from, filters.to, filters.campagna, defaultFrom, defaultTo]);
 
   const includeToday = useMemo(() => {
     const from = filters.from ?? "";
@@ -499,7 +519,7 @@ export default function DashboardEnterprise({
               <SectionTitle className="mt-10">KPI {operatorLabel ?? "Operatori"}</SectionTitle>
             </div>
             <Card>
-              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? hubspotLoading : false} hubspotFiltered={useHubspot && !hubspotLoading && !!(filters.vendita || filters.prodotto)} operatorLabel={operatorLabel ?? "Advisor"} />
+              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? hubspotLoading : false} trattativeLoading={useHubspot ? trattativeLoading : false} hubspotFiltered={useHubspot && !hubspotLoading && !!(filters.vendita || filters.prodotto)} operatorLabel={operatorLabel ?? "Advisor"} />
             </Card>
           </>
         )}
