@@ -97,6 +97,7 @@ async function fetchBoomRecords(
       });
     }
     after = data.paging?.next?.after;
+    if (after) await new Promise((r) => setTimeout(r, 200));
   } while (after);
 
   return records;
@@ -127,7 +128,14 @@ async function fetchDealRecords(
 
     const data = await searchWithRetry(token, `${HUBSPOT_API}/crm/v3/objects/deals/search`, body);
 
-    for (const r of data.results ?? []) {
+    const rawResults = data.results ?? [];
+    if (records.length === 0 && rawResults.length > 0) {
+      console.log(`[hubspot-data] first deal raw:`, JSON.stringify(rawResults[0]?.properties));
+    }
+    if (records.length === 0 && rawResults.length === 0) {
+      console.log(`[hubspot-data] deals search returned 0 results (fromMs=${fromMs}, toMs=${toMs}, pipeline=${DEALS_PIPELINE_ID})`);
+    }
+    for (const r of rawResults) {
       const p = r.properties;
       const setterId = (p.setter ?? "").trim() || (p.hubspot_owner_id ?? "").trim();
       const operatore = ownerMap[setterId] ?? setterId;
@@ -139,6 +147,7 @@ async function fetchDealRecords(
       });
     }
     after = data.paging?.next?.after;
+    if (after) await new Promise((r) => setTimeout(r, 200));
   } while (after);
 
   return records;
@@ -158,9 +167,11 @@ export async function GET(req: NextRequest) {
 
   try {
     const ownerMap = await fetchOwners(token);
-    const boomRecords = await fetchBoomRecords(token, fromMs, toMs, ownerMap);
-    await new Promise((r) => setTimeout(r, 300));
     const dealRecords = await fetchDealRecords(token, fromMs, toMs, ownerMap);
+    console.log(`[hubspot-data] deals: ${dealRecords.length} records`);
+    await new Promise((r) => setTimeout(r, 1000));
+    const boomRecords = await fetchBoomRecords(token, fromMs, toMs, ownerMap);
+    console.log(`[hubspot-data] boom: ${boomRecords.length} records`);
 
     return NextResponse.json(
       { boomRecords, dealRecords },
