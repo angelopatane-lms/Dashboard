@@ -118,11 +118,9 @@ export async function GET(req: NextRequest) {
   try {
     const ownerMap = await fetchOwners(token);
     const boomRecords = await fetchBoomRecords(token, fromMs, toMs, ownerMap);
-    console.log(`[hubspot-data] boom: ${boomRecords.length} records`);
-    const uniqueOperatori = [...new Set(boomRecords.map((r) => r.operatore))].slice(0, 15);
-    console.log(`[hubspot-data] unique boom operatori:`, uniqueOperatori);
+    const uniqueOperatori = [...new Set(boomRecords.map((r) => r.operatore || "(empty)"))].slice(0, 8);
     const uniqueTipologie = [...new Set(boomRecords.map((r) => r.tipologia_di_incasso || "(empty)"))];
-    console.log(`[hubspot-data] unique tipologia_di_incasso:`, uniqueTipologie);
+    console.log(`[hubspot-data] boom:${boomRecords.length} | operatori:${uniqueOperatori.join(" / ")} | tipologie:${uniqueTipologie.join(" / ")}`);
 
     return NextResponse.json(
       { boomRecords },
