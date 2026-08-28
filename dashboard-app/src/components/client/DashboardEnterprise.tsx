@@ -72,7 +72,8 @@ export default function DashboardEnterprise({
 
   const [filters, setFilters] = useState<Filters>(() => ({ from: defaultFrom, to: defaultTo }));
 
-  const [hubspotLoading, setHubspotLoading] = useState<boolean>(!!useHubspot);
+  const [boomLoading, setBoomLoading] = useState<boolean>(!!useHubspot);
+  const [dealsLoading, setDealsLoading] = useState<boolean>(!!useHubspot);
   const [vendite, setVendite] = useState<Array<{ label: string; value: string }>>([]);
   const [rawBoomRecords, setRawBoomRecords] = useState<RawBoomRecord[]>([]);
   const [rawDealRecords, setRawDealRecords] = useState<RawDealRecord[] | null>(null);
@@ -102,16 +103,29 @@ export default function DashboardEnterprise({
     const currentTo = filters.to ?? defaultTo;
     const fetched = fetchedRangeRef.current;
     if (fetched && currentFrom >= fetched.from && currentTo <= fetched.to) return;
-    setHubspotLoading(true);
-    fetch(`/api/hubspot-data?from=${currentFrom}&to=${currentTo}`)
+
+    setDealsLoading(true);
+    setBoomLoading(true);
+
+    fetch(`/api/hubspot-deals?from=${currentFrom}&to=${currentTo}`)
       .then((r) => r.json())
-      .then((data: { boomRecords?: RawBoomRecord[]; dealRecords?: RawDealRecord[] }) => {
-        setRawBoomRecords(data.boomRecords ?? []);
+      .then((data: { dealRecords?: RawDealRecord[] }) => {
         setRawDealRecords(data.dealRecords ?? []);
-        fetchedRangeRef.current = { from: currentFrom, to: currentTo };
       })
       .catch(console.error)
-      .finally(() => setHubspotLoading(false));
+      .finally(() => {
+        setDealsLoading(false);
+        setTimeout(() => {
+          fetch(`/api/hubspot-data?from=${currentFrom}&to=${currentTo}`)
+            .then((r) => r.json())
+            .then((data: { boomRecords?: RawBoomRecord[] }) => {
+              setRawBoomRecords(data.boomRecords ?? []);
+              fetchedRangeRef.current = { from: currentFrom, to: currentTo };
+            })
+            .catch(console.error)
+            .finally(() => setBoomLoading(false));
+        }, 1000);
+      });
   }, [useHubspot, filters.from, filters.to, defaultFrom, defaultTo]);
 
   const includeToday = useMemo(() => {
@@ -539,7 +553,7 @@ export default function DashboardEnterprise({
               <SectionTitle className="mt-10">KPI {operatorLabel ?? "Operatori"}</SectionTitle>
             </div>
             <Card>
-              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? hubspotLoading : false} trattativeLoading={useHubspot ? hubspotLoading : false} hubspotFiltered={useHubspot && !hubspotLoading && !!(filters.vendita || filters.prodotto)} operatorLabel={operatorLabel ?? "Advisor"} />
+              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} hubspotFiltered={useHubspot && !boomLoading && !!(filters.vendita || filters.prodotto)} operatorLabel={operatorLabel ?? "Advisor"} />
             </Card>
           </>
         )}
