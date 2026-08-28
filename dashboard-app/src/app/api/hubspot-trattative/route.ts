@@ -37,8 +37,7 @@ export async function GET(req: NextRequest) {
   try {
     const ownerMap = await fetchOwners(token);
 
-    const properties = ["setter", "hubspot_owner_id"];
-    if (campaign) properties.push("id_campagna_track");
+    const properties = ["setter", "hubspot_owner_id", "id_campagna_track"];
 
     const allRecords: Array<{ properties: Record<string, string | null> }> = [];
     let after: string | undefined;
@@ -47,7 +46,8 @@ export async function GET(req: NextRequest) {
       const filters: Array<Record<string, string>> = [
         { propertyName: "createdate", operator: "GTE", value: String(fromMs) },
         { propertyName: "createdate", operator: "LTE", value: String(toMs) },
-        { propertyName: "pipeline", operator: "EQ", value: PIPELINE_ID }
+        { propertyName: "pipeline", operator: "EQ", value: PIPELINE_ID },
+        ...(campaign ? [{ propertyName: "id_campagna_track", operator: "EQ", value: campaign }] : [])
       ];
 
       const body: Record<string, unknown> = {
@@ -80,8 +80,6 @@ export async function GET(req: NextRequest) {
 
     for (const record of allRecords) {
       const p = record.properties;
-      if (campaign && (p.id_campagna_track ?? "") !== campaign) continue;
-
       const setterId = (p.setter ?? "").trim() || (p.hubspot_owner_id ?? "").trim();
       if (!setterId) continue;
       const operatore = ownerMap[setterId] ?? setterId;

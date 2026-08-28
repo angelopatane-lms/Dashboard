@@ -74,7 +74,7 @@ export default function DashboardEnterprise({
   const [vendite, setVendite] = useState<Array<{ label: string; value: string }>>([]);
   const [prodotti, setProdotti] = useState<Array<{ label: string; value: string }>>([]); 
   const [trattativeOverrides, setTrattativeOverrides] = useState<Record<string, number> | null>(null);
-  const [trattativeLoading, setTrattativeLoading] = useState<boolean>(!!useHubspot);
+  const [hubspotAllLoading, setHubspotAllLoading] = useState<boolean>(!!useHubspot);
 
   const todayIsoRome = useMemo(
     () =>
@@ -100,48 +100,40 @@ export default function DashboardEnterprise({
   useEffect(() => {
     if (!useHubspot) return;
     setHubspotLoading(true);
+    setHubspotAllLoading(true);
     const from = filters.from ?? defaultFrom;
     const to = filters.to ?? defaultTo;
     const campaign = filters.campagna ?? "";
     const vendita = filters.vendita ?? "";
     const prodotto = filters.prodotto ?? "";
-    const url = `/api/hubspot-boom?from=${from}&to=${to}${campaign ? `&campaign=${encodeURIComponent(campaign)}` : ""}${vendita ? `&vendita=${encodeURIComponent(vendita)}` : ""}${prodotto ? `&prodotto=${encodeURIComponent(prodotto)}` : ""}`;
-    fetch(url)
-      .then((r) => r.json())
-      .then((data: HubspotBoomEntry[]) => {
-        const map: Record<string, { chiusure: number; boom: number }> = {};
-        for (const entry of data) {
-          map[entry.operatore] = { chiusure: entry.chiusure, boom: entry.boom };
+    const boomUrl = `/api/hubspot-boom?from=${from}&to=${to}${campaign ? `&campaign=${encodeURIComponent(campaign)}` : ""}${vendita ? `&vendita=${encodeURIComponent(vendita)}` : ""}${prodotto ? `&prodotto=${encodeURIComponent(prodotto)}` : ""}`;
+    const trattativeUrl = `/api/hubspot-trattative?from=${from}&to=${to}${campaign ? `&campaign=${encodeURIComponent(campaign)}` : ""}`;
+    Promise.all([
+      fetch(boomUrl).then((r) => r.json()),
+      fetch(trattativeUrl).then((r) => r.json())
+    ])
+      .then(([boomData, trattativeData]) => {
+        const boomMap: Record<string, { chiusure: number; boom: number }> = {};
+        for (const entry of boomData as Array<{ operatore: string; chiusure: number; boom: number }>) {
+          boomMap[entry.operatore] = { chiusure: entry.chiusure, boom: entry.boom };
         }
-        setHubspotOverrides(map);
+        setHubspotOverrides(boomMap);
+        if (Array.isArray(trattativeData)) {
+          const trattMap: Record<string, number> = {};
+          for (const entry of trattativeData as Array<{ operatore: string; appuntamenti: number }>) {
+            trattMap[entry.operatore] = entry.appuntamenti;
+          }
+          setTrattativeOverrides(trattMap);
+        } else {
+          console.error("[hubspot-trattative] unexpected response:", trattativeData);
+        }
       })
       .catch(console.error)
-      .finally(() => setHubspotLoading(false));
+      .finally(() => {
+        setHubspotLoading(false);
+        setHubspotAllLoading(false);
+      });
   }, [useHubspot, filters.from, filters.to, filters.campagna, filters.vendita, filters.prodotto, defaultFrom, defaultTo]);
-
-  useEffect(() => {
-    if (!useHubspot) return;
-    setTrattativeLoading(true);
-    const from = filters.from ?? defaultFrom;
-    const to = filters.to ?? defaultTo;
-    const campaign = filters.campagna ?? "";
-    const url = `/api/hubspot-trattative?from=${from}&to=${to}${campaign ? `&campaign=${encodeURIComponent(campaign)}` : ""}`;
-    fetch(url)
-      .then((r) => r.json())
-      .then((data: unknown) => {
-        if (!Array.isArray(data)) {
-          console.error("[hubspot-trattative] unexpected response:", data);
-          return;
-        }
-        const map: Record<string, number> = {};
-        for (const entry of data as Array<{ operatore: string; appuntamenti: number }>) {
-          map[entry.operatore] = entry.appuntamenti;
-        }
-        setTrattativeOverrides(map);
-      })
-      .catch(console.error)
-      .finally(() => setTrattativeLoading(false));
-  }, [useHubspot, filters.from, filters.to, filters.campagna, defaultFrom, defaultTo]);
 
   const includeToday = useMemo(() => {
     const from = filters.from ?? "";
@@ -525,7 +517,7 @@ export default function DashboardEnterprise({
               <SectionTitle className="mt-10">KPI {operatorLabel ?? "Operatori"}</SectionTitle>
             </div>
             <Card>
-              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? hubspotLoading : false} trattativeLoading={useHubspot ? trattativeLoading : false} hubspotFiltered={useHubspot && !hubspotLoading && !!(filters.vendita || filters.prodotto)} operatorLabel={operatorLabel ?? "Advisor"} />
+              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? hubspotLoading : false} trattativeLoading={useHubspot ? hubspotAllLoading : false} hubspotFiltered={useHubspot && !hubspotLoading && !!(filters.vendita || filters.prodotto)} operatorLabel={operatorLabel ?? "Advisor"} />
             </Card>
           </>
         )}
