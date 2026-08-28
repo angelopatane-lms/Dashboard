@@ -41,6 +41,7 @@ export default function OperatorStatsTable({
   trattativeLoading?: boolean;
   operatorLabel?: string;
 }) {
+  const isSetterView = operatorLabel === "Setter";
   const normKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
   const effChiusure = (r: OperatorSummary) => hubspotOverrides?.[normKey(r.operatore)]?.chiusure ?? 0;
   const effBoom = (r: OperatorSummary) => hubspotOverrides?.[normKey(r.operatore)]?.boom ?? 0;
@@ -53,7 +54,7 @@ export default function OperatorStatsTable({
         chiamate: acc.chiamate + r.chiamate,
         connessioni: acc.connessioni + r.connessioni,
         appuntamenti: acc.appuntamenti + effAppuntamenti(r),
-        consulenze: acc.consulenze + r.consulenze,
+        consulenze: acc.consulenze + (isSetterView ? r.noShow : r.consulenze),
         chiusure: acc.chiusure + effChiusure(r),
         boom: acc.boom + effBoom(r)
       }),
@@ -72,7 +73,7 @@ export default function OperatorStatsTable({
       chiamate: Math.max(...data.map((r) => r.chiamate), 1),
       connessioni: Math.max(...data.map((r) => r.connessioni), 1),
       appuntamenti: Math.max(...data.map((r) => effAppuntamenti(r)), 1),
-      consulenze: Math.max(...data.map((r) => r.consulenze), 1),
+      consulenze: Math.max(...data.map((r) => isSetterView ? r.noShow : r.consulenze), 1),
       chiusure: Math.max(...data.map((r) => effChiusure(r)), 1),
       boom: Math.max(...data.map((r) => effBoom(r)), 1)
     }),
@@ -85,7 +86,7 @@ export default function OperatorStatsTable({
   );
 
   const totalTp = tassoPresa(totals.appuntamenti, totals.connessioni);
-  const totalTc = tassoChiusura(totals.chiusure, totals.consulenze);
+  const totalTc = tassoChiusura(totals.chiusure, isSetterView ? 0 : totals.consulenze);
 
   if (!data.length) return null;
 
@@ -100,7 +101,7 @@ export default function OperatorStatsTable({
             <th className="px-3 py-2">Connessioni</th>
             <th className="px-3 py-2">Appuntamenti</th>
             <th className="px-3 py-2">% Appuntamento</th>
-            <th className="px-3 py-2">Consulenze</th>
+            <th className="px-3 py-2">{isSetterView ? "No Show" : "Consulenze"}</th>
             <th className="px-3 py-2">Chiusure</th>
             <th className="px-3 py-2">% Chiusura</th>
             <th className="px-3 py-2">Boom</th>
@@ -147,9 +148,9 @@ export default function OperatorStatsTable({
                 </td>
                 <td
                   className="px-3 py-1.5 text-right tabular-nums"
-                  style={{ background: heatBg(r.consulenze, maxValues.consulenze) }}
+                  style={{ background: heatBg(isSetterView ? r.noShow : r.consulenze, maxValues.consulenze) }}
                 >
-                  {formatInt(r.consulenze)}
+                  {formatInt(isSetterView ? r.noShow : r.consulenze)}
                 </td>
                 <td
                   className="px-3 py-1.5 text-right tabular-nums"
@@ -183,7 +184,7 @@ export default function OperatorStatsTable({
             <td className="px-3 py-2 text-right tabular-nums">
               {trattativeLoading ? <span className="font-normal text-slate-400">–</span> : totalTp !== null ? formatPct(totalTp, 2) : <span className="font-normal text-slate-400">–</span>}
             </td>
-            <td className="px-3 py-2 text-right tabular-nums">{formatInt(totals.consulenze)}</td>
+            <td className="px-3 py-2 text-right tabular-nums">{formatInt(totals.consulenze)}</td>  {/* consulenze or noShow */}
             <td className="px-3 py-2 text-right tabular-nums">{hubspotLoading ? <span className="font-normal text-slate-400">–</span> : formatInt(totals.chiusure)}</td>
             <td className="px-3 py-2 text-right tabular-nums">
               {hubspotLoading ? <span className="font-normal text-slate-400">–</span> : totalTc !== null ? formatPct(totalTc, 2) : <span className="font-normal text-slate-400">–</span>}
