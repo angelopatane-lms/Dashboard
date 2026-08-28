@@ -121,6 +121,8 @@ export async function GET(req: NextRequest) {
     console.log(`[hubspot-data] boom: ${boomRecords.length} records`);
     const uniqueBoomCampaigns = [...new Set(boomRecords.map((r) => r.id_campagna_track || "(empty)"))].slice(0, 10);
     console.log(`[hubspot-data] unique boom id_campagna_track:`, uniqueBoomCampaigns);
+    const uniqueVendita = [...new Set(boomRecords.map((r) => r.tipo_di_vendita || "(empty)"))].slice(0, 10);
+    console.log(`[hubspot-data] unique tipo_di_vendita:`, uniqueVendita);
 
     return NextResponse.json(
       { boomRecords },

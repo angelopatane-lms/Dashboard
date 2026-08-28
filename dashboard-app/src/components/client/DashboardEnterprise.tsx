@@ -212,7 +212,7 @@ export default function DashboardEnterprise({
         const normalized = filters.campagna.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
         if (normalized && !r.id_campagna_track.toLowerCase().includes(normalized)) continue;
       }
-      if (filters.vendita && r.tipo_di_vendita !== filters.vendita) continue;
+      if (filters.vendita && r.tipo_di_vendita.trim().toLowerCase() !== filters.vendita.trim().toLowerCase()) continue;
       if (filters.prodotto && r.prodotto !== filters.prodotto) continue;
       const cur = agg[r.operatore] ?? { chiusure: 0, boom: 0 };
       if (CHIUSURE_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.chiusure += 1;
@@ -255,8 +255,8 @@ export default function DashboardEnterprise({
     let chiusure = 0;
     let boom = 0;
     for (const r of operatorSummaryAll) {
-      chiusure += hubspotOverrides[r.operatore]?.chiusure ?? r.chiusure;
-      boom += hubspotOverrides[r.operatore]?.boom ?? r.boom;
+      chiusure += hubspotOverrides[r.operatore]?.chiusure ?? 0;
+      boom += hubspotOverrides[r.operatore]?.boom ?? 0;
     }
     return { chiusure, boom };
   }, [useHubspot, hubspotOverrides, operatorSummaryAll]);
@@ -560,7 +560,7 @@ export default function DashboardEnterprise({
               <SectionTitle className="mt-10">KPI {operatorLabel ?? "Operatori"}</SectionTitle>
             </div>
             <Card>
-              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} hubspotFiltered={useHubspot && !boomLoading && !!(filters.vendita || filters.prodotto)} operatorLabel={operatorLabel ?? "Advisor"} />
+              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} />
             </Card>
           </>
         )}

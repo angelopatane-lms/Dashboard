@@ -31,7 +31,6 @@ export default function OperatorStatsTable({
   precomputedTotals,
   hubspotLoading,
   trattativeLoading,
-  hubspotFiltered = false,
   operatorLabel = "Advisor"
 }: {
   data: OperatorSummary[];
@@ -40,17 +39,11 @@ export default function OperatorStatsTable({
   precomputedTotals?: { chiusure: number; boom: number };
   hubspotLoading?: boolean;
   trattativeLoading?: boolean;
-  hubspotFiltered?: boolean;
   operatorLabel?: string;
 }) {
-  const effChiusure = (r: OperatorSummary) =>
-    hubspotOverrides?.[r.operatore]?.chiusure ?? (hubspotFiltered ? 0 : r.chiusure);
-  const effBoom = (r: OperatorSummary) =>
-    hubspotOverrides?.[r.operatore]?.boom ?? (hubspotFiltered ? 0 : r.boom);
-  const effAppuntamenti = (r: OperatorSummary) =>
-    trattativeOverrides !== undefined
-      ? (trattativeOverrides[r.operatore] ?? 0)
-      : r.appuntamenti;
+  const effChiusure = (r: OperatorSummary) => hubspotOverrides?.[r.operatore]?.chiusure ?? 0;
+  const effBoom = (r: OperatorSummary) => hubspotOverrides?.[r.operatore]?.boom ?? 0;
+  const effAppuntamenti = (r: OperatorSummary) => trattativeOverrides?.[r.operatore] ?? 0;
 
   const totals = useMemo(() => {
     const base = data.reduce(
