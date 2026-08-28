@@ -73,7 +73,7 @@ export default function DashboardEnterprise({
   const [hubspotLoading, setHubspotLoading] = useState<boolean>(!!useHubspot);
   const [vendite, setVendite] = useState<Array<{ label: string; value: string }>>([]);
   const [prodotti, setProdotti] = useState<Array<{ label: string; value: string }>>([]); 
-  const [trattativeOverrides, setTrattativeOverrides] = useState<Record<string, number>>({});
+  const [trattativeOverrides, setTrattativeOverrides] = useState<Record<string, number> | null>(null);
   const [trattativeLoading, setTrattativeLoading] = useState<boolean>(!!useHubspot);
 
   const todayIsoRome = useMemo(
@@ -128,9 +128,15 @@ export default function DashboardEnterprise({
     const url = `/api/hubspot-trattative?from=${from}&to=${to}${campaign ? `&campaign=${encodeURIComponent(campaign)}` : ""}`;
     fetch(url)
       .then((r) => r.json())
-      .then((data: Array<{ operatore: string; appuntamenti: number }>) => {
+      .then((data: unknown) => {
+        if (!Array.isArray(data)) {
+          console.error("[hubspot-trattative] unexpected response:", data);
+          return;
+        }
         const map: Record<string, number> = {};
-        for (const entry of data) map[entry.operatore] = entry.appuntamenti;
+        for (const entry of data as Array<{ operatore: string; appuntamenti: number }>) {
+          map[entry.operatore] = entry.appuntamenti;
+        }
         setTrattativeOverrides(map);
       })
       .catch(console.error)
@@ -519,7 +525,7 @@ export default function DashboardEnterprise({
               <SectionTitle className="mt-10">KPI {operatorLabel ?? "Operatori"}</SectionTitle>
             </div>
             <Card>
-              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? hubspotLoading : false} trattativeLoading={useHubspot ? trattativeLoading : false} hubspotFiltered={useHubspot && !hubspotLoading && !!(filters.vendita || filters.prodotto)} operatorLabel={operatorLabel ?? "Advisor"} />
+              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? hubspotLoading : false} trattativeLoading={useHubspot ? trattativeLoading : false} hubspotFiltered={useHubspot && !hubspotLoading && !!(filters.vendita || filters.prodotto)} operatorLabel={operatorLabel ?? "Advisor"} />
             </Card>
           </>
         )}

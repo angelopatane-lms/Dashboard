@@ -1,20 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const HUBSPOT_API = "https://api.hubapi.com";
-const PIPELINE_NAME = "Appuntamenti High ticket";
-
-async function fetchPipelineId(token: string): Promise<string | null> {
-  const res = await fetch(`${HUBSPOT_API}/crm/v3/pipelines/deals`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  if (!res.ok) return null;
-  const data = await res.json();
-  const pipeline = (data.results ?? []).find(
-    (p: { label: string; id: string }) =>
-      p.label.trim().toLowerCase() === PIPELINE_NAME.toLowerCase()
-  );
-  return pipeline?.id ?? null;
-}
+const PIPELINE_ID = "433643709";
 
 async function fetchOwners(token: string): Promise<Record<string, string>> {
   const res = await fetch(`${HUBSPOT_API}/crm/v3/owners?limit=100`, {
@@ -48,15 +35,7 @@ export async function GET(req: NextRequest) {
   const toMs = new Date(to + "T23:59:59.999Z").getTime();
 
   try {
-    const [pipelineId, ownerMap] = await Promise.all([
-      fetchPipelineId(token),
-      fetchOwners(token)
-    ]);
-
-    if (!pipelineId) {
-      console.error(`[hubspot-trattative] Pipeline "${PIPELINE_NAME}" not found`);
-      return NextResponse.json({ error: `Pipeline "${PIPELINE_NAME}" not found` }, { status: 404 });
-    }
+    const ownerMap = await fetchOwners(token);
 
     const properties = ["setter", "hubspot_owner_id"];
     if (campaign) properties.push("id_campagna_track");
@@ -68,7 +47,7 @@ export async function GET(req: NextRequest) {
       const filters: Array<Record<string, string>> = [
         { propertyName: "createdate", operator: "GTE", value: String(fromMs) },
         { propertyName: "createdate", operator: "LTE", value: String(toMs) },
-        { propertyName: "pipeline", operator: "EQ", value: pipelineId }
+        { propertyName: "pipeline", operator: "EQ", value: PIPELINE_ID }
       ];
 
       const body: Record<string, unknown> = {
