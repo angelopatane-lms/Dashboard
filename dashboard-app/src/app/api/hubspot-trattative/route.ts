@@ -76,6 +76,12 @@ export async function GET(req: NextRequest) {
       after = data.paging?.next?.after;
     } while (after);
 
+    console.log(`[hubspot-trattative] found ${allRecords.length} deals`);
+    console.log(`[hubspot-trattative] ownerMap keys:`, Object.keys(ownerMap).slice(0, 5));
+    if (allRecords.length > 0) {
+      console.log(`[hubspot-trattative] sample record properties:`, JSON.stringify(allRecords[0].properties));
+    }
+
     const agg = new Map<string, number>();
 
     for (const record of allRecords) {
@@ -87,6 +93,8 @@ export async function GET(req: NextRequest) {
 
       agg.set(operatore, (agg.get(operatore) ?? 0) + 1);
     }
+
+    console.log(`[hubspot-trattative] agg result:`, Object.fromEntries(agg));
 
     return NextResponse.json(
       [...agg.entries()].map(([operatore, appuntamenti]) => ({ operatore, appuntamenti })),
