@@ -260,9 +260,10 @@ export default function DashboardEnterprise({
     if (!useHubspot) return null;
     let chiusure = 0;
     let boom = 0;
+    const normKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
     for (const r of operatorSummaryAll) {
-      chiusure += hubspotOverrides[r.operatore]?.chiusure ?? 0;
-      boom += hubspotOverrides[r.operatore]?.boom ?? 0;
+      chiusure += hubspotOverrides[normKey(r.operatore)]?.chiusure ?? 0;
+      boom += hubspotOverrides[normKey(r.operatore)]?.boom ?? 0;
     }
     return { chiusure, boom };
   }, [useHubspot, hubspotOverrides, operatorSummaryAll]);
