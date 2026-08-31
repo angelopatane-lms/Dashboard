@@ -62,7 +62,18 @@ export default function CampaignsDashboard({
   operators: string[];
   campaigns: string[];
 }) {
-  const [filters, setFilters] = useState<Filters>({});
+  const defaultFrom = useMemo(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d.toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
+  }, []);
+
+  const defaultTo = useMemo(
+    () => new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Rome" }),
+    []
+  );
+
+  const [filters, setFilters] = useState<Filters>(() => ({ from: defaultFrom, to: defaultTo }));
 
   const todayIsoRome = useMemo(
     () =>
@@ -258,8 +269,12 @@ export default function CampaignsDashboard({
         />
       </div>
 
+      <Card className="mt-6">
+        <CampaignAdsTable adsRows={campaignAdsRows} campaignSummary={campaignSummaryFull} />
+      </Card>
+
       <div id="campagne" className="scroll-mt-6">
-        <SectionTitle className="mt-10">Campagne</SectionTitle>
+        <SectionTitle className="mt-10">KPI Campagne</SectionTitle>
       </div>
       <Card>
         <ChartTitle
@@ -268,16 +283,6 @@ export default function CampaignsDashboard({
         />
         <div className="mt-4 h-[340px]">
           <CampaignSummaryBar data={campaignSummary} />
-        </div>
-      </Card>
-
-      <Card className="mt-6">
-        <ChartTitle
-          title="Performance Ads per Campagna"
-          description="Spesa, lead, funnel e ROAS per campagna, raggruppati per categoria. Spesa/Lead sono dati placeholder in attesa della fonte Ads dedicata."
-        />
-        <div className="mt-4">
-          <CampaignAdsTable adsRows={campaignAdsRows} campaignSummary={campaignSummaryFull} />
         </div>
       </Card>
 

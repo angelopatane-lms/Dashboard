@@ -109,6 +109,34 @@ function deriveMetrics(raw: RawTotals): DerivedMetrics {
   };
 }
 
+function heatBg(value: number, max: number): string {
+  if (max === 0 || value === 0) return "";
+  const pct = Math.min(value / max, 1);
+  return `rgba(14, 165, 233, ${(0.08 + pct * 0.35).toFixed(2)})`;
+}
+
+function rateBg(rate: number | null): string {
+  if (rate === null || rate === 0) return "";
+  const pct = Math.min(rate, 1);
+  return `rgba(245, 158, 11, ${(0.1 + pct * 0.45).toFixed(2)})`;
+}
+
+type MaxValues = {
+  spesa: number;
+  leadGenerati: number;
+  cplGenerati: number;
+  leadUnici: number;
+  cplUnici: number;
+  risposte: number;
+  fissati: number;
+  processati: number;
+  cpas: number;
+  chiusure: number;
+  importo: number;
+  cpa: number;
+  roas: number;
+};
+
 function fmtPct(v: number | null): ReactNode {
   return v !== null ? formatPct(v, 1) : <span className="text-slate-400">–</span>;
 }
@@ -137,26 +165,73 @@ const HEADERS = [
   "ROAS"
 ];
 
-function MetricCells({ m }: { m: DerivedMetrics }) {
+function MetricCells({ m, max }: { m: DerivedMetrics; max: MaxValues }) {
   return (
     <>
-      <td className="px-3 py-1.5 text-right tabular-nums">{fmtEur(m.spesa)}</td>
-      <td className="px-3 py-1.5 text-right tabular-nums">{formatInt(m.leadGenerati)}</td>
-      <td className="px-3 py-1.5 text-right tabular-nums">{fmtEur(m.cplGenerati, 2)}</td>
-      <td className="px-3 py-1.5 text-right tabular-nums">{formatInt(m.leadUnici)}</td>
-      <td className="px-3 py-1.5 text-right tabular-nums">{fmtEur(m.cplUnici, 2)}</td>
-      <td className="px-3 py-1.5 text-right tabular-nums">{formatInt(m.risposte)}</td>
-      <td className="px-3 py-1.5 text-right tabular-nums">{formatInt(m.fissati)}</td>
-      <td className="px-3 py-1.5 text-right font-semibold tabular-nums">{fmtPct(m.pctAppFissati)}</td>
-      <td className="px-3 py-1.5 text-right tabular-nums">{formatInt(m.processati)}</td>
-      <td className="px-3 py-1.5 text-right tabular-nums">{fmtEur(m.cpas, 2)}</td>
-      <td className="px-3 py-1.5 text-right font-semibold tabular-nums">{fmtPct(m.pctAppSvolti)}</td>
-      <td className="px-3 py-1.5 text-right font-semibold tabular-nums">{fmtPct(m.pctShowUp)}</td>
-      <td className="px-3 py-1.5 text-right tabular-nums">{formatInt(m.chiusure)}</td>
-      <td className="px-3 py-1.5 text-right tabular-nums">{fmtEur(m.importo)}</td>
-      <td className="px-3 py-1.5 text-right font-semibold tabular-nums">{fmtPct(m.crSales)}</td>
-      <td className="px-3 py-1.5 text-right tabular-nums">{fmtEur(m.cpa, 2)}</td>
-      <td className="px-3 py-1.5 text-right font-semibold tabular-nums">
+      <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.spesa, max.spesa) }}>
+        {fmtEur(m.spesa)}
+      </td>
+      <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.leadGenerati, max.leadGenerati) }}>
+        {formatInt(m.leadGenerati)}
+      </td>
+      <td
+        className="px-3 py-1.5 text-right tabular-nums"
+        style={{ background: m.cplGenerati !== null ? heatBg(m.cplGenerati, max.cplGenerati) : undefined }}
+      >
+        {fmtEur(m.cplGenerati, 2)}
+      </td>
+      <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.leadUnici, max.leadUnici) }}>
+        {formatInt(m.leadUnici)}
+      </td>
+      <td
+        className="px-3 py-1.5 text-right tabular-nums"
+        style={{ background: m.cplUnici !== null ? heatBg(m.cplUnici, max.cplUnici) : undefined }}
+      >
+        {fmtEur(m.cplUnici, 2)}
+      </td>
+      <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.risposte, max.risposte) }}>
+        {formatInt(m.risposte)}
+      </td>
+      <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.fissati, max.fissati) }}>
+        {formatInt(m.fissati)}
+      </td>
+      <td className="px-3 py-1.5 text-right font-semibold tabular-nums" style={{ background: rateBg(m.pctAppFissati) }}>
+        {fmtPct(m.pctAppFissati)}
+      </td>
+      <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.processati, max.processati) }}>
+        {formatInt(m.processati)}
+      </td>
+      <td
+        className="px-3 py-1.5 text-right tabular-nums"
+        style={{ background: m.cpas !== null ? heatBg(m.cpas, max.cpas) : undefined }}
+      >
+        {fmtEur(m.cpas, 2)}
+      </td>
+      <td className="px-3 py-1.5 text-right font-semibold tabular-nums" style={{ background: rateBg(m.pctAppSvolti) }}>
+        {fmtPct(m.pctAppSvolti)}
+      </td>
+      <td className="px-3 py-1.5 text-right font-semibold tabular-nums" style={{ background: rateBg(m.pctShowUp) }}>
+        {fmtPct(m.pctShowUp)}
+      </td>
+      <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.chiusure, max.chiusure) }}>
+        {formatInt(m.chiusure)}
+      </td>
+      <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.importo, max.importo) }}>
+        {fmtEur(m.importo)}
+      </td>
+      <td className="px-3 py-1.5 text-right font-semibold tabular-nums" style={{ background: rateBg(m.crSales) }}>
+        {fmtPct(m.crSales)}
+      </td>
+      <td
+        className="px-3 py-1.5 text-right tabular-nums"
+        style={{ background: m.cpa !== null ? heatBg(m.cpa, max.cpa) : undefined }}
+      >
+        {fmtEur(m.cpa, 2)}
+      </td>
+      <td
+        className="px-3 py-1.5 text-right font-semibold tabular-nums"
+        style={{ background: m.roas !== null ? heatBg(m.roas, max.roas) : undefined }}
+      >
         {m.roas !== null ? `${formatFloat(m.roas, 2)}x` : <span className="text-slate-400">–</span>}
       </td>
     </>
@@ -196,6 +271,27 @@ export default function CampaignAdsTable({
     [groups]
   );
 
+  const maxValues = useMemo<MaxValues>(() => {
+    const rowMetrics = groups.flatMap((g) => g.rows.map((r) => deriveMetrics(r.raw)));
+    const maxOf = (values: Array<number | null>) =>
+      Math.max(...values.map((v) => v ?? 0), 1);
+    return {
+      spesa: maxOf(rowMetrics.map((m) => m.spesa)),
+      leadGenerati: maxOf(rowMetrics.map((m) => m.leadGenerati)),
+      cplGenerati: maxOf(rowMetrics.map((m) => m.cplGenerati)),
+      leadUnici: maxOf(rowMetrics.map((m) => m.leadUnici)),
+      cplUnici: maxOf(rowMetrics.map((m) => m.cplUnici)),
+      risposte: maxOf(rowMetrics.map((m) => m.risposte)),
+      fissati: maxOf(rowMetrics.map((m) => m.fissati)),
+      processati: maxOf(rowMetrics.map((m) => m.processati)),
+      cpas: maxOf(rowMetrics.map((m) => m.cpas)),
+      chiusure: maxOf(rowMetrics.map((m) => m.chiusure)),
+      importo: maxOf(rowMetrics.map((m) => m.importo)),
+      cpa: maxOf(rowMetrics.map((m) => m.cpa)),
+      roas: maxOf(rowMetrics.map((m) => m.roas))
+    };
+  }, [groups]);
+
   if (!adsRows.length) return null;
 
   return (
@@ -228,12 +324,12 @@ export default function CampaignAdsTable({
                   <td className="px-3 py-1.5 text-slate-700 whitespace-nowrap" title={r.campagna}>
                     {r.campagna}
                   </td>
-                  <MetricCells m={deriveMetrics(r.raw)} />
+                  <MetricCells m={deriveMetrics(r.raw)} max={maxValues} />
                 </tr>
               ))}
               <tr key={`${g.categoria}-totale`} className="bg-slate-50 font-semibold text-slate-900">
                 <td className="px-3 py-1.5">Totale</td>
-                <MetricCells m={deriveMetrics(g.totale)} />
+                <MetricCells m={deriveMetrics(g.totale)} max={maxValues} />
               </tr>
             </Fragment>
           ))}
@@ -243,7 +339,7 @@ export default function CampaignAdsTable({
             <td className="py-2 pr-4 pl-0" colSpan={2}>
               Totale complessivo
             </td>
-            <MetricCells m={deriveMetrics(grandTotal)} />
+            <MetricCells m={deriveMetrics(grandTotal)} max={maxValues} />
           </tr>
         </tfoot>
       </table>
