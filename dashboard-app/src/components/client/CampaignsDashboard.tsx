@@ -11,11 +11,45 @@ import Card from "@/components/ui/Card";
 import ChartTitle from "@/components/ui/ChartTitle";
 import SectionTitle from "@/components/ui/SectionTitle";
 import CampaignSummaryBar from "@/components/charts/CampaignSummaryBar";
+import CampaignAdsTable, { type CampaignAdsRow } from "@/components/charts/CampaignAdsTable";
 
 type CampaignPeaksDatum = {
   date: string;
   [campaign: string]: string | number | null;
 };
+
+// TODO: sostituire con i dati reali (Categoria, Spesa, Lead Generati, Lead
+// Unici per campagna) non appena sara' disponibile la fonte Ads dedicata
+// (nuovo tab Google Sheet). Nel frattempo generiamo valori placeholder
+// deterministici (stessi ad ogni render, niente Math.random) partendo dai
+// nomi campagna reali, cosi' Risposte/Fissati/Processati/Chiusure/Importo
+// restano collegati ai dati reali.
+function hashString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  }
+  return h;
+}
+
+function guessCategoria(campagna: string): string {
+  const c = campagna.toLowerCase();
+  if (c.includes("coach")) return "COACH";
+  if (c.includes("imprenditoria")) return "IA";
+  return "ALTRO";
+}
+
+function buildPlaceholderAdsRows(campaigns: string[]): CampaignAdsRow[] {
+  return campaigns
+    .filter((c) => c && c.trim().toLowerCase() !== "nessuna")
+    .map((campagna) => {
+      const h = hashString(campagna);
+      const leadGenerati = 50 + (h % 600);
+      const leadUnici = Math.max(1, Math.round(leadGenerati * (0.2 + ((h >> 3) % 50) / 100)));
+      const spesa = Math.round((150 + (h % 900)) * 1.37 * 100) / 100;
+      return { categoria: guessCategoria(campagna), campagna, spesa, leadGenerati, leadUnici };
+    });
+}
 
 export default function CampaignsDashboard({
   operatoriRows,
@@ -59,10 +93,11 @@ export default function CampaignsDashboard({
 
   const operatoriNorm = useMemo(() => normalizeOperatori(operatoriFiltered), [operatoriFiltered]);
 
-  const campaignSummary = useMemo(
-    () => aggregateByCampagna(operatoriNorm).slice(0, 12),
-    [operatoriNorm]
-  );
+  const campaignSummaryFull = useMemo(() => aggregateByCampagna(operatoriNorm), [operatoriNorm]);
+
+  const campaignSummary = useMemo(() => campaignSummaryFull.slice(0, 12), [campaignSummaryFull]);
+
+  const campaignAdsRows = useMemo(() => buildPlaceholderAdsRows(campaigns), [campaigns]);
 
   const campaignAnomalies = useMemo(() => {
     const toMs = (iso: string) => new Date(iso).getTime();
@@ -233,6 +268,16 @@ export default function CampaignsDashboard({
         />
         <div className="mt-4 h-[340px]">
           <CampaignSummaryBar data={campaignSummary} />
+        </div>
+      </Card>
+
+      <Card className="mt-6">
+        <ChartTitle
+          title="Performance Ads per Campagna"
+          description="Spesa, lead, funnel e ROAS per campagna, raggruppati per categoria. Spesa/Lead sono dati placeholder in attesa della fonte Ads dedicata."
+        />
+        <div className="mt-4">
+          <CampaignAdsTable adsRows={campaignAdsRows} campaignSummary={campaignSummaryFull} />
         </div>
       </Card>
 

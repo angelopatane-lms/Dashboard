@@ -13,6 +13,11 @@ export function formatPct(n: number, digits = 1): string {
   return `${formatFloat(n * 100, digits)}%`;
 }
 
-export function formatEur(n: number): string {
-  return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
+export function formatEur(n: number, digits = 0): string {
+  return new Intl.NumberFormat("it-IT", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits
+  }).format(n);
 }
