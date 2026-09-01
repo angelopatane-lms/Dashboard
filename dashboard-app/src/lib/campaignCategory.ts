@@ -12,7 +12,7 @@ const CATEGORY_DEFS: CategoryDef[] = [
   { label: "Imprenditoria", patterns: [["imprenditoria"]] },
   { label: "MBE MKTG", patterns: [["mbe", "mktg"]] },
   { label: "MBE MNGT", patterns: [["mbe", "mngt"]] },
-  { label: "MBE SALE", patterns: [["mbe", "sale"], ["sale"]] },
+  { label: "MBE SALES", patterns: [["mbe", "sale"], ["sale"]] },
   { label: "MEP", patterns: [["mep"]] },
   { label: "REM", patterns: [["rem"]] },
   { label: "ADE", patterns: [["ade"]] },
