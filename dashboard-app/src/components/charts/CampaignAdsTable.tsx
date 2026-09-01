@@ -350,7 +350,7 @@ export default function CampaignAdsTable({
         <tfoot>
           <tr className="border-t-2 border-slate-300 bg-slate-100 font-semibold text-slate-900">
             <td className="py-2 pr-4 pl-0" colSpan={2}>
-              Totale complessivo
+              Totale
             </td>
             <MetricCells m={deriveMetrics(grandTotal)} max={maxValues} />
           </tr>
