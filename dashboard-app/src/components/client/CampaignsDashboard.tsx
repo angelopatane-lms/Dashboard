@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CsvRow } from "@/lib/csv";
 import { applyFilters, type Filters } from "@/lib/metrics";
 import { aggregateByCampagna, normalizeOperatori } from "@/lib/analytics";
 import { formatPct } from "@/lib/format";
+import { guessCategoria } from "@/lib/campaignCategory";
 import CampaignConversionPeaksChart from "@/components/charts/CampaignConversionPeaksChart";
 import { FiltersBar } from "@/components/Filters";
 import Card from "@/components/ui/Card";
@@ -12,18 +13,21 @@ import ChartTitle from "@/components/ui/ChartTitle";
 import SectionTitle from "@/components/ui/SectionTitle";
 import CampaignSummaryBar from "@/components/charts/CampaignSummaryBar";
 import CampaignAdsTable, { type CampaignAdsRow } from "@/components/charts/CampaignAdsTable";
+import type { CampaignAdsSpendRow } from "@/app/api/campaign-ads/route";
 
 type CampaignPeaksDatum = {
   date: string;
   [campaign: string]: string | number | null;
 };
 
-// TODO: sostituire con i dati reali (Categoria, Spesa, Lead Generati, Lead
-// Unici per campagna) non appena sara' disponibile la fonte Ads dedicata
-// (nuovo tab Google Sheet). Nel frattempo generiamo valori placeholder
-// deterministici (stessi ad ogni render, niente Math.random) partendo dai
-// nomi campagna reali, cosi' Risposte/Fissati/Processati/Chiusure/Importo
-// restano collegati ai dati reali.
+function normKey(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+// TODO: Lead Generati/Lead Unici non hanno ancora una fonte reale collegata:
+// generiamo valori placeholder deterministici (stessi ad ogni render, niente
+// Math.random) partendo dal nome campagna, finche' non sara' disponibile una
+// colonna dedicata nel report Ads.
 function hashString(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) {
@@ -32,50 +36,40 @@ function hashString(s: string): number {
   return h;
 }
 
-// Categorie reali delle campagne (dedotte dal nome, in attesa di una colonna
-// "Categoria" dedicata). Il match e' per sequenza di token esatti (separati
-// da "_", spazi, ecc.) per evitare falsi positivi con i codici brevi
-// (es. "mep", "rem", "ade") che potrebbero comparire come sottostringa di
-// altre parole.
-const CATEGORY_DEFS: Array<{ label: string; tokens: string[] }> = [
-  { label: "DIV COACH", tokens: ["div", "coach"] },
-  { label: "Imprenditoria", tokens: ["imprenditoria"] },
-  { label: "MBE MKTG", tokens: ["mbe", "mktg"] },
-  { label: "MBE MNGT", tokens: ["mbe", "mngt"] },
-  { label: "MBE SALE", tokens: ["mbe", "sale"] },
-  { label: "MEP", tokens: ["mep"] },
-  { label: "REM", tokens: ["rem"] },
-  { label: "ADE", tokens: ["ade"] },
-  { label: "ICMD", tokens: ["icmd"] }
-];
-
-function tokenMatches(token: string, expected: string): boolean {
-  if (expected === "imprenditoria") return token.startsWith("imprenditor");
-  return token === expected;
+function placeholderLeads(campagna: string): { leadGenerati: number; leadUnici: number } {
+  const h = hashString(campagna);
+  const leadGenerati = 50 + (h % 600);
+  const leadUnici = Math.max(1, Math.round(leadGenerati * (0.2 + ((h >> 3) % 50) / 100)));
+  return { leadGenerati, leadUnici };
 }
 
-function guessCategoria(campagna: string): string {
-  const tokens = campagna.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-  for (const def of CATEGORY_DEFS) {
-    for (let i = 0; i <= tokens.length - def.tokens.length; i++) {
-      if (def.tokens.every((expected, j) => tokenMatches(tokens[i + j], expected))) {
-        return def.label;
-      }
-    }
+function buildCampaignAdsRows(
+  campaigns: string[],
+  spesaByCampagna: Map<string, { campagna: string; spesa: number }>
+): CampaignAdsRow[] {
+  const seen = new Set<string>();
+  const rows: CampaignAdsRow[] = [];
+
+  for (const campagna of campaigns) {
+    const trimmed = campagna.trim();
+    if (!trimmed || trimmed.toLowerCase() === "nessuna") continue;
+    const key = normKey(trimmed);
+    seen.add(key);
+    const spesa = spesaByCampagna.get(key)?.spesa ?? 0;
+    rows.push({ categoria: guessCategoria(trimmed), campagna: trimmed, spesa, ...placeholderLeads(trimmed) });
   }
-  return "Altro";
-}
 
-function buildPlaceholderAdsRows(campaigns: string[]): CampaignAdsRow[] {
-  return campaigns
-    .filter((c) => c && c.trim().toLowerCase() !== "nessuna")
-    .map((campagna) => {
-      const h = hashString(campagna);
-      const leadGenerati = 50 + (h % 600);
-      const leadUnici = Math.max(1, Math.round(leadGenerati * (0.2 + ((h >> 3) % 50) / 100)));
-      const spesa = Math.round((150 + (h % 900)) * 1.37 * 100) / 100;
-      return { categoria: guessCategoria(campagna), campagna, spesa, leadGenerati, leadUnici };
+  for (const [key, entry] of spesaByCampagna) {
+    if (seen.has(key) || !entry.campagna.trim()) continue;
+    rows.push({
+      categoria: guessCategoria(entry.campagna),
+      campagna: entry.campagna,
+      spesa: entry.spesa,
+      ...placeholderLeads(entry.campagna)
     });
+  }
+
+  return rows;
 }
 
 export default function CampaignsDashboard({
@@ -101,6 +95,39 @@ export default function CampaignsDashboard({
   );
 
   const [filters, setFilters] = useState<Filters>(() => ({ from: defaultFrom, to: defaultTo }));
+
+  const [adsSpendRows, setAdsSpendRows] = useState<CampaignAdsSpendRow[]>([]);
+  const fetchedAdsRangeRef = useRef<{ from: string; to: string } | null>(null);
+
+  useEffect(() => {
+    const currentFrom = filters.from ?? defaultFrom;
+    const currentTo = filters.to ?? defaultTo;
+    const fetched = fetchedAdsRangeRef.current;
+    if (fetched && currentFrom >= fetched.from && currentTo <= fetched.to) return;
+
+    fetch(`/api/campaign-ads?from=${currentFrom}&to=${currentTo}`)
+      .then((r) => r.json())
+      .then((data: { rows?: CampaignAdsSpendRow[] }) => {
+        setAdsSpendRows(data.rows ?? []);
+        fetchedAdsRangeRef.current = { from: currentFrom, to: currentTo };
+      })
+      .catch(console.error);
+  }, [filters.from, filters.to, defaultFrom, defaultTo]);
+
+  const spesaByCampagna = useMemo(() => {
+    const from = filters.from ?? defaultFrom;
+    const to = filters.to ?? defaultTo;
+    const map = new Map<string, { campagna: string; spesa: number }>();
+    for (const r of adsSpendRows) {
+      if (from && r.data && r.data < from) continue;
+      if (to && r.data && r.data > to) continue;
+      const key = normKey(r.campagna) || "__nessuna__";
+      const cur = map.get(key) ?? { campagna: r.campagna.trim(), spesa: 0 };
+      cur.spesa += r.spesa;
+      map.set(key, cur);
+    }
+    return map;
+  }, [adsSpendRows, filters.from, filters.to, defaultFrom, defaultTo]);
 
   const todayIsoRome = useMemo(
     () =>
@@ -135,7 +162,10 @@ export default function CampaignsDashboard({
 
   const campaignSummary = useMemo(() => campaignSummaryFull.slice(0, 12), [campaignSummaryFull]);
 
-  const campaignAdsRows = useMemo(() => buildPlaceholderAdsRows(campaigns), [campaigns]);
+  const campaignAdsRows = useMemo(
+    () => buildCampaignAdsRows(campaigns, spesaByCampagna),
+    [campaigns, spesaByCampagna]
+  );
 
   const campaignAnomalies = useMemo(() => {
     const toMs = (iso: string) => new Date(iso).getTime();
