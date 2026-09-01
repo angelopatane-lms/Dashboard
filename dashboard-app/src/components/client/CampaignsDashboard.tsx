@@ -43,34 +43,24 @@ function placeholderLeads(campagna: string): { leadGenerati: number; leadUnici: 
   return { leadGenerati, leadUnici };
 }
 
+// Le righe della tabella Ads rappresentano SOLO le campagne tecniche
+// realmente presenti nella colonna "Campagna" del foglio Ads-spesa (non le
+// voci generiche del foglio Operatori come "DIV COACH", "Imprenditoria",
+// "MBE SALES", che duplicherebbero il nome della categoria). I dati di
+// funnel (Connessioni, Appuntamenti, Consulenze, Chiusure, Importo) restano
+// comunque agganciati per nome campagna tramite CampaignSummary.
 function buildCampaignAdsRows(
-  campaigns: string[],
   spesaByCampagna: Map<string, { campagna: string; spesa: number }>
 ): CampaignAdsRow[] {
-  const seen = new Set<string>();
-  const rows: CampaignAdsRow[] = [];
-
-  for (const campagna of campaigns) {
-    const trimmed = campagna.trim();
-    if (!trimmed || trimmed.toLowerCase() === "nessuna") continue;
-    const key = normKey(trimmed);
-    seen.add(key);
-    const spesa = spesaByCampagna.get(key)?.spesa ?? 0;
-    rows.push({ categoria: guessCategoria(trimmed), campagna: trimmed, spesa, ...placeholderLeads(trimmed) });
-  }
-
-  for (const [key, entry] of spesaByCampagna) {
-    if (seen.has(key)) continue;
+  return Array.from(spesaByCampagna.values()).map((entry) => {
     const campagna = entry.campagna.trim() || "(Nessuna)";
-    rows.push({
+    return {
       categoria: guessCategoria(entry.campagna),
       campagna,
       spesa: entry.spesa,
       ...placeholderLeads(campagna)
-    });
-  }
-
-  return rows;
+    };
+  });
 }
 
 export default function CampaignsDashboard({
@@ -178,8 +168,8 @@ export default function CampaignsDashboard({
   const campaignSummary = useMemo(() => campaignSummaryFull.slice(0, 12), [campaignSummaryFull]);
 
   const campaignAdsRows = useMemo(
-    () => buildCampaignAdsRows(campaigns, spesaByCampagna),
-    [campaigns, spesaByCampagna]
+    () => buildCampaignAdsRows(spesaByCampagna),
+    [spesaByCampagna]
   );
 
   const campaignAnomalies = useMemo(() => {
