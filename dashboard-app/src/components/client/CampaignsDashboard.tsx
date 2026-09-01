@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CsvRow } from "@/lib/csv";
-import { applyFilters, type Filters } from "@/lib/metrics";
+import { applyFilters, getString, type Filters } from "@/lib/metrics";
 import { aggregateByCampagna, normalizeOperatori } from "@/lib/analytics";
 import { formatPct } from "@/lib/format";
 import { guessCategoria } from "@/lib/campaignCategory";
@@ -105,16 +105,15 @@ export default function CampaignsDashboard({
       .catch(console.error);
   }, [filters.from, filters.to, defaultFrom, defaultTo]);
 
-  // Il filtro "Campagna" di questa pagina non deve piu' fare riferimento al
-  // foglio Google Operatori (che contiene anche voci generiche come "MBE
-  // SALES", "DIV COACH", "Nessuna" non legate a una vera campagna Ads), ma
-  // alle campagne tecniche realmente presenti nel foglio Ads-spesa per il
-  // periodo attualmente caricato.
-  const adsCampaignOptions = useMemo(() => {
+  // Il filtro "Campagna" di questa pagina mostra le Categorie (dedotte dalle
+  // campagne tecniche realmente presenti nel foglio Ads-spesa per il periodo
+  // caricato), non i singoli nomi di campagna e non le voci generiche del
+  // foglio Operatori (es. "MBE SALES", "DIV COACH", "Nessuna").
+  const categoriaOptions = useMemo(() => {
     const set = new Set<string>();
     for (const r of adsSpendRows) {
       const c = r.campagna.trim();
-      if (c) set.add(c);
+      if (c) set.add(guessCategoria(c));
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [adsSpendRows]);
@@ -156,10 +155,15 @@ export default function CampaignsDashboard({
     [includeToday, operatoriRows, operatoriRowsOggi]
   );
 
-  const operatoriFiltered = useMemo(
-    () => applyFilters(operatoriRowsWithToday, filters),
-    [operatoriRowsWithToday, filters]
-  );
+  const operatoriFiltered = useMemo(() => {
+    // filters.campagna qui contiene una Categoria (non un nome di campagna
+    // tecnico): applichiamo gli altri filtri normalmente e poi filtriamo per
+    // categoria dedotta dal campo "Campagna" di ogni riga.
+    const { campagna: categoriaFilter, ...restFilters } = filters;
+    const base = applyFilters(operatoriRowsWithToday, restFilters);
+    if (!categoriaFilter) return base;
+    return base.filter((r) => guessCategoria(getString(r, "Campagna")) === categoriaFilter);
+  }, [operatoriRowsWithToday, filters]);
 
   const operatoriNorm = useMemo(() => normalizeOperatori(operatoriFiltered), [operatoriFiltered]);
 
@@ -167,10 +171,11 @@ export default function CampaignsDashboard({
 
   const campaignSummary = useMemo(() => campaignSummaryFull.slice(0, 12), [campaignSummaryFull]);
 
-  const campaignAdsRows = useMemo(
-    () => buildCampaignAdsRows(spesaByCampagna),
-    [spesaByCampagna]
-  );
+  const campaignAdsRows = useMemo(() => {
+    const rows = buildCampaignAdsRows(spesaByCampagna);
+    if (!filters.campagna) return rows;
+    return rows.filter((r) => r.categoria === filters.campagna);
+  }, [spesaByCampagna, filters.campagna]);
 
   const campaignAnomalies = useMemo(() => {
     const toMs = (iso: string) => new Date(iso).getTime();
@@ -327,7 +332,7 @@ export default function CampaignsDashboard({
           filters={filters}
           setFilters={setFilters}
           operators={operators}
-          campaigns={adsCampaignOptions}
+          campaigns={categoriaOptions}
         />
       </div>
 
