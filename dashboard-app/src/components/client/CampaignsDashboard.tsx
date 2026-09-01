@@ -115,6 +115,20 @@ export default function CampaignsDashboard({
       .catch(console.error);
   }, [filters.from, filters.to, defaultFrom, defaultTo]);
 
+  // Il filtro "Campagna" di questa pagina non deve piu' fare riferimento al
+  // foglio Google Operatori (che contiene anche voci generiche come "MBE
+  // SALES", "DIV COACH", "Nessuna" non legate a una vera campagna Ads), ma
+  // alle campagne tecniche realmente presenti nel foglio Ads-spesa per il
+  // periodo attualmente caricato.
+  const adsCampaignOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of adsSpendRows) {
+      const c = r.campagna.trim();
+      if (c) set.add(c);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [adsSpendRows]);
+
   const spesaByCampagna = useMemo(() => {
     const from = filters.from ?? defaultFrom;
     const to = filters.to ?? defaultTo;
@@ -323,7 +337,7 @@ export default function CampaignsDashboard({
           filters={filters}
           setFilters={setFilters}
           operators={operators}
-          campaigns={campaigns}
+          campaigns={adsCampaignOptions}
         />
       </div>
 
