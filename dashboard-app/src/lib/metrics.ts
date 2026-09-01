@@ -16,7 +16,11 @@ export function getString(row: CsvRow, key: string): string {
 }
 
 export function toNumber(value: string): number {
-  const normalized = value.replaceAll(".", "").replaceAll(",", ".");
+  // Rimuove simboli di valuta, spazi e qualsiasi altro carattere non
+  // numerico (es. "€226,99") prima di normalizzare separatori italiani
+  // (punto = migliaia, virgola = decimali).
+  const cleaned = value.replace(/[^0-9.,-]/g, "");
+  const normalized = cleaned.replaceAll(".", "").replaceAll(",", ".");
   const n = Number(normalized);
   return Number.isFinite(n) ? n : 0;
 }
