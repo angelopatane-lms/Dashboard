@@ -60,12 +60,13 @@ function buildCampaignAdsRows(
   }
 
   for (const [key, entry] of spesaByCampagna) {
-    if (seen.has(key) || !entry.campagna.trim()) continue;
+    if (seen.has(key)) continue;
+    const campagna = entry.campagna.trim() || "(Nessuna)";
     rows.push({
       categoria: guessCategoria(entry.campagna),
-      campagna: entry.campagna,
+      campagna,
       spesa: entry.spesa,
-      ...placeholderLeads(entry.campagna)
+      ...placeholderLeads(campagna)
     });
   }
 
