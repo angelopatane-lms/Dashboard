@@ -259,11 +259,23 @@ export default function CampaignAdsTable({
       list.push({ campagna: ads.campagna, raw });
       byCategoria.set(ads.categoria, list);
     }
-    return Array.from(byCategoria.entries()).map(([categoria, rows]) => ({
+    const list = Array.from(byCategoria.entries()).map(([categoria, rows]) => ({
       categoria,
       rows,
       totale: rows.reduce((acc, r) => addRaw(acc, r.raw), emptyRaw)
     }));
+
+    const isAltroONessuna = (categoria: string) => {
+      const c = categoria.trim().toLowerCase();
+      return c === "altro" || c === "nessuna";
+    };
+
+    return list.sort((a, b) => {
+      const aLast = isAltroONessuna(a.categoria);
+      const bLast = isAltroONessuna(b.categoria);
+      if (aLast !== bLast) return aLast ? 1 : -1;
+      return b.totale.spesa - a.totale.spesa;
+    });
   }, [adsRows, summaryByCampagna]);
 
   const grandTotal = useMemo(
@@ -309,14 +321,14 @@ export default function CampaignAdsTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {groups.map((g) => (
+          {groups.map((g, groupIdx) => (
             <Fragment key={g.categoria}>
               {g.rows.map((r, idx) => (
                 <tr key={`${g.categoria}-${r.campagna}`} className="hover:bg-slate-50/70 transition-colors">
                   {idx === 0 ? (
                     <td
                       className="py-1.5 pr-4 pl-0 align-top font-semibold text-slate-800 whitespace-nowrap"
-                      rowSpan={g.rows.length + 1}
+                      rowSpan={g.rows.length}
                     >
                       {g.categoria}
                     </td>
@@ -327,10 +339,11 @@ export default function CampaignAdsTable({
                   <MetricCells m={deriveMetrics(r.raw)} max={maxValues} />
                 </tr>
               ))}
-              <tr key={`${g.categoria}-totale`} className="bg-slate-50 font-semibold text-slate-900">
-                <td className="px-3 py-1.5">Totale</td>
-                <MetricCells m={deriveMetrics(g.totale)} max={maxValues} />
-              </tr>
+              {groupIdx < groups.length - 1 ? (
+                <tr key={`${g.categoria}-spacer`} className="bg-white">
+                  <td className="h-3 p-0 border-0" colSpan={2 + HEADERS.length} />
+                </tr>
+              ) : null}
             </Fragment>
           ))}
         </tbody>
