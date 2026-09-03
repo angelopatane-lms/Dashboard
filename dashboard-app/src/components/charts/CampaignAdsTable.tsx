@@ -174,7 +174,8 @@ function MetricCells({ m, max }: { m: DerivedMetrics; max: MaxValues }) {
   return (
     <>
       <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.spesa, max.spesa) }}>
-        {fmtEur(m.spesa)}
+        {/* Due decimali: il foglio Ads riporta la spesa al centesimo. */}
+        {fmtEur(m.spesa, 2)}
       </td>
       <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.leadGenerati, max.leadGenerati) }}>
         {formatInt(m.leadGenerati)}
