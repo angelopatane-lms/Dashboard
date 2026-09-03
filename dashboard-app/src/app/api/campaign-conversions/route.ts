@@ -7,43 +7,46 @@ export type CampaignConversionRow = {
   campagna: string;
   /** Tutte le conversioni del periodo, ripetizioni della stessa persona incluse. */
   lead_generati: number;
-  /** Persone distinte, ognuna attribuita alla PRIMA campagna che ha toccato nel
-   *  periodo: sommando fra campagne si ottengono le persone reali, senza doppi. */
+  /** Lead NUOVI: persone che prima non esistevano su HubSpot e sono state
+   *  create da questa iscrizione. Attribuzione alla prima campagna della VITA
+   *  del contatto, non del periodo selezionato. */
   lead_unici: number;
-  /** Di quelle persone, chi era alla prima conversione in assoluto. */
-  convertiti: number;
-  /** Di quelle persone, chi era gia' noto ed e' tornato a convertire. */
-  riconvertiti: number;
 };
 
 // Per ogni campagna, nell'intervallo [from, to]:
-// - Convertiti: persone alla loro prima conversione ASSOLUTA (posizione = 1),
-//   avvenuta su questa campagna.
-// - Riconvertiti: persone gia' esistenti (posizione > 1 nella loro storia)
-//   che tornano a convertire su questa campagna.
-// - Lead Generati = Convertiti + Riconvertiti = persone distinte per cui
-//   QUESTA e' la prima campagna toccata nel periodo selezionato (attribuzione
-//   "prima campagna del periodo vince", cosi' la somma tra campagne e'
-//   sempre corretta senza doppio conteggio).
+//
+// - Lead Generati: tutte le conversioni avvenute nel periodo, comprese le
+//   ripetizioni della stessa persona sulla stessa campagna.
+//
+// - Lead Unici: i lead NUOVI, cioe' le persone che prima non esistevano su
+//   HubSpot e sono nate da quell'iscrizione. Ogni contatto ha una sola prima
+//   conversione in tutta la sua vita, quindi viene attribuito a una sola
+//   campagna e una sola volta, per sempre. Ne discendono due proprieta' utili:
+//   la somma fra campagne non ha doppi conteggi, e l'attribuzione NON cambia
+//   allargando o restringendo il periodo (a differenza di un "primo del
+//   periodo", che si sposta al variare delle date).
+//
+// La numerazione e' calcolata su TUTTA la storia (la finestra e' fuori dal
+// filtro sulle date) e dopo la risoluzione delle fusioni: due schede unite
+// sono una persona sola, quindi una sola prima conversione. Senza questo
+// accorgimento i contatti fusi verrebbero contati due volte.
 const QUERY = `
   WITH risolti AS (
-    SELECT COALESCE(a.nuovo_id, e.contact_id) AS persona_id, e.campagna_id, e.ts, e.posizione
+    SELECT COALESCE(a.nuovo_id, e.contact_id) AS persona_id, e.campagna_id, e.ts
     FROM eventi_conversione e
     LEFT JOIN alias_contatto a ON a.vecchio_id = e.contact_id
-    WHERE e.ts >= $1::date AND e.ts < ($2::date + INTERVAL '1 day')
   ),
-  filtrati AS (
-    SELECT *,
-           ROW_NUMBER() OVER (PARTITION BY persona_id ORDER BY ts) AS rank_nel_periodo
+  marcati AS (
+    SELECT persona_id, campagna_id, ts,
+           ROW_NUMBER() OVER (PARTITION BY persona_id ORDER BY ts, campagna_id) AS n_vita
     FROM risolti
   )
   SELECT c.nome AS campagna,
-         COUNT(*)::int                                                          AS lead_generati,
-         COUNT(*) FILTER (WHERE f.rank_nel_periodo = 1)::int                    AS lead_unici,
-         COUNT(*) FILTER (WHERE f.rank_nel_periodo = 1 AND f.posizione = 1)::int AS convertiti,
-         COUNT(*) FILTER (WHERE f.rank_nel_periodo = 1 AND f.posizione > 1)::int AS riconvertiti
-  FROM filtrati f
-  JOIN campagna c ON c.id = f.campagna_id
+         COUNT(*)::int                                 AS lead_generati,
+         COUNT(*) FILTER (WHERE m.n_vita = 1)::int     AS lead_unici
+  FROM marcati m
+  JOIN campagna c ON c.id = m.campagna_id
+  WHERE m.ts >= $1::date AND m.ts < ($2::date + INTERVAL '1 day')
   GROUP BY c.nome
   ORDER BY lead_generati DESC
 `;

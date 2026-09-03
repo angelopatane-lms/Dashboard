@@ -20,7 +20,9 @@ export type CampaignAdsRow = {
   spesa: number;
   /** Tutte le conversioni del periodo, ripetizioni della stessa persona incluse. */
   leadGenerati: number;
-  /** Persone distinte, attribuite alla prima campagna toccata nel periodo. */
+  /** Lead NUOVI: persone che prima non esistevano su HubSpot, nate da questa
+   *  iscrizione. Attribuiti alla prima campagna della VITA del contatto, quindi
+   *  una sola volta e per sempre: il valore non cambia al variare del periodo. */
   leadUnici: number;
 };
 
