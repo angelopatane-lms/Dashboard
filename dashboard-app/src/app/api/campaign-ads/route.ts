@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchCsv } from "@/lib/csv";
+import { parseCsv } from "@/lib/csv";
 import { getString, toDateIso, toNumber } from "@/lib/metrics";
 
 export const dynamic = "force-dynamic";
@@ -15,8 +15,34 @@ export type CampaignAdsSpendRow = {
   spesa: number;
 };
 
-function tabCsvUrl(sheetName: string): string {
-  return `https://docs.google.com/spreadsheets/d/${ADS_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+function tabCsvUrl(sheetName?: string): string {
+  const base = `https://docs.google.com/spreadsheets/d/${ADS_SHEET_ID}/gviz/tq?tqx=out:csv`;
+  return sheetName ? `${base}&sheet=${encodeURIComponent(sheetName)}` : base;
+}
+
+/**
+ * Riconosce i tab di mese che NON esistono.
+ *
+ * Chiedendo a gviz un tab inesistente non si ottiene un errore: Google serve in
+ * silenzio il primo foglio del documento. Quelle righe finivano nei conti come
+ * spesa reale, moltiplicate per ogni mese mancante nell'intervallo (misurato:
+ * chiedendo il 2025 arrivavano 384 righe fantasma per 14.791 EUR).
+ *
+ * Il foglio di ripiego e' identico a quello che si ottiene senza specificare
+ * alcun tab, quindi lo si scarica una volta e si confronta. Il confronto e' sul
+ * contenuto e non sulle date, perche' il ripiego e' datato dicembre 2025 e un
+ * controllo per mese lo lascerebbe passare proprio in quel mese.
+ */
+async function testoFoglioPredefinito(): Promise<string | null> {
+  try {
+    const res = await fetch(tabCsvUrl(), {
+      next: { revalidate: 300 },
+      headers: { accept: "text/csv" }
+    });
+    return res.ok ? await res.text() : null;
+  } catch {
+    return null;
+  }
 }
 
 function monthTabName(year: number, month1to12: number): string {
@@ -55,17 +81,48 @@ export async function GET(req: NextRequest) {
   const months = monthsBetween(from, to);
   const rows: CampaignAdsSpendRow[] = [];
 
+  // Scaricato una volta sola e confrontato con ogni tab di mese: vedi
+  // testoFoglioPredefinito().
+  const predefinito = await testoFoglioPredefinito();
+
   await Promise.all(
     months.map(async ({ year, month }) => {
       const tabName = monthTabName(year, month);
       try {
-        const csvRows = await fetchCsv(tabCsvUrl(tabName), { next: { revalidate: 300 } });
-        for (const r of csvRows) {
+        const res = await fetch(tabCsvUrl(tabName), {
+          next: { revalidate: 300 },
+          headers: { accept: "text/csv" }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const testo = await res.text();
+
+        // Primo controllo: il tab non esiste e gviz ha servito il foglio
+        // predefinito al posto suo.
+        if (predefinito !== null && testo === predefinito) {
+          console.warn(`[campaign-ads] ${tabName}: tab inesistente (ricevuto il foglio predefinito), ignorato`);
+          return;
+        }
+
+        // Secondo controllo, di riserva: si tengono comunque solo le righe
+        // datate nel mese richiesto, cosi' una riga fuori posto non inquina i
+        // totali nemmeno se il primo controllo non scattasse.
+        const prefissoMese = `${year}-${String(month).padStart(2, "0")}`;
+        let scartate = 0;
+
+        for (const r of parseCsv(testo)) {
           const data = toDateIso(getString(r, "Data"));
           const campagna = getString(r, "Campagna");
           const spesa = toNumber(getString(r, "Spesa"));
           if (!data && !campagna && !spesa) continue;
+          if (!data.startsWith(prefissoMese)) {
+            scartate += 1;
+            continue;
+          }
           rows.push({ data, campagna, spesa });
+        }
+
+        if (scartate) {
+          console.warn(`[campaign-ads] ${tabName}: scartate ${scartate} righe fuori dal mese`);
         }
       } catch (err) {
         // Tab del mese non ancora disponibile (o non ancora creato): si ignora.
