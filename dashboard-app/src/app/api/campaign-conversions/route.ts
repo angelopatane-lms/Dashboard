@@ -5,9 +5,15 @@ export const dynamic = "force-dynamic";
 
 export type CampaignConversionRow = {
   campagna: string;
-  convertiti: number;
-  riconvertiti: number;
+  /** Tutte le conversioni del periodo, ripetizioni della stessa persona incluse. */
   lead_generati: number;
+  /** Persone distinte, ognuna attribuita alla PRIMA campagna che ha toccato nel
+   *  periodo: sommando fra campagne si ottengono le persone reali, senza doppi. */
+  lead_unici: number;
+  /** Di quelle persone, chi era alla prima conversione in assoluto. */
+  convertiti: number;
+  /** Di quelle persone, chi era gia' noto ed e' tornato a convertire. */
+  riconvertiti: number;
 };
 
 // Per ogni campagna, nell'intervallo [from, to]:
@@ -32,9 +38,10 @@ const QUERY = `
     FROM risolti
   )
   SELECT c.nome AS campagna,
+         COUNT(*)::int                                                          AS lead_generati,
+         COUNT(*) FILTER (WHERE f.rank_nel_periodo = 1)::int                    AS lead_unici,
          COUNT(*) FILTER (WHERE f.rank_nel_periodo = 1 AND f.posizione = 1)::int AS convertiti,
-         COUNT(*) FILTER (WHERE f.rank_nel_periodo = 1 AND f.posizione > 1)::int AS riconvertiti,
-         COUNT(*) FILTER (WHERE f.rank_nel_periodo = 1)::int AS lead_generati
+         COUNT(*) FILTER (WHERE f.rank_nel_periodo = 1 AND f.posizione > 1)::int AS riconvertiti
   FROM filtrati f
   JOIN campagna c ON c.id = f.campagna_id
   GROUP BY c.nome

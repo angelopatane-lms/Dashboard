@@ -32,7 +32,8 @@ function normKey(s: string): string {
 // funnel (Connessioni, Appuntamenti, Consulenze, Chiusure, Importo) restano
 // comunque agganciati per nome campagna tramite CampaignSummary.
 //
-// Lead Generati / Convertiti / Riconvertiti arrivano da /api/campaign-conversions,
+// Lead Generati (tutte le conversioni) e Lead Unici (persone distinte,
+// attribuite alla prima campagna del periodo) arrivano da /api/campaign-conversions,
 // cioe' dalla cronologia della proprieta' HubSpot id_campagna_refresh salvata
 // su Postgres. Fino a settembre 2026 erano numeri finti generati da un hash del
 // nome campagna: ora sono reali.
@@ -50,8 +51,7 @@ function buildCampaignAdsRows(
       // Una campagna presente nel foglio spesa ma assente fra le conversioni
       // ha davvero prodotto zero lead: non e' un dato mancante.
       leadGenerati: conv?.lead_generati ?? 0,
-      convertiti: conv?.convertiti ?? 0,
-      riconvertiti: conv?.riconvertiti ?? 0
+      leadUnici: conv?.lead_unici ?? 0
     };
   });
 }
