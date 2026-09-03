@@ -85,9 +85,21 @@ async function dataUltimaEsecuzioneIncrementale(): Promise<string> {
   return new Date(Date.now() - 24 * 3600_000).toISOString();
 }
 
+export type TipoSync = "bootstrap" | "full" | "incrementale";
 export type EsitoSync = { contatti: number; eventi: number };
 
-export async function eseguiSync(tipo: "full" | "incrementale", token: string): Promise<EsitoSync> {
+// - "incrementale" (ogni ora): solo i contatti segnalati come cambiati
+//   dall'ultima esecuzione riuscita (data_ultima_modifica_campagna_refresh).
+// - "full" (settimanale, rete di sicurezza): filtro leggero su stato_lead,
+//   NON tutta la popolazione - va bene che perda qualche caso raro, perche'
+//   e' solo un controllo supplementare sopra l'incrementale, non l'unica
+//   fonte di verita'.
+// - "bootstrap" (una tantum, manuale, vedi scripts/bootstrap-campaign-conversions.ts):
+//   nessun filtro extra oltre a HAS_PROPERTY(id_campagna_refresh) - copre
+//   TUTTA la popolazione, perche' e' l'unica esecuzione che deve garantire
+//   di non perdere nessuno storico pregresso. Da lanciare come script
+//   locale, non tramite Vercel (supera abbondantemente i limiti di timeout).
+export async function eseguiSync(tipo: TipoSync, token: string): Promise<EsitoSync> {
   const db = getDb();
   const {
     rows: [log]
@@ -100,7 +112,9 @@ export async function eseguiSync(tipo: "full" | "incrementale", token: string): 
     const filtriExtra =
       tipo === "incrementale"
         ? [filtroModificatoDa(await dataUltimaEsecuzioneIncrementale())]
-        : [filtroStatoLeadRilevante()];
+        : tipo === "full"
+          ? [filtroStatoLeadRilevante()]
+          : [];
 
     for await (const batch of cercaContattiRilevanti(token, filtriExtra)) {
       const ids = batch.map((c) => c.id);
