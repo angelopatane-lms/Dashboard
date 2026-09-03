@@ -1,19 +1,58 @@
 -- Schema per il tracciamento Lead Generati/Convertiti/Riconvertiti da HubSpot
 -- (proprieta' id_campagna_refresh). Da eseguire una volta sul database Postgres
 -- (es. console SQL di Neon) prima di attivare i cron.
+--
+-- NOTA DIMENSIONAMENTO: eventi_conversione arriva a 1-3 milioni di righe
+-- (~570k contatti x numero medio di conversioni). Lo schema e' quindi tarato
+-- per stare dentro i 500 MB del piano gratuito con margine:
+--   - il nome campagna e' normalizzato in una tabella di lookup (un INT sulla
+--     riga invece di ~40 byte di testo, ripetuti anche negli indici);
+--   - non c'e' una colonna id surrogata: la chiave primaria e' la chiave
+--     naturale (contact_id, campagna_id, ts), il che elimina sia la colonna
+--     sia il suo indice;
+--   - non c'e' un indice dedicato su contact_id: la PK lo copre gia', essendo
+--     contact_id la sua prima colonna.
+-- Costo risultante: ~135 byte/riga contro i ~330 di uno schema denormalizzato.
 
-CREATE TABLE IF NOT EXISTS eventi_conversione (
-  id          BIGSERIAL PRIMARY KEY,
-  contact_id  BIGINT      NOT NULL,
-  campagna    TEXT        NOT NULL,
-  ts          TIMESTAMPTZ NOT NULL,
-  posizione   INT         NOT NULL, -- 1 = prima conversione assoluta del contatto
-  UNIQUE (contact_id, campagna, ts)
+-- SALVAGENTE: "CREATE TABLE IF NOT EXISTS" non modifica una tabella che esiste
+-- gia'. Se su questo database fosse gia' stata creata la PRIMA versione di
+-- eventi_conversione (colonna "campagna" testuale, id BIGSERIAL), questo file
+-- non darebbe alcun errore ma il bootstrap fallirebbe alla prima scrittura.
+-- Meglio fermarsi qui con un messaggio chiaro che scoprirlo dopo ore.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'eventi_conversione' AND column_name = 'campagna'
+  ) THEN
+    RAISE EXCEPTION 'Esiste gia una tabella eventi_conversione con lo schema VECCHIO (colonna testuale "campagna"). Questo file crea lo schema NUOVO e non puo convertirla da solo. Se non contiene dati da conservare (il bootstrap li ricostruisce da HubSpot), esegui prima: DROP TABLE eventi_conversione;';
+  END IF;
+END $$;
+
+-- Anagrafica campagne: poche centinaia di righe, referenziata dagli eventi.
+CREATE TABLE IF NOT EXISTS campagna (
+  id   INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  nome TEXT NOT NULL UNIQUE
 );
 
-CREATE INDEX IF NOT EXISTS idx_eventi_ts       ON eventi_conversione (ts);
-CREATE INDEX IF NOT EXISTS idx_eventi_camp_ts  ON eventi_conversione (campagna, ts);
-CREATE INDEX IF NOT EXISTS idx_eventi_contact  ON eventi_conversione (contact_id);
+-- L'ordine delle colonne non e' estetico: Postgres allinea TIMESTAMPTZ a 8
+-- byte, quindi mettere l'INT prima del timestamp costerebbe 4 byte di
+-- riempimento piu' 4 di coda (8 byte a riga, ~24 MB su 3 milioni di righe).
+-- Va deciso ORA: cambiarlo dopo il bootstrap richiederebbe di riscrivere
+-- l'intera tabella, con le due copie compresenti - piu' dei 500 MB
+-- disponibili sul piano gratuito.
+CREATE TABLE IF NOT EXISTS eventi_conversione (
+  contact_id  BIGINT      NOT NULL,
+  ts          TIMESTAMPTZ NOT NULL,
+  campagna_id INT         NOT NULL REFERENCES campagna (id),
+  posizione   INT         NOT NULL, -- 1 = prima conversione assoluta del contatto
+  PRIMARY KEY (contact_id, campagna_id, ts)
+);
+
+-- Serve alla query dell'API, che filtra per intervallo di date.
+-- (Un indice su (campagna_id, ts) non e' presente di proposito: la query
+-- aggrega per campagna ma non filtra per campagna, quindi non lo userebbe.)
+CREATE INDEX IF NOT EXISTS idx_eventi_ts ON eventi_conversione (ts);
 
 -- Mappa "vecchio ID HubSpot" -> "ID attuale" per i contatti fusi
 -- (da hs_merged_object_ids). Non si cancella mai nulla da eventi_conversione:
@@ -25,10 +64,10 @@ CREATE TABLE IF NOT EXISTS alias_contatto (
 
 CREATE INDEX IF NOT EXISTS idx_alias_nuovo_id ON alias_contatto (nuovo_id);
 
--- Log delle esecuzioni del sync (full e incrementale), per monitoraggio.
+-- Log delle esecuzioni del sync (bootstrap, full e incrementale), per monitoraggio.
 CREATE TABLE IF NOT EXISTS sync_log (
   id           BIGSERIAL PRIMARY KEY,
-  tipo         TEXT NOT NULL,          -- 'full' | 'incrementale'
+  tipo         TEXT NOT NULL,          -- 'bootstrap' | 'full' | 'incrementale'
   iniziato_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   finito_at    TIMESTAMPTZ,
   contatti     INT DEFAULT 0,
@@ -38,3 +77,16 @@ CREATE TABLE IF NOT EXISTS sync_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sync_log_esito ON sync_log (esito, finito_at DESC);
+
+-- Punto di ripresa del bootstrap. La scansione completa dura ore: se si
+-- interrompe (rete, riavvio, chiusura del portatile) deve poter riprendere
+-- dall'ultimo blocco scritto invece che da capo. Aggiornato nella stessa
+-- transazione che scrive gli eventi, quindi non puo' andare fuori sincrono.
+-- La riga viene rimossa a fine esecuzione riuscita.
+CREATE TABLE IF NOT EXISTS sync_checkpoint (
+  tipo          TEXT PRIMARY KEY,      -- 'bootstrap' | 'full' | 'incrementale'
+  ultimo_id     BIGINT NOT NULL,       -- ultimo hs_object_id processato
+  contatti      INT NOT NULL DEFAULT 0,
+  eventi        INT NOT NULL DEFAULT 0,
+  aggiornato_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

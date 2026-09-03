@@ -1,0 +1,52 @@
+# Chiama ogni ora l'endpoint di sincronizzazione delle conversioni su Vercel.
+#
+# PERCHE' QUI E NON SU VERCEL: il piano Hobby di Vercel consente cron al
+# massimo GIORNALIERI ("Hobby accounts are limited to cron jobs that run once
+# per day"), e una schedulazione oraria fa addirittura fallire il deploy.
+# GitHub Actions non ha quel limite ed e' gratuito sui minuti inclusi.
+# Su Vercel resta comunque un cron giornaliero come rete di sicurezza: se
+# questa action si ferma, quello recupera tutto al giro successivo, perche' la
+# finestra temporale parte dall'ultima esecuzione RIUSCITA e non da "un'ora fa".
+#
+# SEGRETI DA IMPOSTARE (Settings -> Secrets and variables -> Actions):
+#   DASHBOARD_URL  es. https://dashboard-xxxx.vercel.app   (senza barra finale)
+#   CRON_SECRET    lo stesso valore impostato fra le variabili d'ambiente su Vercel
+
+name: Sincronizza conversioni campagne
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch: # permette di lanciarla a mano dalla scheda Actions
+
+concurrency:
+  group: sync-conversioni
+  cancel-in-progress: false
+
+jobs:
+  sincronizza:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Chiama l'endpoint di sincronizzazione
+        run: |
+          set -euo pipefail
+
+          if [ -z "${{ secrets.DASHBOARD_URL }}" ] || [ -z "${{ secrets.CRON_SECRET }}" ]; then
+            echo "::error::Mancano i segreti DASHBOARD_URL o CRON_SECRET"
+            exit 1
+          fi
+
+          corpo=$(mktemp)
+          codice=$(curl -sS --max-time 120 -o "$corpo" -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.DASHBOARD_URL }}/api/cron/campaign-conversions-incremental")
+
+          echo "HTTP $codice"
+          cat "$corpo"
+          echo
+
+          if [ "$codice" != "200" ]; then
+            echo "::error::Sincronizzazione fallita con HTTP $codice"
+            exit 1
+          fi

@@ -21,7 +21,7 @@ export type CampaignConversionRow = {
 //   sempre corretta senza doppio conteggio).
 const QUERY = `
   WITH risolti AS (
-    SELECT COALESCE(a.nuovo_id, e.contact_id) AS persona_id, e.campagna, e.ts, e.posizione
+    SELECT COALESCE(a.nuovo_id, e.contact_id) AS persona_id, e.campagna_id, e.ts, e.posizione
     FROM eventi_conversione e
     LEFT JOIN alias_contatto a ON a.vecchio_id = e.contact_id
     WHERE e.ts >= $1::date AND e.ts < ($2::date + INTERVAL '1 day')
@@ -31,12 +31,13 @@ const QUERY = `
            ROW_NUMBER() OVER (PARTITION BY persona_id ORDER BY ts) AS rank_nel_periodo
     FROM risolti
   )
-  SELECT campagna,
-         COUNT(*) FILTER (WHERE rank_nel_periodo = 1 AND posizione = 1)::int AS convertiti,
-         COUNT(*) FILTER (WHERE rank_nel_periodo = 1 AND posizione > 1)::int AS riconvertiti,
-         COUNT(*) FILTER (WHERE rank_nel_periodo = 1)::int AS lead_generati
-  FROM filtrati
-  GROUP BY campagna
+  SELECT c.nome AS campagna,
+         COUNT(*) FILTER (WHERE f.rank_nel_periodo = 1 AND f.posizione = 1)::int AS convertiti,
+         COUNT(*) FILTER (WHERE f.rank_nel_periodo = 1 AND f.posizione > 1)::int AS riconvertiti,
+         COUNT(*) FILTER (WHERE f.rank_nel_periodo = 1)::int AS lead_generati
+  FROM filtrati f
+  JOIN campagna c ON c.id = f.campagna_id
+  GROUP BY c.nome
   ORDER BY lead_generati DESC
 `;
 

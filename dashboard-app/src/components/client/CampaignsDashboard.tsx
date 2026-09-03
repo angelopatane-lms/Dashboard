@@ -14,6 +14,7 @@ import SectionTitle from "@/components/ui/SectionTitle";
 import CampaignSummaryBar from "@/components/charts/CampaignSummaryBar";
 import CampaignAdsTable, { type CampaignAdsRow } from "@/components/charts/CampaignAdsTable";
 import type { CampaignAdsSpendRow } from "@/app/api/campaign-ads/route";
+import type { CampaignConversionRow } from "@/app/api/campaign-conversions/route";
 
 type CampaignPeaksDatum = {
   date: string;
@@ -24,41 +25,33 @@ function normKey(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-// TODO: Lead Generati/Lead Unici non hanno ancora una fonte reale collegata:
-// generiamo valori placeholder deterministici (stessi ad ogni render, niente
-// Math.random) partendo dal nome campagna, finche' non sara' disponibile una
-// colonna dedicata nel report Ads.
-function hashString(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  }
-  return h;
-}
-
-function placeholderLeads(campagna: string): { leadGenerati: number; leadUnici: number } {
-  const h = hashString(campagna);
-  const leadGenerati = 50 + (h % 600);
-  const leadUnici = Math.max(1, Math.round(leadGenerati * (0.2 + ((h >> 3) % 50) / 100)));
-  return { leadGenerati, leadUnici };
-}
-
 // Le righe della tabella Ads rappresentano SOLO le campagne tecniche
 // realmente presenti nella colonna "Campagna" del foglio Ads-spesa (non le
 // voci generiche del foglio Operatori come "DIV COACH", "Imprenditoria",
 // "MBE SALES", che duplicherebbero il nome della categoria). I dati di
 // funnel (Connessioni, Appuntamenti, Consulenze, Chiusure, Importo) restano
 // comunque agganciati per nome campagna tramite CampaignSummary.
+//
+// Lead Generati / Convertiti / Riconvertiti arrivano da /api/campaign-conversions,
+// cioe' dalla cronologia della proprieta' HubSpot id_campagna_refresh salvata
+// su Postgres. Fino a settembre 2026 erano numeri finti generati da un hash del
+// nome campagna: ora sono reali.
 function buildCampaignAdsRows(
-  spesaByCampagna: Map<string, { campagna: string; spesa: number }>
+  spesaByCampagna: Map<string, { campagna: string; spesa: number }>,
+  conversioniByCampagna: Map<string, CampaignConversionRow>
 ): CampaignAdsRow[] {
   return Array.from(spesaByCampagna.values()).map((entry) => {
     const campagna = entry.campagna.trim() || "(Nessuna)";
+    const conv = conversioniByCampagna.get(normKey(campagna));
     return {
       categoria: guessCategoria(entry.campagna),
       campagna,
       spesa: entry.spesa,
-      ...placeholderLeads(campagna)
+      // Una campagna presente nel foglio spesa ma assente fra le conversioni
+      // ha davvero prodotto zero lead: non e' un dato mancante.
+      leadGenerati: conv?.lead_generati ?? 0,
+      convertiti: conv?.convertiti ?? 0,
+      riconvertiti: conv?.riconvertiti ?? 0
     };
   });
 }
@@ -104,6 +97,46 @@ export default function CampaignsDashboard({
       })
       .catch(console.error);
   }, [filters.from, filters.to, defaultFrom, defaultTo]);
+
+  // Lead reali per campagna, dalla cronologia HubSpot salvata su Postgres.
+  // A differenza della spesa (che si puo' ritagliare a posteriori da un
+  // intervallo piu' ampio gia' scaricato) le conversioni sono aggregate dal
+  // database sull'intervallo richiesto, quindi vanno rilette a ogni cambio di
+  // date.
+  const [conversioni, setConversioni] = useState<CampaignConversionRow[]>([]);
+  // null = non ancora caricato, true = il caricamento e' fallito. Serve a non
+  // spacciare per "zero lead" un errore di rete o un database irraggiungibile.
+  const [conversioniErrore, setConversioniErrore] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const from = filters.from ?? defaultFrom;
+    const to = filters.to ?? defaultTo;
+    let annullato = false;
+
+    fetch(`/api/campaign-conversions?from=${from}&to=${to}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((data: { righe?: CampaignConversionRow[] }) => {
+        if (annullato) return;
+        setConversioni(data.righe ?? []);
+        setConversioniErrore(false);
+      })
+      .catch((err) => {
+        if (annullato) return;
+        console.error("[campaign-conversions]", err);
+        setConversioni([]);
+        setConversioniErrore(true);
+      });
+
+    return () => {
+      annullato = true;
+    };
+  }, [filters.from, filters.to, defaultFrom, defaultTo]);
+
+  const conversioniByCampagna = useMemo(() => {
+    const map = new Map<string, CampaignConversionRow>();
+    for (const r of conversioni) map.set(normKey(r.campagna), r);
+    return map;
+  }, [conversioni]);
 
   // Il filtro "Campagna" di questa pagina mostra le Categorie (dedotte dalle
   // campagne tecniche realmente presenti nel foglio Ads-spesa per il periodo
@@ -172,10 +205,10 @@ export default function CampaignsDashboard({
   const campaignSummary = useMemo(() => campaignSummaryFull.slice(0, 12), [campaignSummaryFull]);
 
   const campaignAdsRows = useMemo(() => {
-    const rows = buildCampaignAdsRows(spesaByCampagna);
+    const rows = buildCampaignAdsRows(spesaByCampagna, conversioniByCampagna);
     if (!filters.campagna) return rows;
     return rows.filter((r) => r.categoria === filters.campagna);
-  }, [spesaByCampagna, filters.campagna]);
+  }, [spesaByCampagna, conversioniByCampagna, filters.campagna]);
 
   const campaignAnomalies = useMemo(() => {
     const toMs = (iso: string) => new Date(iso).getTime();
@@ -335,6 +368,15 @@ export default function CampaignsDashboard({
           campaigns={categoriaOptions}
         />
       </div>
+
+      {conversioniErrore ? (
+        <div className="mt-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <strong>Lead non disponibili.</strong> Le colonne Lead Generati, Convertiti e
+          Riconvertiti mostrano zero perche' i dati delle conversioni non sono
+          raggiungibili, non perche' le campagne non abbiano prodotto lead. Le altre
+          colonne restano valide.
+        </div>
+      ) : null}
 
       <Card className="mt-6">
         <CampaignAdsTable adsRows={campaignAdsRows} campaignSummary={campaignSummaryFull} />

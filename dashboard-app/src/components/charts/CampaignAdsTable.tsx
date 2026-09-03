@@ -18,14 +18,19 @@ export type CampaignAdsRow = {
   categoria: string;
   campagna: string;
   spesa: number;
+  /** Persone distinte che hanno convertito su questa campagna nel periodo. */
   leadGenerati: number;
-  leadUnici: number;
+  /** Di quelle, chi era alla PRIMA conversione in assoluto (lead nuovo). */
+  convertiti: number;
+  /** Di quelle, chi era gia' nel database ed e' tornato a convertire. */
+  riconvertiti: number;
 };
 
 type RawTotals = {
   spesa: number;
   leadGenerati: number;
-  leadUnici: number;
+  convertiti: number;
+  riconvertiti: number;
   risposte: number;
   fissati: number;
   processati: number;
@@ -35,8 +40,7 @@ type RawTotals = {
 };
 
 type DerivedMetrics = RawTotals & {
-  cplGenerati: number | null;
-  cplUnici: number | null;
+  cpl: number | null;
   pctAppFissati: number | null;
   cpas: number | null;
   pctAppSvolti: number | null;
@@ -49,7 +53,8 @@ type DerivedMetrics = RawTotals & {
 const emptyRaw: RawTotals = {
   spesa: 0,
   leadGenerati: 0,
-  leadUnici: 0,
+  convertiti: 0,
+  riconvertiti: 0,
   risposte: 0,
   fissati: 0,
   processati: 0,
@@ -66,7 +71,8 @@ function toRaw(ads: CampaignAdsRow, summary?: CampaignSummary): RawTotals {
   return {
     spesa: ads.spesa,
     leadGenerati: ads.leadGenerati,
-    leadUnici: ads.leadUnici,
+    convertiti: ads.convertiti,
+    riconvertiti: ads.riconvertiti,
     risposte: summary?.connessioni ?? 0,
     fissati: summary?.appuntamenti ?? 0,
     processati: summary?.consulenze ?? 0,
@@ -80,7 +86,8 @@ function addRaw(a: RawTotals, b: RawTotals): RawTotals {
   return {
     spesa: a.spesa + b.spesa,
     leadGenerati: a.leadGenerati + b.leadGenerati,
-    leadUnici: a.leadUnici + b.leadUnici,
+    convertiti: a.convertiti + b.convertiti,
+    riconvertiti: a.riconvertiti + b.riconvertiti,
     risposte: a.risposte + b.risposte,
     fissati: a.fissati + b.fissati,
     processati: a.processati + b.processati,
@@ -97,8 +104,7 @@ function div(a: number, b: number): number | null {
 function deriveMetrics(raw: RawTotals): DerivedMetrics {
   return {
     ...raw,
-    cplGenerati: div(raw.spesa, raw.leadGenerati),
-    cplUnici: div(raw.spesa, raw.leadUnici),
+    cpl: div(raw.spesa, raw.leadGenerati),
     pctAppFissati: div(raw.fissati, raw.risposte),
     cpas: div(raw.spesa, raw.processati),
     pctAppSvolti: div(raw.processati, raw.fissati),
@@ -124,9 +130,9 @@ function rateBg(rate: number | null): string {
 type MaxValues = {
   spesa: number;
   leadGenerati: number;
-  cplGenerati: number;
-  leadUnici: number;
-  cplUnici: number;
+  cpl: number;
+  convertiti: number;
+  riconvertiti: number;
   risposte: number;
   fissati: number;
   processati: number;
@@ -147,10 +153,10 @@ function fmtEur(v: number | null, digits = 0): ReactNode {
 
 const HEADERS = [
   "Spesa",
-  "Generati",
-  "CPL Generati",
-  "Unici",
-  "CPL Unici",
+  "Lead Generati",
+  "CPL",
+  "Convertiti",
+  "Riconvertiti",
   "Connessioni",
   "Appuntamenti",
   "% Appuntamenti",
@@ -176,18 +182,15 @@ function MetricCells({ m, max }: { m: DerivedMetrics; max: MaxValues }) {
       </td>
       <td
         className="px-3 py-1.5 text-right tabular-nums"
-        style={{ background: m.cplGenerati !== null ? heatBg(m.cplGenerati, max.cplGenerati) : undefined }}
+        style={{ background: m.cpl !== null ? heatBg(m.cpl, max.cpl) : undefined }}
       >
-        {fmtEur(m.cplGenerati, 2)}
+        {fmtEur(m.cpl, 2)}
       </td>
-      <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.leadUnici, max.leadUnici) }}>
-        {formatInt(m.leadUnici)}
+      <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.convertiti, max.convertiti) }}>
+        {formatInt(m.convertiti)}
       </td>
-      <td
-        className="px-3 py-1.5 text-right tabular-nums"
-        style={{ background: m.cplUnici !== null ? heatBg(m.cplUnici, max.cplUnici) : undefined }}
-      >
-        {fmtEur(m.cplUnici, 2)}
+      <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.riconvertiti, max.riconvertiti) }}>
+        {formatInt(m.riconvertiti)}
       </td>
       <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.risposte, max.risposte) }}>
         {formatInt(m.risposte)}
@@ -290,9 +293,9 @@ export default function CampaignAdsTable({
     return {
       spesa: maxOf(rowMetrics.map((m) => m.spesa)),
       leadGenerati: maxOf(rowMetrics.map((m) => m.leadGenerati)),
-      cplGenerati: maxOf(rowMetrics.map((m) => m.cplGenerati)),
-      leadUnici: maxOf(rowMetrics.map((m) => m.leadUnici)),
-      cplUnici: maxOf(rowMetrics.map((m) => m.cplUnici)),
+      cpl: maxOf(rowMetrics.map((m) => m.cpl)),
+      convertiti: maxOf(rowMetrics.map((m) => m.convertiti)),
+      riconvertiti: maxOf(rowMetrics.map((m) => m.riconvertiti)),
       risposte: maxOf(rowMetrics.map((m) => m.risposte)),
       fissati: maxOf(rowMetrics.map((m) => m.fissati)),
       processati: maxOf(rowMetrics.map((m) => m.processati)),
