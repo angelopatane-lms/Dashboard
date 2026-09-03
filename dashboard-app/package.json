@@ -11,7 +11,8 @@
     "analizza:campagne": "tsx scripts/analizza-campagne-hubspot.ts",
     "stima:dimensione": "tsx scripts/stima-dimensione.ts",
     "db:schema": "tsx scripts/applica-schema.ts",
-    "db:verifica": "tsx scripts/verifica-db.ts"
+    "db:verifica": "tsx scripts/verifica-db.ts",
+    "analizza:chiamate": "tsx scripts/analizza-chiamate.ts"
   },
   "dependencies": {
     "date-fns": "3.6.0",
