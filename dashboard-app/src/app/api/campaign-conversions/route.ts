@@ -7,9 +7,9 @@ export type CampaignConversionRow = {
   campagna: string;
   /** Tutte le conversioni del periodo, ripetizioni della stessa persona incluse. */
   lead_generati: number;
-  /** Lead NUOVI: persone che prima non esistevano su HubSpot e sono state
-   *  create da questa iscrizione. Attribuzione alla prima campagna della VITA
-   *  del contatto, non del periodo selezionato. */
+  /** Persone con UNA SOLA conversione in tutta la loro storia. Smettono di
+   *  essere uniche appena si riconvertono, quindi il valore di un periodo
+   *  passato diminuisce nel tempo. */
   lead_unici: number;
 };
 
@@ -18,35 +18,38 @@ export type CampaignConversionRow = {
 // - Lead Generati: tutte le conversioni avvenute nel periodo, comprese le
 //   ripetizioni della stessa persona sulla stessa campagna.
 //
-// - Lead Unici: i lead NUOVI, cioe' le persone che prima non esistevano su
-//   HubSpot e sono nate da quell'iscrizione. Ogni contatto ha una sola prima
-//   conversione in tutta la sua vita, quindi viene attribuito a una sola
-//   campagna e una sola volta, per sempre. Ne discendono due proprieta' utili:
-//   la somma fra campagne non ha doppi conteggi, e l'attribuzione NON cambia
-//   allargando o restringendo il periodo (a differenza di un "primo del
-//   periodo", che si sposta al variare delle date).
+// - Lead Unici: le persone che hanno UNA SOLA conversione in tutta la loro
+//   storia. Restano uniche finche' non si riconvertono: appena
+//   id_campagna_refresh cambia una seconda volta, quel contatto non e' piu'
+//   unico ma riconvertito, e smette di contare per la campagna che l'aveva
+//   portato.
 //
-// La numerazione e' calcolata su TUTTA la storia (la finestra e' fuori dal
-// filtro sulle date) e dopo la risoluzione delle fusioni: due schede unite
-// sono una persona sola, quindi una sola prima conversione. Senza questo
-// accorgimento i contatti fusi verrebbero contati due volte.
+//   CONSEGUENZA DA TENERE PRESENTE: il valore e' retroattivo. I Lead Unici di
+//   un mese passato DIMINUISCONO col tempo, man mano che quei lead tornano a
+//   convertire. Due letture dello stesso periodo a distanza di settimane
+//   daranno numeri diversi: e' inerente alla definizione, non un errore.
+//
+// Il conteggio per persona e' su TUTTA la storia (fuori dal filtro sulle date)
+// e dopo la risoluzione delle fusioni: due schede unite sono una persona sola,
+// e la somma dei loro eventi decide se e' unica o riconvertita.
 const QUERY = `
   WITH risolti AS (
     SELECT COALESCE(a.nuovo_id, e.contact_id) AS persona_id, e.campagna_id, e.ts
     FROM eventi_conversione e
     LEFT JOIN alias_contatto a ON a.vecchio_id = e.contact_id
   ),
-  marcati AS (
-    SELECT persona_id, campagna_id, ts,
-           ROW_NUMBER() OVER (PARTITION BY persona_id ORDER BY ts, campagna_id) AS n_vita
+  conteggi AS (
+    SELECT persona_id, COUNT(*) AS eventi_vita
     FROM risolti
+    GROUP BY persona_id
   )
   SELECT c.nome AS campagna,
-         COUNT(*)::int                                 AS lead_generati,
-         COUNT(*) FILTER (WHERE m.n_vita = 1)::int     AS lead_unici
-  FROM marcati m
-  JOIN campagna c ON c.id = m.campagna_id
-  WHERE m.ts >= $1::date AND m.ts < ($2::date + INTERVAL '1 day')
+         COUNT(*)::int                                    AS lead_generati,
+         COUNT(*) FILTER (WHERE k.eventi_vita = 1)::int   AS lead_unici
+  FROM risolti r
+  JOIN conteggi k ON k.persona_id = r.persona_id
+  JOIN campagna c ON c.id = r.campagna_id
+  WHERE r.ts >= $1::date AND r.ts < ($2::date + INTERVAL '1 day')
   GROUP BY c.nome
   ORDER BY lead_generati DESC
 `;

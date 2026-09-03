@@ -5,14 +5,15 @@ import type { CampaignSummary } from "@/lib/analytics";
 import { formatInt, formatEur, formatPct, formatFloat } from "@/lib/format";
 
 /**
- * Dati "Ads" per campagna (Spesa, Lead Generati, Lead Unici) e la relativa
- * Categoria di raggruppamento (es. COACH, IA, ...).
+ * Dati "Ads" per campagna e Categoria di raggruppamento.
  *
- * TODO: oggi non esiste una fonte dati per Spesa/Lead/Categoria: questi valori
- * andranno collegati a un nuovo tab Google Sheet (o altra fonte Ads) con
- * colonne Categoria, Campagna, Spesa, Lead Generati, Lead Unici, joinate per
- * nome campagna con `CampaignSummary` (che fornisce gia' Risposte=Connessioni,
- * Fissati=Appuntamenti, Processati=Consulenze, Chiusure e Importo=Boom).
+ * Fonti (tutte reali da settembre 2026):
+ * - Spesa      -> foglio Google "Report_Storico_AAAA-MM", via /api/campaign-ads
+ * - Lead       -> cronologia HubSpot id_campagna_refresh salvata su Postgres,
+ *                 via /api/campaign-conversions
+ * - Categoria  -> dedotta dal nome campagna (guessCategoria)
+ * - Funnel     -> CampaignSummary dal foglio Operatori (Risposte=Connessioni,
+ *                 Fissati=Appuntamenti, Processati=Consulenze, Importo=Boom)
  */
 export type CampaignAdsRow = {
   categoria: string;
@@ -20,9 +21,9 @@ export type CampaignAdsRow = {
   spesa: number;
   /** Tutte le conversioni del periodo, ripetizioni della stessa persona incluse. */
   leadGenerati: number;
-  /** Lead NUOVI: persone che prima non esistevano su HubSpot, nate da questa
-   *  iscrizione. Attribuiti alla prima campagna della VITA del contatto, quindi
-   *  una sola volta e per sempre: il valore non cambia al variare del periodo. */
+  /** Persone con UNA SOLA conversione in tutta la loro storia: si iscrivono
+   *  qui e non tornano piu'. Appena si riconvertono altrove smettono di
+   *  contare, quindi il valore di un periodo passato cala nel tempo. */
   leadUnici: number;
 };
 
