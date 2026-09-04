@@ -16,6 +16,7 @@ import CampaignAdsTable, { type CampaignAdsRow, type FunnelCampagna } from "@/co
 import type { CampaignAdsSpendRow } from "@/app/api/campaign-ads/route";
 import type { CampaignConversionRow } from "@/app/api/campaign-conversions/route";
 import type { RawBoomRecord, RawDealRecord } from "@/app/api/hubspot-data/route";
+import type { CampaignTrattativeRow } from "@/app/api/campaign-trattative/route";
 import { CHIUSURE_TIPOLOGIE, BOOM_TIPOLOGIE } from "@/lib/hubspotRegole";
 
 
@@ -154,6 +155,36 @@ export default function CampaignsDashboard({
   const [boomRecords, setBoomRecords] = useState<RawBoomRecord[] | null>(null);
   const [hubspotErrore, setHubspotErrore] = useState(false);
 
+  // Consulenze svolte, precalcolate su Postgres dal sync delle trattative: la
+  // data della consulenza non e' ricavabile dallo stato attuale, va ricostruita
+  // dalla cronologia delle fasi.
+  const [consulenze, setConsulenze] = useState<CampaignTrattativeRow[]>([]);
+  const [consulenzeErrore, setConsulenzeErrore] = useState(false);
+
+  useEffect(() => {
+    const from = filters.from ?? defaultFrom;
+    const to = filters.to ?? defaultTo;
+    let annullato = false;
+
+    fetch(`/api/campaign-trattative?from=${from}&to=${to}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((data: { righe?: CampaignTrattativeRow[] }) => {
+        if (annullato) return;
+        setConsulenze(data.righe ?? []);
+        setConsulenzeErrore(false);
+      })
+      .catch((err) => {
+        if (annullato) return;
+        console.error("[campaign-trattative]", err);
+        setConsulenze([]);
+        setConsulenzeErrore(true);
+      });
+
+    return () => {
+      annullato = true;
+    };
+  }, [filters.from, filters.to, defaultFrom, defaultTo]);
+
   useEffect(() => {
     const from = filters.from ?? defaultFrom;
     const to = filters.to ?? defaultTo;
@@ -192,7 +223,7 @@ export default function CampaignsDashboard({
     const map = new Map<string, FunnelCampagna>();
     const prendi = (campagna: string) => {
       const k = normKey(campagna);
-      const cur = map.get(k) ?? { appuntamenti: 0, chiusure: 0, importo: 0 };
+      const cur = map.get(k) ?? { appuntamenti: 0, chiusure: 0, importo: 0, consulenze: 0 };
       map.set(k, cur);
       return cur;
     };
@@ -207,8 +238,9 @@ export default function CampaignsDashboard({
       if (CHIUSURE_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.chiusure += 1;
       if (BOOM_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.importo += r.importo;
     }
+    for (const r of consulenze) prendi(r.campagna).consulenze = r.consulenze;
     return map;
-  }, [dealRecords, boomRecords]);
+  }, [dealRecords, boomRecords, consulenze]);
 
   // Il filtro "Campagna" di questa pagina mostra le Categorie (dedotte dalle
   // campagne tecniche realmente presenti nel foglio Ads-spesa per il periodo
@@ -441,12 +473,14 @@ export default function CampaignsDashboard({
         />
       </div>
 
-      {conversioniErrore || hubspotErrore ? (
+      {conversioniErrore || hubspotErrore || consulenzeErrore ? (
         <div className="mt-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <strong>Dati non disponibili.</strong>{" "}
           {conversioniErrore ? "Lead Generati e Lead Unici" : null}
           {conversioniErrore && hubspotErrore ? ", " : null}
-          {hubspotErrore ? "Appuntamenti, Chiusure e Importo" : null} mostrano zero
+          {hubspotErrore ? "Appuntamenti, Chiusure e Importo" : null}
+          {hubspotErrore && consulenzeErrore ? ", " : null}
+          {consulenzeErrore ? "Consulenze" : null} mostrano zero
           perche' la fonte non e' raggiungibile, non perche' le campagne non abbiano
           prodotto risultati. Le altre colonne restano valide.
         </div>

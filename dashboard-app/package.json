@@ -13,7 +13,8 @@
     "db:schema": "tsx scripts/applica-schema.ts",
     "db:verifica": "tsx scripts/verifica-db.ts",
     "analizza:chiamate": "tsx scripts/analizza-chiamate.ts",
-    "verifica:svolte": "tsx scripts/verifica-trattative-svolte.ts"
+    "verifica:svolte": "tsx scripts/verifica-trattative-svolte.ts",
+    "bootstrap:trattative": "tsx scripts/bootstrap-trattative.ts"
   },
   "dependencies": {
     "date-fns": "3.6.0",

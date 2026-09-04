@@ -64,6 +64,27 @@ CREATE TABLE IF NOT EXISTS alias_contatto (
 
 CREATE INDEX IF NOT EXISTS idx_alias_nuovo_id ON alias_contatto (nuovo_id);
 
+-- Trattative della pipeline "Appuntamenti (High Ticket)".
+--
+-- svolta_ts e' la data della PRIMA transizione di fase che soddisfa i criteri
+-- del workflow "Performance Tracker - Trattative Svolte", ricostruita dalla
+-- cronologia delle fasi. Va salvata qui perche' non e' ricavabile dallo stato
+-- attuale della trattativa: le proprieta' su cui il workflow decide cambiano a
+-- ogni passaggio successivo, quindi guardandole oggi non si saprebbe piu' se e
+-- quando la consulenza e' avvenuta.
+--
+-- campagna_id puo' essere NULL: circa il 5% delle trattative non ha
+-- id_campagna_track valorizzata.
+CREATE TABLE IF NOT EXISTS trattativa (
+  deal_id     BIGINT PRIMARY KEY,
+  campagna_id INT REFERENCES campagna (id),
+  creata_ts   TIMESTAMPTZ NOT NULL,
+  svolta_ts   TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_trattativa_creata ON trattativa (creata_ts);
+CREATE INDEX IF NOT EXISTS idx_trattativa_svolta ON trattativa (svolta_ts) WHERE svolta_ts IS NOT NULL;
+
 -- Log delle esecuzioni del sync (bootstrap, full e incrementale), per monitoraggio.
 CREATE TABLE IF NOT EXISTS sync_log (
   id           BIGSERIAL PRIMARY KEY,
