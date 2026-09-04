@@ -289,7 +289,14 @@ export default function CampaignAdsTable({
     }
     const list = Array.from(byCategoria.entries()).map(([categoria, rows]) => ({
       categoria,
-      rows,
+      // Dentro ogni categoria le campagne vanno dalla piu' alla meno costosa,
+      // cosi' le voci che pesano sul budget si leggono per prime. A parita' di
+      // spesa si ordina per nome: senza un criterio di spareggio l'ordine
+      // dipenderebbe da come sono arrivate le righe e potrebbe cambiare fra un
+      // caricamento e l'altro.
+      rows: [...rows].sort(
+        (a, b) => b.raw.spesa - a.raw.spesa || a.campagna.localeCompare(b.campagna, "it")
+      ),
       totale: rows.reduce((acc, r) => addRaw(acc, r.raw), emptyRaw)
     }));
 
