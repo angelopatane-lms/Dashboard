@@ -39,7 +39,7 @@ async function main() {
   const iniziato = Date.now();
   let ultimaStampa = 0;
 
-  const esito = await sincronizzaTrattative(token, {
+  const esito = await sincronizzaTrattative(token, "bootstrap", {
     daIso,
     onProgresso: (s) => {
       const ora = Date.now();

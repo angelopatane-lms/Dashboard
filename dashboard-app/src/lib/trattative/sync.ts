@@ -162,9 +162,20 @@ function primaSvolta(
   return null;
 }
 
-/** Id delle trattative della pipeline create da `daIso` in poi. */
-async function* cercaTrattative(token: string, daIso: string): AsyncGenerator<string[]> {
+/**
+ * Id delle trattative da processare.
+ * - bootstrap    : tutte quelle CREATE da `daIso` in poi
+ * - incrementale : solo quelle MODIFICATE da `daIso` in poi, indipendentemente
+ *                  da quando sono state create (una trattativa di gennaio puo'
+ *                  essere svolta oggi)
+ */
+async function* cercaTrattative(
+  token: string,
+  daIso: string,
+  tipo: TipoSyncTrattative
+): AsyncGenerator<string[]> {
   const daMs = new Date(daIso).getTime();
+  const proprietaData = tipo === "incrementale" ? "hs_lastmodifieddate" : "createdate";
   let ultimoId = 0;
 
   while (true) {
@@ -181,7 +192,7 @@ async function* cercaTrattative(token: string, daIso: string): AsyncGenerator<st
             filters: [
               { propertyName: "hs_object_id", operator: "GT", value: String(ultimoId) },
               { propertyName: "pipeline", operator: "EQ", value: PIPELINE_APPUNTAMENTI },
-              { propertyName: "createdate", operator: "GTE", value: String(daMs) }
+              { propertyName: proprietaData, operator: "GTE", value: String(daMs) }
             ]
           }
         ]
@@ -211,17 +222,50 @@ async function risolviIdCampagne(nomi: string[]): Promise<void> {
   for (const r of rows) idCampagne.set(r.nome as string, r.id as number);
 }
 
-export type EsitoTrattative = { trattative: number; svolte: number; senzaCampagna: number };
+export type TipoSyncTrattative = "bootstrap" | "incrementale";
+export type EsitoTrattative = {
+  trattative: number;
+  svolte: number;
+  senzaCampagna: number;
+  /** true se il tetto e' scattato: restano trattative non processate. */
+  troncato: boolean;
+};
 export type OpzioniTrattative = {
   daIso?: string;
   onProgresso?: (s: EsitoTrattative) => void;
 };
 
+// Un giro incrementale gira dentro una funzione Vercel da 60 secondi. A ~34
+// trattative/secondo, 1200 sono circa 35s: resta margine per la ricerca
+// iniziale e per un eventuale rallentamento. Superato il tetto ci si ferma e lo
+// si dichiara, invece di farsi uccidere a meta' lasciando dati incoerenti.
+const MAX_INCREMENTALE = 1200;
+
+/**
+ * Inizio della finestra per l'incrementale: dall'ultima esecuzione RIUSCITA,
+ * meno 30 minuti di margine. Se non ce n'e' mai stata una, si guarda indietro
+ * 24 ore. Ancorare all'ultimo successo (e non a "un'ora fa") fa si' che un giro
+ * saltato venga recuperato dal successivo, senza buchi.
+ */
+async function inizioFinestraIncrementale(): Promise<string> {
+  const db = getDb();
+  const { rows } = await db.query(
+    `SELECT iniziato_at FROM sync_log WHERE tipo = 'trattative' AND esito = 'ok'
+     ORDER BY iniziato_at DESC LIMIT 1`
+  );
+  if (rows[0]?.iniziato_at) {
+    return new Date(new Date(rows[0].iniziato_at).getTime() - 30 * 60_000).toISOString();
+  }
+  return new Date(Date.now() - 24 * 3600_000).toISOString();
+}
+
 export async function sincronizzaTrattative(
   token: string,
+  tipo: TipoSyncTrattative = "bootstrap",
   opzioni: OpzioniTrattative = {}
 ): Promise<EsitoTrattative> {
-  const daIso = opzioni.daIso ?? "2026-01-01";
+  const daIso =
+    opzioni.daIso ?? (tipo === "incrementale" ? await inizioFinestraIncrementale() : "2026-01-01");
   const db = getDb();
 
   const {
@@ -247,10 +291,10 @@ export async function sincronizzaTrattative(
   );
   if (!etichettaFase.size) throw new Error("Nessuna fase letta dalla pipeline: impossibile ricostruire le transizioni.");
 
-  const esito: EsitoTrattative = { trattative: 0, svolte: 0, senzaCampagna: 0 };
+  const esito: EsitoTrattative = { trattative: 0, svolte: 0, senzaCampagna: 0, troncato: false };
 
   try {
-    for await (const blocco of cercaTrattative(token, daIso)) {
+    for await (const blocco of cercaTrattative(token, daIso, tipo)) {
       for (let i = 0; i < blocco.length; i += MAX_INPUT_STORICO) {
         const gruppoIds = blocco.slice(i, i + MAX_INPUT_STORICO);
         const d = await chiamaHubSpot<any>(token, `${HUBSPOT_API}/crm/v3/objects/deals/batch/read`, {
@@ -297,12 +341,28 @@ export async function sincronizzaTrattative(
         esito.senzaCampagna += righe.filter((x) => !x.campagna).length;
         opzioni.onProgresso?.({ ...esito });
         await sleep(120);
+
+        if (tipo === "incrementale" && esito.trattative >= MAX_INCREMENTALE) {
+          esito.troncato = true;
+          break;
+        }
       }
+      if (esito.troncato) break;
     }
 
     await db.query(
-      `UPDATE sync_log SET finito_at = now(), contatti = $2, eventi = $3, esito = 'ok' WHERE id = $1`,
-      [log.id, esito.trattative, esito.svolte]
+      `UPDATE sync_log SET finito_at = now(), contatti = $2, eventi = $3, esito = $4, messaggio = $5 WHERE id = $1`,
+      [
+        log.id,
+        esito.trattative,
+        esito.svolte,
+        // Un giro troncato NON e' un successo: marcarlo 'ok' sposterebbe in
+        // avanti la finestra del giro successivo, lasciando un buco permanente.
+        esito.troncato ? "errore" : "ok",
+        esito.troncato
+          ? `Troncato al tetto di ${MAX_INCREMENTALE}: la finestra da recuperare e' troppo ampia. Rilanciare "npm run bootstrap:trattative".`
+          : null
+      ]
     );
     return esito;
   } catch (err) {
