@@ -59,6 +59,7 @@ async function main() {
     `  Di cui svolte           : ${esito.svolte.toLocaleString("it-IT")}` +
       ` (${((esito.svolte / Math.max(1, esito.trattative)) * 100).toFixed(1)}%)`
   );
+  console.log(`  Appuntamenti disertati  : ${esito.noShow.toLocaleString("it-IT")} (ingressi in No Show)`);
   console.log(
     `  Senza id_campagna_track : ${esito.senzaCampagna.toLocaleString("it-IT")}` +
       ` (${((esito.senzaCampagna / Math.max(1, esito.trattative)) * 100).toFixed(1)}%)`

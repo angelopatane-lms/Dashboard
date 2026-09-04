@@ -254,7 +254,7 @@ export default function CampaignsDashboard({
     const map = new Map<string, FunnelCampagna>();
     const prendi = (campagna: string) => {
       const k = normKey(campagna);
-      const cur = map.get(k) ?? { appuntamenti: 0, chiusure: 0, importo: 0, consulenze: 0, chiamate: 0, connessioni: 0 };
+      const cur = map.get(k) ?? { appuntamenti: 0, chiusure: 0, importo: 0, consulenze: 0, noShow: 0, chiamate: 0, connessioni: 0 };
       map.set(k, cur);
       return cur;
     };
@@ -269,7 +269,11 @@ export default function CampaignsDashboard({
       if (CHIUSURE_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.chiusure += 1;
       if (BOOM_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.importo += r.importo;
     }
-    for (const r of consulenze) prendi(r.campagna).consulenze = r.consulenze;
+    for (const r of consulenze) {
+      const cur = prendi(r.campagna);
+      cur.consulenze = r.consulenze;
+      cur.noShow = r.no_show;
+    }
     for (const r of chiamate) {
       const cur = prendi(r.campagna);
       cur.chiamate = r.chiamate;

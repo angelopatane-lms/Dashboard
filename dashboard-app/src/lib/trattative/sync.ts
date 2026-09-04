@@ -163,6 +163,25 @@ function primaSvolta(
 }
 
 /**
+ * Tutti gli ingressi nella fase "No Show", con la loro data.
+ *
+ * Si legge dalla cronologia e non dalla fase attuale: un appuntamento disertato
+ * viene quasi sempre spostato subito dopo (Persa, Archiviata, Ripianificata), e
+ * guardando dove si trova oggi la trattativa non lo si vedrebbe piu'. Una
+ * trattativa puo' comparire piu' volte: viene ripianificata e il cliente
+ * diserta di nuovo. Misurato: il 53% delle trattative ne ha almeno uno.
+ */
+function ingressiNoShow(storici: Record<string, Voce[]>, idFaseNoShow: string): Date[] {
+  const out: Date[] = [];
+  for (const v of storici.dealstage ?? []) {
+    if ((v.value ?? "").trim() !== idFaseNoShow) continue;
+    const t = new Date(v.timestamp);
+    if (!Number.isNaN(t.getTime())) out.push(t);
+  }
+  return out;
+}
+
+/**
  * Id delle trattative da processare.
  * - bootstrap    : tutte quelle CREATE da `daIso` in poi
  * - incrementale : solo quelle MODIFICATE da `daIso` in poi, indipendentemente
@@ -226,6 +245,8 @@ export type TipoSyncTrattative = "bootstrap" | "incrementale";
 export type EsitoTrattative = {
   trattative: number;
   svolte: number;
+  /** Ingressi nella fase No Show: una trattativa puo' contribuirne piu' di uno. */
+  noShow: number;
   senzaCampagna: number;
   /** true se il tetto e' scattato: restano trattative non processate. */
   troncato: boolean;
@@ -291,7 +312,10 @@ export async function sincronizzaTrattative(
   );
   if (!etichettaFase.size) throw new Error("Nessuna fase letta dalla pipeline: impossibile ricostruire le transizioni.");
 
-  const esito: EsitoTrattative = { trattative: 0, svolte: 0, senzaCampagna: 0, troncato: false };
+  const idFaseNoShow = [...etichettaFase].find(([, label]) => label === "No Show")?.[0];
+  if (!idFaseNoShow) throw new Error("Fase 'No Show' non trovata nella pipeline: impossibile contare gli appuntamenti disertati.");
+
+  const esito: EsitoTrattative = { trattative: 0, svolte: 0, noShow: 0, senzaCampagna: 0, troncato: false };
 
   try {
     for await (const blocco of cercaTrattative(token, daIso, tipo)) {
@@ -306,7 +330,13 @@ export async function sincronizzaTrattative(
           }
         });
 
-        const righe: Array<{ dealId: number; campagna: string; creata: Date; svolta: Date | null }> = [];
+        const righe: Array<{
+          dealId: number;
+          campagna: string;
+          creata: Date;
+          svolta: Date | null;
+          noShow: Date[];
+        }> = [];
         for (const r of d.results ?? []) {
           const creata = new Date(r.properties?.createdate ?? "");
           if (Number.isNaN(creata.getTime())) continue;
@@ -314,7 +344,8 @@ export async function sincronizzaTrattative(
             dealId: Number(r.id),
             campagna: (r.properties?.id_campagna_track ?? "").trim(),
             creata,
-            svolta: primaSvolta(gruppi, r.propertiesWithHistory ?? {}, r.properties ?? {}, etichettaFase)
+            svolta: primaSvolta(gruppi, r.propertiesWithHistory ?? {}, r.properties ?? {}, etichettaFase),
+            noShow: ingressiNoShow(r.propertiesWithHistory ?? {}, idFaseNoShow)
           });
         }
         if (!righe.length) continue;
@@ -335,6 +366,29 @@ export async function sincronizzaTrattative(
             righe.map((x) => x.svolta)
           ]
         );
+
+        // I no-show della trattativa vengono riscritti per intero: cancellare e
+        // reinserire rende il sync idempotente anche se un evento sparisce
+        // dalla cronologia o ne compare uno nuovo.
+        const dealIds = righe.map((x) => x.dealId);
+        await db.query(`DELETE FROM no_show WHERE deal_id = ANY($1::bigint[])`, [dealIds]);
+
+        const eventiNs = righe.flatMap((x) =>
+          x.noShow.map((ts) => ({
+            dealId: x.dealId,
+            ts,
+            campagnaId: x.campagna ? idCampagne.get(x.campagna) ?? null : null
+          }))
+        );
+        if (eventiNs.length) {
+          await db.query(
+            `INSERT INTO no_show (deal_id, ts, campagna_id)
+             SELECT * FROM UNNEST($1::bigint[], $2::timestamptz[], $3::int[])
+             ON CONFLICT (deal_id, ts) DO UPDATE SET campagna_id = EXCLUDED.campagna_id`,
+            [eventiNs.map((e) => e.dealId), eventiNs.map((e) => e.ts), eventiNs.map((e) => e.campagnaId)]
+          );
+        }
+        esito.noShow += eventiNs.length;
 
         esito.trattative += righe.length;
         esito.svolte += righe.filter((x) => x.svolta).length;

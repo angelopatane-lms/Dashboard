@@ -12,8 +12,14 @@ import { formatInt, formatEur, formatPct, formatFloat } from "@/lib/format";
  * - Lead       -> cronologia HubSpot id_campagna_refresh salvata su Postgres,
  *                 via /api/campaign-conversions
  * - Categoria  -> dedotta dal nome campagna (guessCategoria)
- * - Funnel     -> CampaignSummary dal foglio Operatori (Risposte=Connessioni,
- *                 Fissati=Appuntamenti, Processati=Consulenze, Importo=Boom)
+ * - Connessioni, Consulenze e No Show -> Postgres, dai sync di chiamate e
+ *                 trattative
+ * - Appuntamenti, Chiusure, Importo -> HubSpot in diretta, stesse fonti e
+ *                 stesse regole della pagina Advisor
+ *
+ * Il foglio Operatori non alimenta piu' nulla di questa tabella: la sua colonna
+ * "Campagna" contiene 9 categorie e non i nomi delle campagne, quindi l'aggancio
+ * per nome falliva su ogni riga.
  */
 export type CampaignAdsRow = {
   categoria: string;
@@ -76,6 +82,8 @@ export type FunnelCampagna = {
   importo: number;
   /** Consulenze svolte: dal sync delle trattative su Postgres. */
   consulenze: number;
+  /** Appuntamenti disertati nel periodo, dalla stessa fonte. */
+  noShow: number;
   /** Telefonate fatte a contatti della campagna, dal sync delle chiamate. */
   chiamate: number;
   /** Di quelle, quelle con esito "Connesso". */
@@ -92,7 +100,7 @@ function toRaw(ads: CampaignAdsRow, summary?: CampaignSummary, funnel?: FunnelCa
     // scopo perche' le tiene solo per CATEGORIA.
     risposte: funnel?.connessioni ?? 0,
     processati: funnel?.consulenze ?? 0,
-    noShow: summary?.noShow ?? 0,
+    noShow: funnel?.noShow ?? 0,
     // Questi tre vengono da HubSpot, aggregati per id_campagna_track: stesse
     // fonti e stesse regole della pagina Advisor.
     fissati: funnel?.appuntamenti ?? 0,
@@ -119,6 +127,10 @@ function div(a: number, b: number): number | null {
   return b > 0 ? a / b : null;
 }
 
+// % Show Up = consulenze svolte sul totale degli appuntamenti giunti a
+// scadenza (svolti + disertati). Prima calcolava No Show / Consulenze, che era
+// il suo esatto contrario e poteva superare il 100%: ad agosto i disertati sono
+// piu' degli svolti.
 function deriveMetrics(raw: RawTotals): DerivedMetrics {
   return {
     ...raw,
@@ -127,7 +139,7 @@ function deriveMetrics(raw: RawTotals): DerivedMetrics {
     pctAppFissati: div(raw.fissati, raw.risposte),
     cpas: div(raw.spesa, raw.processati),
     pctAppSvolti: div(raw.processati, raw.fissati),
-    pctShowUp: div(raw.noShow, raw.processati),
+    pctShowUp: div(raw.processati, raw.processati + raw.noShow),
     crSales: div(raw.chiusure, raw.processati),
     cpa: div(raw.spesa, raw.chiusure),
     roas: div(raw.importo, raw.spesa)

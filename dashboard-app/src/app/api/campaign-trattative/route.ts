@@ -9,6 +9,9 @@ export type CampaignTrattativeRow = {
    *  transizione di fase che soddisfa i criteri del workflow "Performance
    *  Tracker - Trattative Svolte" cade nell'intervallo. */
   consulenze: number;
+  /** Appuntamenti disertati nel periodo. Una trattativa puo' contribuirne piu'
+   *  di uno: viene ripianificata e il cliente diserta di nuovo. */
+  no_show: number;
 };
 
 // La data della consulenza e' precalcolata in `trattativa.svolta_ts` dal sync,
@@ -19,13 +22,29 @@ export type CampaignTrattativeRow = {
 // Si contano solo le trattative con una campagna: quelle senza
 // id_campagna_track (circa il 2%) restano nel database ma non hanno una riga a
 // cui appartenere.
+// Consulenze e no-show sono due insiemi di EVENTI con date proprie, contati
+// separatamente e poi uniti: una trattativa puo' comparire in entrambi (ha
+// disertato a luglio, e' stata ripianificata e si e' svolta ad agosto).
 const QUERY = `
+  WITH svolte AS (
+    SELECT campagna_id, COUNT(*)::int AS n
+    FROM trattativa
+    WHERE svolta_ts >= $1::date AND svolta_ts < ($2::date + INTERVAL '1 day')
+    GROUP BY campagna_id
+  ),
+  disertati AS (
+    SELECT campagna_id, COUNT(*)::int AS n
+    FROM no_show
+    WHERE ts >= $1::date AND ts < ($2::date + INTERVAL '1 day')
+    GROUP BY campagna_id
+  )
   SELECT c.nome AS campagna,
-         COUNT(*)::int AS consulenze
-  FROM trattativa t
-  JOIN campagna c ON c.id = t.campagna_id
-  WHERE t.svolta_ts >= $1::date AND t.svolta_ts < ($2::date + INTERVAL '1 day')
-  GROUP BY c.nome
+         COALESCE(s.n, 0) AS consulenze,
+         COALESCE(d.n, 0) AS no_show
+  FROM campagna c
+  LEFT JOIN svolte s ON s.campagna_id = c.id
+  LEFT JOIN disertati d ON d.campagna_id = c.id
+  WHERE COALESCE(s.n, 0) > 0 OR COALESCE(d.n, 0) > 0
   ORDER BY consulenze DESC
 `;
 

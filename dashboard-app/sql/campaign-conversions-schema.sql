@@ -85,6 +85,25 @@ CREATE TABLE IF NOT EXISTS trattativa (
 CREATE INDEX IF NOT EXISTS idx_trattativa_creata ON trattativa (creata_ts);
 CREATE INDEX IF NOT EXISTS idx_trattativa_svolta ON trattativa (svolta_ts) WHERE svolta_ts IS NOT NULL;
 
+-- Appuntamenti non onorati.
+--
+-- Tabella a parte e non una colonna di `trattativa` perche' una trattativa puo'
+-- fare no-show piu' volte: viene ripianificata e il cliente diserta di nuovo.
+-- Ogni ingresso nella fase "No Show" e' un evento con la sua data, e va contato
+-- nel mese in cui e' avvenuto.
+--
+-- Ricavato dalla cronologia delle fasi e non dalla fase attuale: un no-show
+-- viene quasi sempre spostato altrove (Persa, Archiviata, Ripianificata), e
+-- guardando dove si trova oggi la trattativa non lo si vedrebbe piu'.
+CREATE TABLE IF NOT EXISTS no_show (
+  deal_id     BIGINT      NOT NULL,
+  ts          TIMESTAMPTZ NOT NULL,
+  campagna_id INT REFERENCES campagna (id),
+  PRIMARY KEY (deal_id, ts)
+);
+
+CREATE INDEX IF NOT EXISTS idx_no_show_ts ON no_show (ts);
+
 -- Chiamate telefoniche, per ricavare Chiamate e Connessioni per campagna.
 --
 -- campagna_id e' risolta AL MOMENTO DEL SYNC, non in lettura: e' la campagna
