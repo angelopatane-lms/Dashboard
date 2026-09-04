@@ -23,9 +23,9 @@ export type CampaignAdsRow = {
    *  due iscrizioni alla stessa campagna valgono 1, tre campagne diverse
    *  valgono 3. */
   leadGenerati: number;
-  /** Persone con UNA SOLA conversione in tutta la loro storia: si iscrivono
-   *  qui e non tornano piu'. Appena si riconvertono altrove smettono di
-   *  contare, quindi il valore di un periodo passato cala nel tempo. */
+  /** Lead NUOVI: persone la cui prima conversione in assoluto cade nel
+   *  periodo. Prima non esistevano nel database. Valore stabile: rileggendo un
+   *  mese passato si ottiene sempre lo stesso numero. */
   leadUnici: number;
 };
 

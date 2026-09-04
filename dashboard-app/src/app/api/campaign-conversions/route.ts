@@ -9,9 +9,8 @@ export type CampaignConversionRow = {
    *  Due iscrizioni alla stessa campagna valgono 1; tre campagne diverse
    *  valgono 1 ciascuna. */
   lead_generati: number;
-  /** Persone con UNA SOLA conversione in tutta la loro storia. Smettono di
-   *  essere uniche appena si riconvertono, quindi il valore di un periodo
-   *  passato diminuisce nel tempo. */
+  /** Lead NUOVI: persone la cui prima conversione in assoluto cade nel periodo.
+   *  Il valore e' stabile nel tempo e somma esattamente fra campagne. */
   lead_unici: number;
 };
 
@@ -23,39 +22,59 @@ export type CampaignConversionRow = {
 //   somma fra campagne e' maggiore delle persone reali: e' voluto, perche' ogni
 //   campagna deve ricevere il merito di chi ha effettivamente coinvolto.
 //
-// - Lead Unici: le persone che hanno UNA SOLA conversione in tutta la loro
-//   storia. Restano uniche finche' non si riconvertono: appena
-//   id_campagna_refresh cambia una seconda volta, quel contatto non e' piu'
-//   unico ma riconvertito, e smette di contare per la campagna che l'aveva
-//   portato.
+// - Lead Unici: le persone la cui PRIMA CONVERSIONE IN ASSOLUTO cade nel
+//   periodo, attribuite alla campagna di quella prima conversione. Sono i lead
+//   nuovi: prima non esistevano nel database.
 //
-//   CONSEGUENZA DA TENERE PRESENTE: il valore e' retroattivo. I Lead Unici di
-//   un mese passato DIMINUISCONO col tempo, man mano che quei lead tornano a
-//   convertire. Due letture dello stesso periodo a distanza di settimane
-//   daranno numeri diversi: e' inerente alla definizione, non un errore.
+//   Due proprieta' che ne discendono:
+//   1. STABILE NEL TEMPO. La data della prima conversione non cambia mai,
+//      quindi rileggendo un mese passato fra sei mesi si ottiene lo stesso
+//      numero di oggi. (Una regola basata su "quante conversioni ha in tutto"
+//      sarebbe invece retroattiva: il numero calerebbe man mano che quei lead
+//      tornano a convertire.)
+//   2. SOMMA ESATTA. Ogni persona ha una sola prima conversione in tutta la
+//      vita, quindi compare in una sola campagna e una sola volta: sommando fra
+//      campagne si ottengono le persone reali, senza doppi conteggi.
 //
-// Il conteggio per persona e' su TUTTA la storia (fuori dal filtro sulle date)
-// e dopo la risoluzione delle fusioni: due schede unite sono una persona sola,
-// e la somma dei loro eventi decide se e' unica o riconvertita.
+//   Unico caso in cui il valore puo' cambiare: la fusione di due schede, che
+//   crea una persona sola la cui prima conversione e' la piu' antica delle due.
+//   E' raro (misurato: 1 caso su 7.670) e va nella direzione giusta.
+//
+// La prima conversione e' calcolata su TUTTA la storia (fuori dal filtro sulle
+// date) e dopo la risoluzione delle fusioni.
 const QUERY = `
   WITH risolti AS (
     SELECT COALESCE(a.nuovo_id, e.contact_id) AS persona_id, e.campagna_id, e.ts
     FROM eventi_conversione e
     LEFT JOIN alias_contatto a ON a.vecchio_id = e.contact_id
   ),
-  conteggi AS (
-    SELECT persona_id, COUNT(*) AS eventi_vita
+  -- Prima conversione in assoluto di ogni persona: una riga per persona,
+  -- calcolata su TUTTA la storia (nessun filtro di data qui dentro) e dopo la
+  -- risoluzione delle fusioni, cosi' due schede unite sono una persona sola.
+  prima_conversione AS (
+    SELECT DISTINCT ON (persona_id) persona_id, campagna_id, ts
     FROM risolti
-    GROUP BY persona_id
+    ORDER BY persona_id, ts, campagna_id
+  ),
+  generati AS (
+    SELECT campagna_id, COUNT(DISTINCT persona_id)::int AS n
+    FROM risolti
+    WHERE ts >= $1::date AND ts < ($2::date + INTERVAL '1 day')
+    GROUP BY campagna_id
+  ),
+  unici AS (
+    SELECT campagna_id, COUNT(*)::int AS n
+    FROM prima_conversione
+    WHERE ts >= $1::date AND ts < ($2::date + INTERVAL '1 day')
+    GROUP BY campagna_id
   )
   SELECT c.nome AS campagna,
-         COUNT(DISTINCT r.persona_id)::int                                  AS lead_generati,
-         COUNT(DISTINCT r.persona_id) FILTER (WHERE k.eventi_vita = 1)::int AS lead_unici
-  FROM risolti r
-  JOIN conteggi k ON k.persona_id = r.persona_id
-  JOIN campagna c ON c.id = r.campagna_id
-  WHERE r.ts >= $1::date AND r.ts < ($2::date + INTERVAL '1 day')
-  GROUP BY c.nome
+         COALESCE(g.n, 0) AS lead_generati,
+         COALESCE(u.n, 0) AS lead_unici
+  FROM campagna c
+  LEFT JOIN generati g ON g.campagna_id = c.id
+  LEFT JOIN unici u ON u.campagna_id = c.id
+  WHERE COALESCE(g.n, 0) > 0 OR COALESCE(u.n, 0) > 0
   ORDER BY lead_generati DESC
 `;
 
