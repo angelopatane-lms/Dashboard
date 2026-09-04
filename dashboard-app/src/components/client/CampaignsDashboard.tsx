@@ -17,6 +17,7 @@ import type { CampaignAdsSpendRow } from "@/app/api/campaign-ads/route";
 import type { CampaignConversionRow } from "@/app/api/campaign-conversions/route";
 import type { RawBoomRecord, RawDealRecord } from "@/app/api/hubspot-data/route";
 import type { CampaignTrattativeRow } from "@/app/api/campaign-trattative/route";
+import type { CampaignChiamateRow } from "@/app/api/campaign-chiamate/route";
 import { CHIUSURE_TIPOLOGIE, BOOM_TIPOLOGIE } from "@/lib/hubspotRegole";
 
 
@@ -161,6 +162,36 @@ export default function CampaignsDashboard({
   const [consulenze, setConsulenze] = useState<CampaignTrattativeRow[]>([]);
   const [consulenzeErrore, setConsulenzeErrore] = useState(false);
 
+  // Chiamate e Connessioni, anch'esse precalcolate: la campagna di una
+  // telefonata e' quella che il contatto aveva in quel momento, e ricavarla in
+  // lettura vorrebbe dire scandagliare 740.000 eventi a ogni caricamento.
+  const [chiamate, setChiamate] = useState<CampaignChiamateRow[]>([]);
+  const [chiamateErrore, setChiamateErrore] = useState(false);
+
+  useEffect(() => {
+    const from = filters.from ?? defaultFrom;
+    const to = filters.to ?? defaultTo;
+    let annullato = false;
+
+    fetch(`/api/campaign-chiamate?from=${from}&to=${to}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((data: { righe?: CampaignChiamateRow[] }) => {
+        if (annullato) return;
+        setChiamate(data.righe ?? []);
+        setChiamateErrore(false);
+      })
+      .catch((err) => {
+        if (annullato) return;
+        console.error("[campaign-chiamate]", err);
+        setChiamate([]);
+        setChiamateErrore(true);
+      });
+
+    return () => {
+      annullato = true;
+    };
+  }, [filters.from, filters.to, defaultFrom, defaultTo]);
+
   useEffect(() => {
     const from = filters.from ?? defaultFrom;
     const to = filters.to ?? defaultTo;
@@ -223,7 +254,7 @@ export default function CampaignsDashboard({
     const map = new Map<string, FunnelCampagna>();
     const prendi = (campagna: string) => {
       const k = normKey(campagna);
-      const cur = map.get(k) ?? { appuntamenti: 0, chiusure: 0, importo: 0, consulenze: 0 };
+      const cur = map.get(k) ?? { appuntamenti: 0, chiusure: 0, importo: 0, consulenze: 0, chiamate: 0, connessioni: 0 };
       map.set(k, cur);
       return cur;
     };
@@ -239,8 +270,13 @@ export default function CampaignsDashboard({
       if (BOOM_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.importo += r.importo;
     }
     for (const r of consulenze) prendi(r.campagna).consulenze = r.consulenze;
+    for (const r of chiamate) {
+      const cur = prendi(r.campagna);
+      cur.chiamate = r.chiamate;
+      cur.connessioni = r.connessioni;
+    }
     return map;
-  }, [dealRecords, boomRecords, consulenze]);
+  }, [dealRecords, boomRecords, consulenze, chiamate]);
 
   // Il filtro "Campagna" di questa pagina mostra le Categorie (dedotte dalle
   // campagne tecniche realmente presenti nel foglio Ads-spesa per il periodo
@@ -473,14 +509,16 @@ export default function CampaignsDashboard({
         />
       </div>
 
-      {conversioniErrore || hubspotErrore || consulenzeErrore ? (
+      {conversioniErrore || hubspotErrore || consulenzeErrore || chiamateErrore ? (
         <div className="mt-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <strong>Dati non disponibili.</strong>{" "}
           {conversioniErrore ? "Lead Generati e Lead Unici" : null}
           {conversioniErrore && hubspotErrore ? ", " : null}
           {hubspotErrore ? "Appuntamenti, Chiusure e Importo" : null}
           {hubspotErrore && consulenzeErrore ? ", " : null}
-          {consulenzeErrore ? "Consulenze" : null} mostrano zero
+          {consulenzeErrore ? "Consulenze" : null}
+          {consulenzeErrore && chiamateErrore ? ", " : null}
+          {chiamateErrore ? "Connessioni" : null} mostrano zero
           perche' la fonte non e' raggiungibile, non perche' le campagne non abbiano
           prodotto risultati. Le altre colonne restano valide.
         </div>

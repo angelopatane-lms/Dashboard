@@ -76,6 +76,10 @@ export type FunnelCampagna = {
   importo: number;
   /** Consulenze svolte: dal sync delle trattative su Postgres. */
   consulenze: number;
+  /** Telefonate fatte a contatti della campagna, dal sync delle chiamate. */
+  chiamate: number;
+  /** Di quelle, quelle con esito "Connesso". */
+  connessioni: number;
 };
 
 function toRaw(ads: CampaignAdsRow, summary?: CampaignSummary, funnel?: FunnelCampagna): RawTotals {
@@ -83,10 +87,10 @@ function toRaw(ads: CampaignAdsRow, summary?: CampaignSummary, funnel?: FunnelCa
     spesa: ads.spesa,
     leadGenerati: ads.leadGenerati,
     leadUnici: ads.leadUnici,
-    // Connessioni resta per ora dal foglio Operatori, che pero' le tiene solo
-    // per CATEGORIA: sulle righe di campagna risulta quindi a zero finche' non
-    // arrivera' la sincronizzazione delle chiamate da HubSpot.
-    risposte: summary?.connessioni ?? 0,
+    // Connessioni: telefonate con esito "Connesso" a contatti della campagna,
+    // dal sync delle chiamate. Il foglio Operatori non poteva servire allo
+    // scopo perche' le tiene solo per CATEGORIA.
+    risposte: funnel?.connessioni ?? 0,
     processati: funnel?.consulenze ?? 0,
     noShow: summary?.noShow ?? 0,
     // Questi tre vengono da HubSpot, aggregati per id_campagna_track: stesse

@@ -85,6 +85,25 @@ CREATE TABLE IF NOT EXISTS trattativa (
 CREATE INDEX IF NOT EXISTS idx_trattativa_creata ON trattativa (creata_ts);
 CREATE INDEX IF NOT EXISTS idx_trattativa_svolta ON trattativa (svolta_ts) WHERE svolta_ts IS NOT NULL;
 
+-- Chiamate telefoniche, per ricavare Chiamate e Connessioni per campagna.
+--
+-- campagna_id e' risolta AL MOMENTO DEL SYNC, non in lettura: e' la campagna
+-- che il contatto aveva quando ha ricevuto la telefonata, cioe' l'ultima
+-- conversione precedente a `ts`. Farlo in lettura significherebbe scandagliare
+-- 740.000 eventi a ogni caricamento della pagina.
+--
+-- Puo' restare NULL per le chiamate a contatti che non avevano ancora una
+-- campagna (chiamati da lista e convertiti dopo): misurato 0,3% del campione.
+CREATE TABLE IF NOT EXISTS chiamata (
+  call_id     BIGINT PRIMARY KEY,
+  contact_id  BIGINT NOT NULL,
+  campagna_id INT REFERENCES campagna (id),
+  ts          TIMESTAMPTZ NOT NULL,
+  connessa    BOOLEAN NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_chiamata_ts ON chiamata (ts);
+
 -- Log delle esecuzioni del sync (bootstrap, full e incrementale), per monitoraggio.
 CREATE TABLE IF NOT EXISTS sync_log (
   id           BIGSERIAL PRIMARY KEY,
