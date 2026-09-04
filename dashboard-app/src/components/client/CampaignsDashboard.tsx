@@ -35,8 +35,8 @@ function normKey(s: string): string {
 // funnel (Connessioni, Appuntamenti, Consulenze, Chiusure, Importo) restano
 // comunque agganciati per nome campagna tramite CampaignSummary.
 //
-// Lead Generati (tutte le conversioni) e Lead Unici (persone con una sola
-// conversione in tutta la loro storia) arrivano da /api/campaign-conversions,
+// Lead Generati (persone distinte per campagna) e Lead Unici (di quelle, chi ha
+// una sola conversione in tutta la sua storia) arrivano da /api/campaign-conversions,
 // cioe' dalla cronologia della proprieta' HubSpot id_campagna_refresh salvata
 // su Postgres. Fino a settembre 2026 erano numeri finti generati da un hash del
 // nome campagna: ora sono reali.

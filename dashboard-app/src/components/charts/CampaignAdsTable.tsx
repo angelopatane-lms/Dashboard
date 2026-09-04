@@ -19,7 +19,9 @@ export type CampaignAdsRow = {
   categoria: string;
   campagna: string;
   spesa: number;
-  /** Tutte le conversioni del periodo, ripetizioni della stessa persona incluse. */
+  /** Persone distinte che hanno convertito su questa campagna nel periodo:
+   *  due iscrizioni alla stessa campagna valgono 1, tre campagne diverse
+   *  valgono 3. */
   leadGenerati: number;
   /** Persone con UNA SOLA conversione in tutta la loro storia: si iscrivono
    *  qui e non tornano piu'. Appena si riconvertono altrove smettono di

@@ -5,7 +5,9 @@ export const dynamic = "force-dynamic";
 
 export type CampaignConversionRow = {
   campagna: string;
-  /** Tutte le conversioni del periodo, ripetizioni della stessa persona incluse. */
+  /** Persone distinte che hanno convertito su questa campagna nel periodo.
+   *  Due iscrizioni alla stessa campagna valgono 1; tre campagne diverse
+   *  valgono 1 ciascuna. */
   lead_generati: number;
   /** Persone con UNA SOLA conversione in tutta la loro storia. Smettono di
    *  essere uniche appena si riconvertono, quindi il valore di un periodo
@@ -15,8 +17,11 @@ export type CampaignConversionRow = {
 
 // Per ogni campagna, nell'intervallo [from, to]:
 //
-// - Lead Generati: tutte le conversioni avvenute nel periodo, comprese le
-//   ripetizioni della stessa persona sulla stessa campagna.
+// - Lead Generati: PERSONE DISTINTE che hanno convertito su quella campagna nel
+//   periodo. Iscriversi due volte alla stessa campagna vale 1; iscriversi a tre
+//   campagne diverse vale 1 per ciascuna, quindi 3 in totale. Ne segue che la
+//   somma fra campagne e' maggiore delle persone reali: e' voluto, perche' ogni
+//   campagna deve ricevere il merito di chi ha effettivamente coinvolto.
 //
 // - Lead Unici: le persone che hanno UNA SOLA conversione in tutta la loro
 //   storia. Restano uniche finche' non si riconvertono: appena
@@ -44,8 +49,8 @@ const QUERY = `
     GROUP BY persona_id
   )
   SELECT c.nome AS campagna,
-         COUNT(*)::int                                    AS lead_generati,
-         COUNT(*) FILTER (WHERE k.eventi_vita = 1)::int   AS lead_unici
+         COUNT(DISTINCT r.persona_id)::int                                  AS lead_generati,
+         COUNT(DISTINCT r.persona_id) FILTER (WHERE k.eventi_vita = 1)::int AS lead_unici
   FROM risolti r
   JOIN conteggi k ON k.persona_id = r.persona_id
   JOIN campagna c ON c.id = r.campagna_id
