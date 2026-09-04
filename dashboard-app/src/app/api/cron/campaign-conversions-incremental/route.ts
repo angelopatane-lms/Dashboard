@@ -1,20 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eseguiSync } from "@/lib/campaignConversions/sync";
 import { sincronizzaTrattative } from "@/lib/trattative/sync";
+import { sincronizzaChiamate } from "@/lib/chiamate/sync";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// Giro orario: aggiorna sia le conversioni dei contatti (Lead Generati e Unici)
-// sia le trattative (Consulenze).
+// Giro orario: aggiorna le tre sorgenti che alimentano la pagina Campagne.
 //
-// Le due sincronizzazioni sono INDIPENDENTI di proposito: se una fallisce
-// l'altra deve comunque girare, altrimenti un guasto su HubSpot in un'area
-// bloccherebbe anche l'altra. L'esito di entrambe torna nella risposta, e la
-// richiesta e' considerata fallita solo se falliscono tutte e due.
+//   conversioni -> Lead Generati e Lead Unici
+//   trattative  -> Consulenze
+//   chiamate    -> Chiamate e Connessioni
 //
-// Entrambe ancorano la finestra all'ultima esecuzione RIUSCITA, non a "un'ora
-// fa": un giro saltato viene recuperato dal successivo senza lasciare buchi.
+// Le tre sincronizzazioni sono INDIPENDENTI di proposito: se una fallisce le
+// altre devono comunque girare, altrimenti un guasto su HubSpot in un'area
+// bloccherebbe tutto il resto. L'esito di ciascuna torna nella risposta, e la
+// richiesta e' considerata fallita solo se falliscono tutte.
+//
+// Tutte ancorano la finestra all'ultima esecuzione RIUSCITA, non a "un'ora fa":
+// un giro saltato viene recuperato dal successivo senza lasciare buchi.
 export async function GET(req: NextRequest) {
   if (req.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -23,31 +27,27 @@ export async function GET(req: NextRequest) {
   const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
   if (!token) return NextResponse.json({ error: "HUBSPOT_PRIVATE_APP_TOKEN not set" }, { status: 500 });
 
+  const nomi = ["conversioni", "trattative", "chiamate"] as const;
   const esiti = await Promise.allSettled([
     eseguiSync("incrementale", token),
-    sincronizzaTrattative(token, "incrementale")
+    sincronizzaTrattative(token, "incrementale"),
+    sincronizzaChiamate(token, "incrementale")
   ]);
 
-  const [conversioni, trattative] = esiti;
-  const risposta = {
-    conversioni:
-      conversioni.status === "fulfilled"
-        ? conversioni.value
-        : { errore: conversioni.reason instanceof Error ? conversioni.reason.message : String(conversioni.reason) },
-    trattative:
-      trattative.status === "fulfilled"
-        ? trattative.value
-        : { errore: trattative.reason instanceof Error ? trattative.reason.message : String(trattative.reason) }
-  };
+  const risposta: Record<string, unknown> = {};
+  esiti.forEach((e, i) => {
+    const nome = nomi[i];
+    if (e.status === "fulfilled") {
+      risposta[nome] = e.value;
+      if ((e.value as { troncato?: boolean }).troncato) {
+        console.warn(`[cron/${nome}] giro troncato: finestra troppo ampia, serve un bootstrap manuale`);
+      }
+    } else {
+      risposta[nome] = { errore: e.reason instanceof Error ? e.reason.message : String(e.reason) };
+      console.error(`[cron/${nome}]`, e.reason);
+    }
+  });
 
-  if (conversioni.status === "rejected") console.error("[cron/conversioni]", conversioni.reason);
-  if (trattative.status === "rejected") console.error("[cron/trattative]", trattative.reason);
-  if (trattative.status === "fulfilled" && trattative.value.troncato) {
-    console.warn(
-      "[cron/trattative] giro troncato: la finestra da recuperare e' troppo ampia, serve un bootstrap manuale"
-    );
-  }
-
-  const entrambeFallite = esiti.every((e) => e.status === "rejected");
-  return NextResponse.json(risposta, { status: entrambeFallite ? 500 : 200 });
+  const tutteFallite = esiti.every((e) => e.status === "rejected");
+  return NextResponse.json(risposta, { status: tutteFallite ? 500 : 200 });
 }
