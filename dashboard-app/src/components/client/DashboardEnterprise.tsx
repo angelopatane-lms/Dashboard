@@ -25,9 +25,8 @@ import FunnelStraightLinesChart, { type FunnelTrendKey } from "@/components/char
 import ContactEventsTimeline from "@/components/charts/ContactEventsTimeline";
 import OperatorStatsTable from "@/components/charts/OperatorStatsTable";
 import type { RawBoomRecord, RawDealRecord } from "@/app/api/hubspot-data/route";
+import { CHIUSURE_TIPOLOGIE, BOOM_TIPOLOGIE } from "@/lib/hubspotRegole";
 
-const CHIUSURE_TIPOLOGIE = new Set(["Acconto", "Quota unica"]);
-const BOOM_TIPOLOGIE = new Set(["Acconto", "Rata", "Quota unica", "Upgrade"]);
 
 type CampaignPeaksDatum = {
   date: string;

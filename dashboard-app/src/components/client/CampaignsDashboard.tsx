@@ -12,9 +12,12 @@ import Card from "@/components/ui/Card";
 import ChartTitle from "@/components/ui/ChartTitle";
 import SectionTitle from "@/components/ui/SectionTitle";
 import CampaignSummaryBar from "@/components/charts/CampaignSummaryBar";
-import CampaignAdsTable, { type CampaignAdsRow } from "@/components/charts/CampaignAdsTable";
+import CampaignAdsTable, { type CampaignAdsRow, type FunnelCampagna } from "@/components/charts/CampaignAdsTable";
 import type { CampaignAdsSpendRow } from "@/app/api/campaign-ads/route";
 import type { CampaignConversionRow } from "@/app/api/campaign-conversions/route";
+import type { RawBoomRecord, RawDealRecord } from "@/app/api/hubspot-data/route";
+import { CHIUSURE_TIPOLOGIE, BOOM_TIPOLOGIE } from "@/lib/hubspotRegole";
+
 
 type CampaignPeaksDatum = {
   date: string;
@@ -137,6 +140,75 @@ export default function CampaignsDashboard({
     for (const r of conversioni) map.set(normKey(r.campagna), r);
     return map;
   }, [conversioni]);
+
+  // Appuntamenti, Chiusure e Importo dalle STESSE fonti della pagina Advisor:
+  // gli endpoint restituiscono i record grezzi, che li' vengono raggruppati per
+  // operatore e qui per campagna (id_campagna_track). Stessi record e stesse
+  // regole, quindi i totali delle due pagine si riconciliano.
+  //
+  // Il foglio Operatori non puo' servire allo scopo: la sua colonna "Campagna"
+  // contiene 9 categorie (DIV COACH, REM, MEP...), non i nomi tecnici delle
+  // campagne, quindi l'aggancio per nome falliva su ogni riga e queste colonne
+  // erano sempre a zero.
+  const [dealRecords, setDealRecords] = useState<RawDealRecord[] | null>(null);
+  const [boomRecords, setBoomRecords] = useState<RawBoomRecord[] | null>(null);
+  const [hubspotErrore, setHubspotErrore] = useState(false);
+
+  useEffect(() => {
+    const from = filters.from ?? defaultFrom;
+    const to = filters.to ?? defaultTo;
+    let annullato = false;
+
+    const leggi = async () => {
+      try {
+        const [d, b] = await Promise.all([
+          fetch(`/api/hubspot-deals?from=${from}&to=${to}`).then((r) =>
+            r.ok ? r.json() : Promise.reject(new Error(`deals HTTP ${r.status}`))
+          ),
+          fetch(`/api/hubspot-data?from=${from}&to=${to}`).then((r) =>
+            r.ok ? r.json() : Promise.reject(new Error(`incassi HTTP ${r.status}`))
+          )
+        ]);
+        if (annullato) return;
+        setDealRecords(d.dealRecords ?? []);
+        setBoomRecords(b.boomRecords ?? []);
+        setHubspotErrore(false);
+      } catch (err) {
+        if (annullato) return;
+        console.error("[campagne/hubspot]", err);
+        setDealRecords([]);
+        setBoomRecords([]);
+        setHubspotErrore(true);
+      }
+    };
+    leggi();
+
+    return () => {
+      annullato = true;
+    };
+  }, [filters.from, filters.to, defaultFrom, defaultTo]);
+
+  const funnelByCampagna = useMemo(() => {
+    const map = new Map<string, FunnelCampagna>();
+    const prendi = (campagna: string) => {
+      const k = normKey(campagna);
+      const cur = map.get(k) ?? { appuntamenti: 0, chiusure: 0, importo: 0 };
+      map.set(k, cur);
+      return cur;
+    };
+
+    for (const r of dealRecords ?? []) {
+      if (!r.id_campagna_track?.trim()) continue;
+      prendi(r.id_campagna_track).appuntamenti += 1;
+    }
+    for (const r of boomRecords ?? []) {
+      if (!r.id_campagna_track?.trim()) continue;
+      const cur = prendi(r.id_campagna_track);
+      if (CHIUSURE_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.chiusure += 1;
+      if (BOOM_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.importo += r.importo;
+    }
+    return map;
+  }, [dealRecords, boomRecords]);
 
   // Il filtro "Campagna" di questa pagina mostra le Categorie (dedotte dalle
   // campagne tecniche realmente presenti nel foglio Ads-spesa per il periodo
@@ -369,17 +441,19 @@ export default function CampaignsDashboard({
         />
       </div>
 
-      {conversioniErrore ? (
+      {conversioniErrore || hubspotErrore ? (
         <div className="mt-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <strong>Lead non disponibili.</strong> Le colonne Lead Generati, Convertiti e
-          Riconvertiti mostrano zero perche' i dati delle conversioni non sono
-          raggiungibili, non perche' le campagne non abbiano prodotto lead. Le altre
-          colonne restano valide.
+          <strong>Dati non disponibili.</strong>{" "}
+          {conversioniErrore ? "Lead Generati e Lead Unici" : null}
+          {conversioniErrore && hubspotErrore ? ", " : null}
+          {hubspotErrore ? "Appuntamenti, Chiusure e Importo" : null} mostrano zero
+          perche' la fonte non e' raggiungibile, non perche' le campagne non abbiano
+          prodotto risultati. Le altre colonne restano valide.
         </div>
       ) : null}
 
       <Card className="mt-6">
-        <CampaignAdsTable adsRows={campaignAdsRows} campaignSummary={campaignSummaryFull} />
+        <CampaignAdsTable adsRows={campaignAdsRows} campaignSummary={campaignSummaryFull} funnelByCampagna={funnelByCampagna} />
       </Card>
 
       <div id="campagne" className="scroll-mt-6">

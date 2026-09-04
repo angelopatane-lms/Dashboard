@@ -67,17 +67,25 @@ function normKey(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function toRaw(ads: CampaignAdsRow, summary?: CampaignSummary): RawTotals {
+/** Appuntamenti, Chiusure e Importo di una campagna, da HubSpot. */
+export type FunnelCampagna = { appuntamenti: number; chiusure: number; importo: number };
+
+function toRaw(ads: CampaignAdsRow, summary?: CampaignSummary, funnel?: FunnelCampagna): RawTotals {
   return {
     spesa: ads.spesa,
     leadGenerati: ads.leadGenerati,
     leadUnici: ads.leadUnici,
+    // Connessioni e Consulenze restano per ora dal foglio Operatori, che pero'
+    // le tiene solo per CATEGORIA: sulle righe di campagna risultano quindi a
+    // zero finche' non arrivera' la sincronizzazione da HubSpot.
     risposte: summary?.connessioni ?? 0,
-    fissati: summary?.appuntamenti ?? 0,
     processati: summary?.consulenze ?? 0,
     noShow: summary?.noShow ?? 0,
-    chiusure: summary?.chiusure ?? 0,
-    importo: summary?.boom ?? 0
+    // Questi tre vengono da HubSpot, aggregati per id_campagna_track: stesse
+    // fonti e stesse regole della pagina Advisor.
+    fissati: funnel?.appuntamenti ?? 0,
+    chiusure: funnel?.chiusure ?? 0,
+    importo: funnel?.importo ?? 0
   };
 }
 
@@ -246,10 +254,12 @@ function MetricCells({ m, max }: { m: DerivedMetrics; max: MaxValues }) {
 
 export default function CampaignAdsTable({
   adsRows,
-  campaignSummary
+  campaignSummary,
+  funnelByCampagna
 }: {
   adsRows: CampaignAdsRow[];
   campaignSummary: CampaignSummary[];
+  funnelByCampagna?: Map<string, FunnelCampagna>;
 }) {
   const summaryByCampagna = useMemo(() => {
     const map = new Map<string, CampaignSummary>();
@@ -260,7 +270,7 @@ export default function CampaignAdsTable({
   const groups = useMemo(() => {
     const byCategoria = new Map<string, { campagna: string; raw: RawTotals }[]>();
     for (const ads of adsRows) {
-      const raw = toRaw(ads, summaryByCampagna.get(normKey(ads.campagna)));
+      const raw = toRaw(ads, summaryByCampagna.get(normKey(ads.campagna)), funnelByCampagna?.get(normKey(ads.campagna)));
       const list = byCategoria.get(ads.categoria) ?? [];
       list.push({ campagna: ads.campagna, raw });
       byCategoria.set(ads.categoria, list);
@@ -282,7 +292,7 @@ export default function CampaignAdsTable({
       if (aLast !== bLast) return aLast ? 1 : -1;
       return b.totale.spesa - a.totale.spesa;
     });
-  }, [adsRows, summaryByCampagna]);
+  }, [adsRows, summaryByCampagna, funnelByCampagna]);
 
   const grandTotal = useMemo(
     () => groups.reduce((acc, g) => addRaw(acc, g.totale), emptyRaw),
