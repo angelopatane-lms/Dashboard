@@ -44,15 +44,35 @@ function normKey(s: string): string {
 // nome campagna: ora sono reali.
 function buildCampaignAdsRows(
   spesaByCampagna: Map<string, { campagna: string; spesa: number }>,
-  conversioniByCampagna: Map<string, CampaignConversionRow>
+  conversioniByCampagna: Map<string, CampaignConversionRow>,
+  funnelByCampagna: Map<string, FunnelCampagna>
 ): CampaignAdsRow[] {
-  return Array.from(spesaByCampagna.values()).map((entry) => {
-    const campagna = entry.campagna.trim() || "(Nessuna)";
-    const conv = conversioniByCampagna.get(normKey(campagna));
+  // Le righe sono l'UNIONE di chi ha speso e di chi ha prodotto qualcosa.
+  // Prima si partiva solo dal foglio Ads, quindi una campagna senza spesa nel
+  // periodo spariva dalla tabella insieme ai suoi lead e alle sue connessioni:
+  // sulla sola categoria DIV COACH restavano fuori 22 campagne, 6.646 lead e
+  // 1.931 connessioni, e i totali non tornavano con quelli di Looker.
+  //
+  // Il nome da mostrare viene preferibilmente dal foglio Ads, che conserva le
+  // maiuscole originali; per le campagne senza spesa si usa quello che arriva
+  // dal database.
+  const nomi = new Map<string, string>();
+  for (const [chiave, entry] of spesaByCampagna) {
+    nomi.set(chiave, entry.campagna.trim() || "(Nessuna)");
+  }
+  for (const [chiave, r] of conversioniByCampagna) {
+    if (!nomi.has(chiave)) nomi.set(chiave, r.campagna);
+  }
+  for (const chiave of funnelByCampagna.keys()) {
+    if (!nomi.has(chiave)) nomi.set(chiave, chiave);
+  }
+
+  return Array.from(nomi.entries()).map(([chiave, campagna]) => {
+    const conv = conversioniByCampagna.get(chiave);
     return {
-      categoria: guessCategoria(entry.campagna),
+      categoria: guessCategoria(campagna),
       campagna,
-      spesa: entry.spesa,
+      spesa: spesaByCampagna.get(chiave)?.spesa ?? 0,
       // Una campagna presente nel foglio spesa ma assente fra le conversioni
       // ha davvero prodotto zero lead: non e' un dato mancante.
       leadGenerati: conv?.lead_generati ?? 0,
@@ -353,10 +373,10 @@ export default function CampaignsDashboard({
   const campaignSummary = useMemo(() => campaignSummaryFull.slice(0, 12), [campaignSummaryFull]);
 
   const campaignAdsRows = useMemo(() => {
-    const rows = buildCampaignAdsRows(spesaByCampagna, conversioniByCampagna);
+    const rows = buildCampaignAdsRows(spesaByCampagna, conversioniByCampagna, funnelByCampagna);
     if (!filters.campagna) return rows;
     return rows.filter((r) => r.categoria === filters.campagna);
-  }, [spesaByCampagna, conversioniByCampagna, filters.campagna]);
+  }, [spesaByCampagna, conversioniByCampagna, funnelByCampagna, filters.campagna]);
 
   const campaignAnomalies = useMemo(() => {
     const toMs = (iso: string) => new Date(iso).getTime();
