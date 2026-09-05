@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import {
-  leggiVariante,
-  SQL_CAMPAGNA_CONFORME,
-  SQL_NOME_CAMPAGNA,
-  sqlSegmentoDaNome,
-  type Variante
-} from "@/lib/campagne";
+import { leggiVariante, sqlFiltroCampagna, sqlNomeCampagna, type Variante } from "@/lib/campagne";
 
 export const dynamic = "force-dynamic";
 
@@ -30,29 +24,29 @@ export type CampaignTrattativeRow = {
 // id_campagna_track (circa il 2%) restano nel database ma non hanno una riga a
 // cui appartenere.
 //
-// NOME E SEGMENTO: vedi src/lib/campagne.ts. La trattativa conserva il nome
+// NOME E VARIANTE: vedi src/lib/campagne.ts. La trattativa conserva il nome
 // campagna come era al momento in cui e' nata, marcatore di assegnazione
-// compreso: il suffisso dice gia' se quel contatto era stato assegnato subito,
-// quindi il segmento si legge da li' senza risalire al contatto.
+// compreso, quindi la vista unificata lo toglie e le altre due lo conservano.
 //
 // Consulenze e no-show sono due insiemi di EVENTI con date proprie, contati
 // separatamente e poi uniti: una trattativa puo' comparire in entrambi (ha
 // disertato a luglio, e' stata ripianificata e si e' svolta ad agosto).
 function costruisciQuery(variante: Variante): string {
-  const segmento = sqlSegmentoDaNome(variante);
+  const nome = sqlNomeCampagna(variante);
+  const filtro = sqlFiltroCampagna(variante);
   return `
   WITH svolte AS (
-    SELECT ${SQL_NOME_CAMPAGNA} AS nome, COUNT(*)::int AS n
+    SELECT ${nome} AS nome, COUNT(*)::int AS n
     FROM trattativa t JOIN campagna c ON c.id = t.campagna_id
     WHERE t.svolta_ts >= $1::date AND t.svolta_ts < ($2::date + INTERVAL '1 day')
-      AND ${SQL_CAMPAGNA_CONFORME} AND ${segmento}
+      AND ${filtro}
     GROUP BY 1
   ),
   disertati AS (
-    SELECT ${SQL_NOME_CAMPAGNA} AS nome, COUNT(*)::int AS n
+    SELECT ${nome} AS nome, COUNT(*)::int AS n
     FROM no_show n JOIN campagna c ON c.id = n.campagna_id
     WHERE n.ts >= $1::date AND n.ts < ($2::date + INTERVAL '1 day')
-      AND ${SQL_CAMPAGNA_CONFORME} AND ${segmento}
+      AND ${filtro}
     GROUP BY 1
   )
   SELECT COALESCE(s.nome, d.nome) AS campagna,

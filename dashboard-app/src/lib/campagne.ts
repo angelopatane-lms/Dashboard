@@ -1,5 +1,5 @@
-// Regole di identita' delle campagne: quali nomi sono validi, qual e' il nome
-// vero di una campagna e come si isolano i contatti assegnati subito.
+// Regole di identita' delle campagne: quali nomi sono validi e come si
+// raggruppano le varianti dello stesso nome.
 //
 // Stanno qui e non nelle singole query perche' database e interfaccia devono
 // applicarle nello stesso modo: la spesa arriva dal foglio Ads (lato client) e
@@ -24,7 +24,7 @@ export function nomeConforme(nome: string): boolean {
 }
 
 /**
- * MARCATORE DI ASSEGNAZIONE IMMEDIATA, non una campagna.
+ * MARCATORE DI ASSEGNAZIONE IMMEDIATA, non una campagna a se'.
  *
  * Un workflow HubSpot riscrive id_campagna_refresh aggiungendo "_test_instant"
  * al nome della campagna quando il contatto viene assegnato subito, invece che
@@ -34,42 +34,33 @@ export function nomeConforme(nome: string): boolean {
  * NON LO E': e' lo stesso contatto, sulla stessa campagna, che cambia stato di
  * assegnazione. Misurato sul trimestre: delle 7.762 persone con un marcatore,
  * 7.760 sono gia' presenti sulla campagna base (il 100%).
- *
- * Ne discende come va trattato:
- * - il nome vero della campagna e' sempre quello senza suffisso;
- * - un marcatore non e' mai un lead ne' una prima conversione;
- * - ma resta l'unico modo per sapere chi e' stato assegnato subito, quindi si
- *   conserva nel database e si usa come filtro (vedi Variante).
  */
 export const SUFFISSO_INSTANT = "_test_instant";
 
 /**
- * Quali contatti includere. Il marcatore esiste per confrontare chi viene
- * assegnato subito con chi viene assegnato dopo: il filtro serve a quello.
+ * Come trattare le varianti nella tabella.
  *
- * Non e' piu' una scelta su come raggruppare le righe - le varianti confluiscono
- * SEMPRE nella campagna base, perche' sono la stessa campagna.
+ * - "unificate" (preimpostata): le varianti confluiscono nella campagna base e
+ *   i marcatori NON contano come conversioni, quindi ogni persona vale uno.
+ *   E' la vista giusta per leggere le prestazioni di una campagna.
+ * - "tutte": le righe come stanno scritte in HubSpot, marcatori compresi. Vista
+ *   diagnostica: serve a vedere cosa c'e' davvero nel dato grezzo, e li' la
+ *   somma dei Lead Generati e' per costruzione piu' alta, perche' la stessa
+ *   persona compare sulla campagna e sulla sua variante.
+ * - "instant": solo le righe col marcatore, cioe' i contatti assegnati subito.
  */
-export type Variante = "tutte" | "instant" | "non_instant";
+export type Variante = "tutte" | "unificate" | "instant";
 
-export const VARIANTE_DEFAULT: Variante = "tutte";
+export const VARIANTE_DEFAULT: Variante = "unificate";
 
 export const VARIANTI: Array<{ label: string; value: Variante }> = [
   { label: "Tutte", value: "tutte" },
-  { label: "Instant", value: "instant" },
-  { label: "Non instant", value: "non_instant" }
+  { label: "Unificate", value: "unificate" },
+  { label: "Instant", value: "instant" }
 ];
 
 export function leggiVariante(valore: string | null | undefined): Variante {
-  return valore === "instant" || valore === "non_instant" ? valore : VARIANTE_DEFAULT;
-}
-
-/** Il nome vero della campagna: senza marcatore, minuscolo, spazi normalizzati. */
-export function nomeBase(nome: string): string {
-  const k = nome.trim().toLowerCase().replace(/\s+/g, " ");
-  return k.endsWith(SUFFISSO_INSTANT) && k.length > SUFFISSO_INSTANT.length
-    ? k.slice(0, -SUFFISSO_INSTANT.length)
-    : k;
+  return valore === "tutte" || valore === "instant" || valore === "unificate" ? valore : VARIANTE_DEFAULT;
 }
 
 export function haMarcatoreInstant(nome: string): boolean {
@@ -82,40 +73,40 @@ export function haMarcatoreInstant(nome: string): boolean {
  * mostrata. Per i dati che arrivano al client gia' pronti: foglio Ads e
  * id_campagna_track di trattative e incassi.
  *
- * Il gemello lato SQL e' SQL_NOME_CAMPAGNA: le due devono restare d'accordo.
+ * Il gemello lato SQL e' sqlNomeCampagna(): le due devono restare d'accordo.
  */
-export function chiaveCampagna(nome: string): string | null {
+export function chiaveCampagna(nome: string, variante: Variante): string | null {
   const pulito = nome.trim();
   if (!pulito || !nomeConforme(pulito)) return null;
-  return nomeBase(pulito) || null;
-}
 
-/** Se una riga con questo nome memorizzato appartiene al segmento scelto. */
-export function nelSegmento(nome: string, variante: Variante): boolean {
-  if (variante === "tutte") return true;
-  const instant = haMarcatoreInstant(nome);
-  return variante === "instant" ? instant : !instant;
+  const chiave = pulito.toLowerCase().replace(/\s+/g, " ");
+  const instant = haMarcatoreInstant(chiave);
+
+  if (variante === "instant") return instant ? chiave : null;
+  if (variante === "unificate" && instant) return chiave.slice(0, -SUFFISSO_INSTANT.length);
+  return chiave;
 }
 
 // --- Lato SQL. L'alias della tabella campagna e' sempre "c". ---
-
-/** Il nome vero della campagna, marcatore rimosso. La forma '(.+)' evita di
- *  ridurre a stringa vuota la campagna che si chiama solo "_test_instant". */
-export const SQL_NOME_CAMPAGNA = `regexp_replace(lower(trim(c.nome)), '(.+)${SUFFISSO_INSTANT}$', '\\1')`;
-
-/** Solo campagne con un id valido (vedi nomeConforme). */
-export const SQL_CAMPAGNA_CONFORME = "c.nome = lower(c.nome)";
 
 // In LIKE l'underscore e' un carattere jolly: va protetto, altrimenti
 // "_test_instant" accetterebbe anche "xtestyinstant".
 export const SQL_E_MARCATORE = `lower(trim(c.nome)) LIKE '%\\_test\\_instant'`;
 
 /**
- * Filtro di segmento per le tabelle che memorizzano il nome della campagna
- * cosi' com'era al momento del fatto (chiamate, trattative, no-show): il
- * suffisso dice gia' se quel contatto era stato assegnato subito.
+ * Il nome della riga. Solo con "unificate" il marcatore viene tolto; la forma
+ * '(.+)' evita di ridurre a stringa vuota la campagna che si chiama solo
+ * "_test_instant".
  */
-export function sqlSegmentoDaNome(variante: Variante): string {
-  if (variante === "tutte") return "TRUE";
-  return variante === "instant" ? SQL_E_MARCATORE : `NOT (${SQL_E_MARCATORE})`;
+export function sqlNomeCampagna(variante: Variante): string {
+  const nome = "lower(trim(c.nome))";
+  return variante === "unificate"
+    ? `regexp_replace(${nome}, '(.+)${SUFFISSO_INSTANT}$', '\\1')`
+    : nome;
+}
+
+/** Quali campagne tenere. Da concatenare con AND al resto del filtro. */
+export function sqlFiltroCampagna(variante: Variante): string {
+  const conforme = "c.nome = lower(c.nome)";
+  return variante === "instant" ? `${conforme} AND ${SQL_E_MARCATORE}` : conforme;
 }
