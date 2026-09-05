@@ -604,8 +604,11 @@ export default function CampaignsDashboard({
           filters={filters}
           setFilters={setFilters}
           campaigns={categoriaOptions}
-          tipologie={TIPOLOGIE}
+          campaignLabel="Categoria"
           varianti={VARIANTI}
+          varianteLabel="Campagna"
+          tipologie={TIPOLOGIE}
+          tipologiaLabel="Variabile"
         />
       </div>
 
