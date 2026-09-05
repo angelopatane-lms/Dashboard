@@ -127,6 +127,22 @@ function div(a: number, b: number): number | null {
   return b > 0 ? a / b : null;
 }
 
+/**
+ * Costo per unita'. Vale null anche quando la spesa e' zero, non solo quando lo
+ * e' il denominatore: "0,00 EUR" per lead si legge come "questi lead non sono
+ * costati nulla", che e' un'informazione, mentre qui il fatto e' che la spesa
+ * non c'e' da ripartire.
+ *
+ * Succede in due casi diversi e in entrambi il trattino e' piu' onesto dello
+ * zero: le campagne senza investimento nel periodo, e la vista Instant, dove il
+ * foglio Ads non conosce il suffisso "_test_instant" e quindi nessuna spesa
+ * finisce su quelle righe (l'investimento e' della campagna intera, e
+ * spalmarlo sul sottoinsieme sarebbe un numero inventato).
+ */
+function costoPerUnita(spesa: number, unita: number): number | null {
+  return spesa > 0 && unita > 0 ? spesa / unita : null;
+}
+
 // % Show Up = consulenze svolte sul totale degli appuntamenti giunti a
 // scadenza (svolti + disertati). Prima calcolava No Show / Consulenze, che era
 // il suo esatto contrario e poteva superare il 100%: ad agosto i disertati sono
@@ -134,12 +150,12 @@ function div(a: number, b: number): number | null {
 function deriveMetrics(raw: RawTotals): DerivedMetrics {
   return {
     ...raw,
-    cplGenerati: div(raw.spesa, raw.leadGenerati),
-    cplUnici: div(raw.spesa, raw.leadUnici),
+    cplGenerati: costoPerUnita(raw.spesa, raw.leadGenerati),
+    cplUnici: costoPerUnita(raw.spesa, raw.leadUnici),
     // % Appuntamento : delle persone raggiunte al telefono, quante hanno
     //                   fissato un appuntamento
     pctAppuntamento: div(raw.fissati, raw.risposte),
-    cpas: div(raw.spesa, raw.processati),
+    cpas: costoPerUnita(raw.spesa, raw.processati),
     // % Consulenza   : delle persone raggiunte al telefono, quante sono
     //                   arrivate a una consulenza svolta. Stessa formula della
     //                   colonna "% App S" del report Looker, per poter
@@ -155,7 +171,7 @@ function deriveMetrics(raw: RawTotals): DerivedMetrics {
     pctConsulenza: div(raw.processati, raw.risposte),
     pctShowUp: div(raw.processati, raw.processati + raw.noShow),
     crSales: div(raw.chiusure, raw.processati),
-    cpa: div(raw.spesa, raw.chiusure),
+    cpa: costoPerUnita(raw.spesa, raw.chiusure),
     roas: div(raw.importo, raw.spesa)
   };
 }
