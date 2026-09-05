@@ -367,11 +367,24 @@ export default function CampaignAdsTable({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        {/* I bordi sono espliciti riga per riga invece che con `divide-y` sul
+            tbody: servono due spessori diversi (marcato per aprire una
+            categoria, leggero fra le campagne al suo interno) e `divide-y` ne
+            imporrebbe uno solo a tutte le righe. Prima la linea marcata sopra
+            la prima categoria arrivava dall'intestazione, quindi era un caso
+            fortuito che non si ripeteva sulle altre. */}
+        <tbody>
           {groups.map((g, groupIdx) => (
             <Fragment key={g.categoria}>
               {g.rows.map((r, idx) => (
-                <tr key={`${g.categoria}-${r.campagna}`} className="hover:bg-slate-50/70 transition-colors">
+                <tr
+                  key={`${g.categoria}-${r.campagna}`}
+                  className={`hover:bg-slate-50/70 transition-colors ${
+                    idx === 0
+                      ? "border-t-2 border-slate-200"
+                      : "border-t border-slate-100"
+                  }`}
+                >
                   {idx === 0 ? (
                     <td
                       className="py-1.5 pr-4 pl-0 align-top font-semibold text-slate-800 whitespace-nowrap"
@@ -387,8 +400,11 @@ export default function CampaignAdsTable({
                 </tr>
               ))}
               {groupIdx < groups.length - 1 ? (
-                <tr key={`${g.categoria}-spacer`} className="bg-white">
-                  <td className="h-3 p-0 border-0" colSpan={2 + HEADERS.length} />
+                // Lo spazio bianco fra due categorie, con sopra la linea
+                // leggera che chiude quella appena finita: cosi' ogni categoria
+                // e' aperta da una linea marcata e chiusa da una sottile.
+                <tr key={`${g.categoria}-spacer`} className="border-t border-slate-100 bg-white">
+                  <td className="h-3 p-0" colSpan={2 + HEADERS.length} />
                 </tr>
               ) : null}
             </Fragment>
