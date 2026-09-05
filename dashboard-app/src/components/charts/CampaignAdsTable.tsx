@@ -25,6 +25,10 @@ export type CampaignAdsRow = {
   categoria: string;
   campagna: string;
   spesa: number;
+  /** true quando la spesa non e' un dato ma una ripartizione: succede nelle
+   *  viste Instant e Non Instant, dove il foglio Ads conosce la campagna intera
+   *  e la quota del gruppo viene stimata in proporzione ai Lead Generati. */
+  spesaStimata?: boolean;
   /** Persone distinte che hanno convertito su questa campagna nel periodo:
    *  due iscrizioni alla stessa campagna valgono 1, tre campagne diverse
    *  valgono 3. */

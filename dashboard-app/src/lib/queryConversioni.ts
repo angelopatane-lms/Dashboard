@@ -1,9 +1,12 @@
 import {
   SQL_E_MARCATORE,
+  SQL_JOIN_BASE,
   sqlEMarcatore,
+  sqlFiltroCampagna,
   sqlNomeBase,
   sqlNomeCampagna,
   SUFFISSO_INSTANT,
+  varianteUnificaNomi,
   type Variante
 } from "@/lib/campagne";
 
@@ -75,15 +78,21 @@ export function costruisciQuery(variante: Variante): string {
   ),
 `;
   const sorgente = segmento ? "etichettati" : "risolti";
-  const filtroRiga = !segmento ? "" : instant ? "AND e.instant" : "AND NOT e.instant";
+  // Il segmento diventa una FILTER invece che una WHERE, cosi' lo stesso
+  // raggruppamento produce sia il conteggio del gruppo sia quello dell'intera
+  // campagna. Il totale serve al client per ripartire la spesa: il foglio Ads
+  // conosce solo la campagna, non i suoi gruppi.
+  const condizioneRiga = !segmento ? "TRUE" : instant ? "e.instant" : "NOT e.instant";
 
   // Gli eventi contati stanno sempre sulla campagna BASE. Con "instant" la riga
   // deve pero' continuare a chiamarsi come la variante, perche' e' quella che si
   // e' chiesto di vedere; con "non_instant" il nome base va gia' bene.
   const nome = instant ? `lower(trim(c.nome)) || '${SUFFISSO_INSTANT}'` : sqlNomeCampagna(variante);
-  // La conformita' del nome vale per tutte e tre le viste; con "instant" non si
-  // filtra piu' per suffisso, perche' ora si guardano le campagne base.
-  const filtro = "c.nome = lower(c.nome)";
+  // Con le viste per segmento il filtro sul suffisso non si applica: la
+  // divisione fra i due gruppi la fa gia' l'etichetta sugli eventi, e le
+  // campagne su cui si contano le conversioni sono quelle base.
+  const filtro = segmento ? "c.nome = lower(c.nome)" : sqlFiltroCampagna(variante);
+  const joinBase = varianteUnificaNomi(variante) ? SQL_JOIN_BASE : "";
 
   return `
   WITH risolti AS (
@@ -106,24 +115,29 @@ ${cteSegmento}  -- Prima conversione in assoluto di ogni persona: una riga per p
   -- il pianificatore, che non sa stimarne le righe, finiva per rileggerla per
   -- intero una volta per riga (19.631 scansioni, 11 secondi).
   generati AS (
-    SELECT ${nome} AS nome, COUNT(DISTINCT e.persona_id)::int AS n
+    SELECT ${nome} AS nome,
+           COUNT(DISTINCT e.persona_id) FILTER (WHERE ${condizioneRiga})::int AS n,
+           COUNT(DISTINCT e.persona_id)::int                                  AS n_campagna
     FROM ${sorgente} e JOIN campagna c ON c.id = e.campagna_id
+    ${joinBase}
     WHERE e.ts >= $1::date AND e.ts < ($2::date + INTERVAL '1 day')
       AND ${filtro}
-      ${filtroRiga}
     GROUP BY 1
+    HAVING COUNT(DISTINCT e.persona_id) FILTER (WHERE ${condizioneRiga}) > 0
   ),
   unici AS (
-    SELECT ${nome} AS nome, COUNT(*)::int AS n
+    SELECT ${nome} AS nome, COUNT(*) FILTER (WHERE ${condizioneRiga})::int AS n
     FROM prima_conversione e JOIN campagna c ON c.id = e.campagna_id
+    ${joinBase}
     WHERE e.ts >= $1::date AND e.ts < ($2::date + INTERVAL '1 day')
       AND ${filtro}
-      ${filtroRiga}
     GROUP BY 1
+    HAVING COUNT(*) FILTER (WHERE ${condizioneRiga}) > 0
   )
   SELECT COALESCE(g.nome, u.nome) AS campagna,
          COALESCE(g.n, 0) AS lead_generati,
-         COALESCE(u.n, 0) AS lead_unici
+         COALESCE(u.n, 0) AS lead_unici,
+         g.n_campagna     AS lead_generati_campagna
   FROM generati g
   FULL OUTER JOIN unici u ON u.nome = g.nome
   ORDER BY lead_generati DESC

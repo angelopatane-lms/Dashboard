@@ -14,6 +14,12 @@ export type CampaignConversionRow = {
   /** Lead NUOVI: persone la cui prima conversione in assoluto cade nel periodo.
    *  Il valore e' stabile nel tempo e somma esattamente fra campagne. */
   lead_unici: number;
+  /** Lead Generati dell'INTERA campagna, gruppi instant e non instant messi
+   *  insieme. Nelle viste per segmento coincide col totale di cui lead_generati
+   *  e' una parte, e serve al client per ripartire la spesa in proporzione: il
+   *  foglio Ads conosce la campagna, non i suoi gruppi. Nelle altre viste e'
+   *  uguale a lead_generati. */
+  lead_generati_campagna: number | null;
 };
 
 export async function GET(req: NextRequest) {

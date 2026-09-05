@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { leggiVariante, sqlFiltroCampagna, sqlNomeCampagna, type Variante } from "@/lib/campagne";
+import {
+  leggiVariante,
+  SQL_JOIN_BASE,
+  sqlFiltroCampagna,
+  sqlNomeCampagna,
+  varianteUnificaNomi,
+  type Variante
+} from "@/lib/campagne";
 
 export const dynamic = "force-dynamic";
 
@@ -34,10 +41,12 @@ export type CampaignTrattativeRow = {
 function costruisciQuery(variante: Variante): string {
   const nome = sqlNomeCampagna(variante);
   const filtro = sqlFiltroCampagna(variante);
+  const joinBase = varianteUnificaNomi(variante) ? SQL_JOIN_BASE : "";
   return `
   WITH svolte AS (
     SELECT ${nome} AS nome, COUNT(*)::int AS n
     FROM trattativa t JOIN campagna c ON c.id = t.campagna_id
+    ${joinBase}
     WHERE t.svolta_ts >= $1::date AND t.svolta_ts < ($2::date + INTERVAL '1 day')
       AND ${filtro}
     GROUP BY 1
@@ -45,6 +54,7 @@ function costruisciQuery(variante: Variante): string {
   disertati AS (
     SELECT ${nome} AS nome, COUNT(*)::int AS n
     FROM no_show n JOIN campagna c ON c.id = n.campagna_id
+    ${joinBase}
     WHERE n.ts >= $1::date AND n.ts < ($2::date + INTERVAL '1 day')
       AND ${filtro}
     GROUP BY 1

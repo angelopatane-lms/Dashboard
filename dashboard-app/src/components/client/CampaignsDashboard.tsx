@@ -6,13 +6,15 @@ import { applyFilters, getString, type Filters } from "@/lib/metrics";
 import { aggregateByCampagna, normalizeOperatori } from "@/lib/analytics";
 import { formatPct } from "@/lib/format";
 import { guessCategoria } from "@/lib/campaignCategory";
+import type { Variante } from "@/lib/campagne";
 import {
   chiaveCampagna,
   leggiVariante,
   nomeConforme,
   VARIANTE_DEFAULT,
   VARIANTI,
-  varianteMostraSpesa
+  varianteEsegmento,
+  type MappaVarianti
 } from "@/lib/campagne";
 import CampaignConversionPeaksChart from "@/components/charts/CampaignConversionPeaksChart";
 import { FiltersBar } from "@/components/Filters";
@@ -33,10 +35,6 @@ type CampaignPeaksDatum = {
   date: string;
   [campaign: string]: string | number | null;
 };
-
-function normKey(s: string): string {
-  return s.trim().toLowerCase().replace(/\s+/g, " ");
-}
 
 // Opzioni del filtro "Tipologia", che su questa pagina prende il posto di
 // "Operatore": le righe sono campagne, non persone.
@@ -62,7 +60,9 @@ const TIPOLOGIE = [{ label: "Con Spesa", value: "con_spesa" }];
 function buildCampaignAdsRows(
   spesaByCampagna: Map<string, { campagna: string; spesa: number }>,
   conversioniByCampagna: Map<string, CampaignConversionRow>,
-  funnelByCampagna: Map<string, FunnelCampagna>
+  funnelByCampagna: Map<string, FunnelCampagna>,
+  variante: Variante,
+  varianti: MappaVarianti
 ): CampaignAdsRow[] {
   // Le righe sono l'UNIONE di chi ha speso e di chi ha prodotto qualcosa.
   // Prima si partiva solo dal foglio Ads, quindi una campagna senza spesa nel
@@ -85,12 +85,36 @@ function buildCampaignAdsRows(
     if (!nomi.has(chiave)) nomi.set(chiave, chiave);
   }
 
+  const segmento = varianteEsegmento(variante);
+
   return Array.from(nomi.entries()).map(([chiave, campagna]) => {
     const conv = conversioniByCampagna.get(chiave);
+
+    // SPESA DEI GRUPPI. Il foglio Ads conosce la campagna, non i suoi gruppi:
+    // non esiste un budget speso "sui contatti assegnati subito". Nelle viste
+    // instant e non instant la si ripartisce quindi in proporzione ai Lead
+    // Generati, ed e' una STIMA dichiarata come tale.
+    //
+    // Conseguenza da tenere a mente leggendo la tabella: cosi' costruito, il
+    // CPL Generati risulta identico nelle tre viste, perche' spesa e lead sono
+    // divisi dalla stessa frazione. A cambiare - e a dire qualcosa - sono CPL
+    // Unici, CPAS, CPA e ROAS, che hanno un altro denominatore.
+    let spesa = spesaByCampagna.get(chiave)?.spesa ?? 0;
+    let spesaStimata = false;
+    if (segmento) {
+      const base = chiaveCampagna(campagna, "unificate", varianti) ?? chiave;
+      const spesaCampagna = spesaByCampagna.get(base)?.spesa ?? 0;
+      const totale = conv?.lead_generati_campagna ?? 0;
+      const quota = totale > 0 ? (conv?.lead_generati ?? 0) / totale : 0;
+      spesa = spesaCampagna * quota;
+      spesaStimata = spesa > 0;
+    }
+
     return {
       categoria: guessCategoria(campagna),
       campagna,
-      spesa: spesaByCampagna.get(chiave)?.spesa ?? 0,
+      spesa,
+      spesaStimata,
       // Una campagna presente nel foglio spesa ma assente fra le conversioni
       // ha davvero prodotto zero lead: non e' un dato mancante.
       leadGenerati: conv?.lead_generati ?? 0,
@@ -130,6 +154,9 @@ export default function CampaignsDashboard({
   const variante = leggiVariante(filters.variante);
 
   const [adsSpendRows, setAdsSpendRows] = useState<CampaignAdsSpendRow[]>([]);
+  // Mappa "nome con suffisso" -> "nome base", costruita dal server perche' solo
+  // lui ha l'elenco delle campagne. Vedi /api/campaign-ads.
+  const [varianti, setVarianti] = useState<MappaVarianti>({});
   const fetchedAdsRangeRef = useRef<{ from: string; to: string } | null>(null);
 
   useEffect(() => {
@@ -140,8 +167,9 @@ export default function CampaignsDashboard({
 
     fetch(`/api/campaign-ads?from=${currentFrom}&to=${currentTo}`)
       .then((r) => r.json())
-      .then((data: { rows?: CampaignAdsSpendRow[] }) => {
+      .then((data: { rows?: CampaignAdsSpendRow[]; varianti?: MappaVarianti }) => {
         setAdsSpendRows(data.rows ?? []);
+        setVarianti(data.varianti ?? {});
         fetchedAdsRangeRef.current = { from: currentFrom, to: currentTo };
       })
       .catch(console.error);
@@ -183,9 +211,12 @@ export default function CampaignsDashboard({
 
   const conversioniByCampagna = useMemo(() => {
     const map = new Map<string, CampaignConversionRow>();
-    for (const r of conversioni) map.set(normKey(r.campagna), r);
+    for (const r of conversioni) {
+      const k = chiaveCampagna(r.campagna, variante, varianti);
+      if (k) map.set(k, r);
+    }
     return map;
-  }, [conversioni]);
+  }, [conversioni, variante, varianti]);
 
   // Appuntamenti, Chiusure e Importo dalle STESSE fonti della pagina Advisor:
   // gli endpoint restituiscono i record grezzi, che li' vengono raggruppati per
@@ -299,7 +330,7 @@ export default function CampaignsDashboard({
     // null = la campagna non va mostrata: nome non conforme, oppure fuori dalla
     // variante scelta.
     const prendi = (campagna: string): FunnelCampagna | null => {
-      const k = chiaveCampagna(campagna, variante);
+      const k = chiaveCampagna(campagna, variante, varianti);
       if (!k) return null;
       const cur = map.get(k) ?? { appuntamenti: 0, chiusure: 0, importo: 0, consulenze: 0, noShow: 0, chiamate: 0, connessioni: 0 };
       map.set(k, cur);
@@ -335,7 +366,7 @@ export default function CampaignsDashboard({
       cur.connessioni += r.connessioni;
     }
     return map;
-  }, [dealRecords, boomRecords, consulenze, chiamate, variante]);
+  }, [dealRecords, boomRecords, consulenze, chiamate, variante, varianti]);
 
   // Il filtro "Campagna" di questa pagina mostra le Categorie (dedotte dalle
   // campagne tecniche realmente presenti nel foglio Ads-spesa per il periodo
@@ -345,32 +376,33 @@ export default function CampaignsDashboard({
     const set = new Set<string>();
     for (const r of adsSpendRows) {
       const c = r.campagna.trim();
-      if (c && nomeConforme(c)) set.add(guessCategoria(c));
+      if (c && (variante === "tutte" || nomeConforme(c))) set.add(guessCategoria(c));
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [adsSpendRows]);
+  }, [adsSpendRows, variante]);
 
   const spesaByCampagna = useMemo(() => {
     const from = filters.from ?? defaultFrom;
     const to = filters.to ?? defaultTo;
     const map = new Map<string, { campagna: string; spesa: number }>();
-    // Nelle viste per segmento la spesa non si attribuisce: vedi
-    // varianteMostraSpesa() in src/lib/campagne.ts.
-    if (!varianteMostraSpesa(variante)) return map;
+    // Nelle viste per segmento la spesa si indicizza sulla CAMPAGNA INTERA: il
+    // foglio Ads non sa nulla di assegnazioni, e la riga del gruppo andra' a
+    // cercarsela di li' per ripartirla (vedi buildCampaignAdsRows).
+    const chiaveSpesa = varianteEsegmento(variante) ? "unificate" : variante;
     for (const r of adsSpendRows) {
       if (from && r.data && r.data < from) continue;
       if (to && r.data && r.data > to) continue;
       // La spesa senza nome campagna resta visibile sotto "(Nessuna)": quello
       // non e' un nome non conforme, e' un nome assente, e scartarla
       // toglierebbe euro veri dal totale della pagina.
-      const key = r.campagna.trim() ? chiaveCampagna(r.campagna, variante) : "__nessuna__";
+      const key = r.campagna.trim() ? chiaveCampagna(r.campagna, chiaveSpesa, varianti) : "__nessuna__";
       if (!key) continue;
       const cur = map.get(key) ?? { campagna: key, spesa: 0 };
       cur.spesa += r.spesa;
       map.set(key, cur);
     }
     return map;
-  }, [adsSpendRows, filters.from, filters.to, variante, defaultFrom, defaultTo]);
+  }, [adsSpendRows, filters.from, filters.to, variante, varianti, defaultFrom, defaultTo]);
 
   const todayIsoRome = useMemo(
     () =>
@@ -411,11 +443,11 @@ export default function CampaignsDashboard({
   const campaignSummary = useMemo(() => campaignSummaryFull.slice(0, 12), [campaignSummaryFull]);
 
   const campaignAdsRows = useMemo(() => {
-    let rows = buildCampaignAdsRows(spesaByCampagna, conversioniByCampagna, funnelByCampagna);
+    let rows = buildCampaignAdsRows(spesaByCampagna, conversioniByCampagna, funnelByCampagna, variante, varianti);
     if (filters.tipologia === "con_spesa") rows = rows.filter((r) => r.spesa > 0);
     if (filters.campagna) rows = rows.filter((r) => r.categoria === filters.campagna);
     return rows;
-  }, [spesaByCampagna, conversioniByCampagna, funnelByCampagna, filters.campagna, filters.tipologia]);
+  }, [spesaByCampagna, conversioniByCampagna, funnelByCampagna, variante, varianti, filters.campagna, filters.tipologia]);
 
   const campaignAnomalies = useMemo(() => {
     const toMs = (iso: string) => new Date(iso).getTime();
@@ -593,6 +625,14 @@ export default function CampaignsDashboard({
       ) : null}
 
       <Card className="mt-6">
+        {varianteEsegmento(variante) ? (
+          <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <b>Spesa stimata.</b> Il foglio Ads registra l&apos;investimento della campagna intera, non dei
+            singoli gruppi: qui e&apos; ripartito in proporzione ai Lead Generati. Ne segue che il CPL
+            Generati risulta uguale nelle tre viste, mentre CPL Unici, CPAS, CPA e ROAS cambiano davvero,
+            perche&apos; hanno un altro denominatore. Per la spesa reale usa la vista Unificate.
+          </div>
+        ) : null}
         <CampaignAdsTable adsRows={campaignAdsRows} campaignSummary={campaignSummaryFull} funnelByCampagna={funnelByCampagna} />
       </Card>
 
