@@ -1,4 +1,11 @@
-import { SQL_E_MARCATORE, sqlFiltroCampagna, sqlNomeCampagna, type Variante } from "@/lib/campagne";
+import {
+  SQL_E_MARCATORE,
+  sqlEMarcatore,
+  sqlNomeBase,
+  sqlNomeCampagna,
+  SUFFISSO_INSTANT,
+  type Variante
+} from "@/lib/campagne";
 
 // Per ogni campagna, nell'intervallo [from, to]:
 //
@@ -16,24 +23,64 @@ import { SQL_E_MARCATORE, sqlFiltroCampagna, sqlNomeCampagna, type Variante } fr
 //
 // MARCATORI DI ASSEGNAZIONE: le voci "..._test_instant" non sono conversioni ma
 // la stessa campagna riscritta da un workflow quando il contatto viene assegnato
-// subito (vedi src/lib/campagne.ts). Con la vista "unificate" vengono tolte
-// prima di contare, altrimenti la stessa persona verrebbe sommata due volte:
-// e' la differenza fra 47.051 e 39.095 Lead Generati sul trimestre.
+// subito (vedi src/lib/campagne.ts). Le tre viste li trattano cosi':
 //
-// Con "tutte" restano invece dove sono, perche' quella vista serve proprio a
-// mostrare il dato grezzo come sta in HubSpot; con "instant" sono le uniche
-// righe mostrate.
+// - "unificate": tolti prima di contare, altrimenti la stessa persona verrebbe
+//   sommata due volte. E' la differenza fra 47.051 e 39.095 Lead Generati sul
+//   trimestre.
+// - "tutte": lasciati dove sono, perche' quella vista mostra il dato grezzo come
+//   sta in HubSpot e fa vedere da dove nasce la differenza.
+// - "instant": le righe sono quelle col marcatore, ma i numeri sono le
+//   CONVERSIONI VERE dei contatti che quel marcatore ce l'hanno. Contare invece
+//   i marcatori stessi dava Lead Unici a zero su ogni riga - un marcatore non e'
+//   mai la prima conversione di nessuno - facendo leggere "nessun lead nuovo"
+//   dove i lead nuovi del trimestre sono 5.163.
 export function costruisciQuery(variante: Variante): string {
-  const nome = sqlNomeCampagna(variante);
-  const filtro = sqlFiltroCampagna(variante);
+  const instant = variante === "instant";
 
-  // Nella vista unificata i marcatori si tolgono QUI, dentro la scansione, non
-  // in una CTE a valle: separarli significava materializzare due volte 740.000
-  // righe su disco temporaneo, e la query passava da 0,8 a 9 secondi.
+  // Nella vista unificata e in quella instant i marcatori si tolgono dentro la
+  // scansione, non in una CTE a valle: separarli significava materializzare due
+  // volte 740.000 righe su disco temporaneo (da 0,8 a 9 secondi).
   const senzaMarcatori =
-    variante === "unificate"
-      ? "WHERE e.campagna_id NOT IN (SELECT id FROM campagna c WHERE " + SQL_E_MARCATORE + ")"
-      : "";
+    variante === "tutte"
+      ? ""
+      : `WHERE e.campagna_id NOT IN (SELECT id FROM campagna c WHERE ${SQL_E_MARCATORE})`;
+
+  // Solo per la vista instant: chi porta il marcatore, e su quale campagna vera.
+  // L'etichetta si attacca UNA VOLTA sull'insieme completo degli eventi, dove il
+  // pianificatore sa quante righe aspettarsi e sceglie una hash join. Agganciarla
+  // a valle, su una CTE di cui non ha statistiche, gli faceva stimare una riga,
+  // scegliere un ciclo annidato e rileggere i marcatori per ognuna: 47 secondi.
+  const cteInstant = !instant
+    ? ""
+    : `  basi AS (
+    SELECT m.id AS id_marcatore, b.id AS id_base
+    FROM campagna m
+    JOIN campagna b ON lower(trim(b.nome)) = ${sqlNomeBase("m")} AND NOT (${sqlEMarcatore("b")})
+    WHERE ${sqlEMarcatore("m")} AND m.nome = lower(m.nome) AND b.nome = lower(b.nome)
+  ),
+  marcati AS (
+    SELECT DISTINCT COALESCE(a.nuovo_id, e.contact_id) AS persona_id, b.id_base AS campagna_id
+    FROM eventi_conversione e
+    LEFT JOIN alias_contatto a ON a.vecchio_id = e.contact_id
+    JOIN basi b ON b.id_marcatore = e.campagna_id
+  ),
+  etichettati AS (
+    SELECT r.persona_id, r.campagna_id, r.ts, (m.persona_id IS NOT NULL) AS instant
+    FROM risolti r
+    LEFT JOIN marcati m ON m.persona_id = r.persona_id AND m.campagna_id = r.campagna_id
+  ),
+`;
+  const sorgente = instant ? "etichettati" : "risolti";
+  const filtroRiga = instant ? "AND e.instant" : "";
+
+  // Con "instant" gli eventi contati stanno sulla campagna BASE, ma la riga deve
+  // continuare a chiamarsi come la variante: e' quella che l'utente ha chiesto
+  // di vedere.
+  const nome = instant ? `lower(trim(c.nome)) || '${SUFFISSO_INSTANT}'` : sqlNomeCampagna(variante);
+  // La conformita' del nome vale per tutte e tre le viste; con "instant" non si
+  // filtra piu' per suffisso, perche' ora si guardano le campagne base.
+  const filtro = "c.nome = lower(c.nome)";
 
   return `
   WITH risolti AS (
@@ -42,35 +89,33 @@ export function costruisciQuery(variante: Variante): string {
     LEFT JOIN alias_contatto a ON a.vecchio_id = e.contact_id
     ${senzaMarcatori}
   ),
-  -- Prima conversione in assoluto di ogni persona: una riga per persona,
+${cteInstant}  -- Prima conversione in assoluto di ogni persona: una riga per persona,
   -- calcolata su TUTTA la storia (nessun filtro di data qui dentro) e dopo la
   -- risoluzione delle fusioni, cosi' due schede unite sono una persona sola.
-  --
-  -- Un marcatore non puo' finire qui per primo nemmeno nelle viste che lo
-  -- conservano: il contatto nasce con la campagna base e il workflow riscrive
-  -- dopo, quindi il marcatore ha per forza un timestamp successivo. Misurato:
-  -- su 345.844 persone una sola fa eccezione, ed e' agganciata alla campagna
-  -- chiamata letteralmente "_test_instant", senza nome base davanti.
+  -- Si calcola su tutti gli eventi della persona e NON solo su quelli della
+  -- vista: la prima conversione e' un fatto suo, non del gruppo che si guarda.
   prima_conversione AS (
-    SELECT DISTINCT ON (persona_id) persona_id, campagna_id, ts
-    FROM risolti
+    SELECT DISTINCT ON (persona_id) *
+    FROM ${sorgente}
     ORDER BY persona_id, ts, campagna_id
   ),
   -- Qui si aggancia la TABELLA campagna e non una CTE: una CTE non ha indici e
   -- il pianificatore, che non sa stimarne le righe, finiva per rileggerla per
   -- intero una volta per riga (19.631 scansioni, 11 secondi).
   generati AS (
-    SELECT ${nome} AS nome, COUNT(DISTINCT r.persona_id)::int AS n
-    FROM risolti r JOIN campagna c ON c.id = r.campagna_id
-    WHERE r.ts >= $1::date AND r.ts < ($2::date + INTERVAL '1 day')
+    SELECT ${nome} AS nome, COUNT(DISTINCT e.persona_id)::int AS n
+    FROM ${sorgente} e JOIN campagna c ON c.id = e.campagna_id
+    WHERE e.ts >= $1::date AND e.ts < ($2::date + INTERVAL '1 day')
       AND ${filtro}
+      ${filtroRiga}
     GROUP BY 1
   ),
   unici AS (
     SELECT ${nome} AS nome, COUNT(*)::int AS n
-    FROM prima_conversione p JOIN campagna c ON c.id = p.campagna_id
-    WHERE p.ts >= $1::date AND p.ts < ($2::date + INTERVAL '1 day')
+    FROM prima_conversione e JOIN campagna c ON c.id = e.campagna_id
+    WHERE e.ts >= $1::date AND e.ts < ($2::date + INTERVAL '1 day')
       AND ${filtro}
+      ${filtroRiga}
     GROUP BY 1
   )
   SELECT COALESCE(g.nome, u.nome) AS campagna,

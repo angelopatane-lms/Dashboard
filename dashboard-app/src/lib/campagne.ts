@@ -91,18 +91,21 @@ export function chiaveCampagna(nome: string, variante: Variante): string | null 
 
 // In LIKE l'underscore e' un carattere jolly: va protetto, altrimenti
 // "_test_instant" accetterebbe anche "xtestyinstant".
-export const SQL_E_MARCATORE = `lower(trim(c.nome)) LIKE '%\\_test\\_instant'`;
+export function sqlEMarcatore(alias = "c"): string {
+  return `lower(trim(${alias}.nome)) LIKE '%\\_test\\_instant'`;
+}
 
-/**
- * Il nome della riga. Solo con "unificate" il marcatore viene tolto; la forma
- * '(.+)' evita di ridurre a stringa vuota la campagna che si chiama solo
- * "_test_instant".
- */
+export const SQL_E_MARCATORE = sqlEMarcatore();
+
+/** Il nome base di una campagna, marcatore rimosso. La forma '(.+)' evita di
+ *  ridurre a stringa vuota la campagna che si chiama solo "_test_instant". */
+export function sqlNomeBase(alias = "c"): string {
+  return `regexp_replace(lower(trim(${alias}.nome)), '(.+)${SUFFISSO_INSTANT}$', '\\1')`;
+}
+
+/** Il nome della riga. Solo con "unificate" il marcatore viene tolto. */
 export function sqlNomeCampagna(variante: Variante): string {
-  const nome = "lower(trim(c.nome))";
-  return variante === "unificate"
-    ? `regexp_replace(${nome}, '(.+)${SUFFISSO_INSTANT}$', '\\1')`
-    : nome;
+  return variante === "unificate" ? sqlNomeBase() : "lower(trim(c.nome))";
 }
 
 /** Quali campagne tenere. Da concatenare con AND al resto del filtro. */
