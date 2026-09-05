@@ -628,14 +628,6 @@ export default function CampaignsDashboard({
       ) : null}
 
       <Card className="mt-6">
-        {varianteEsegmento(variante) ? (
-          <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            <b>Spesa stimata.</b> Il foglio Ads registra l&apos;investimento della campagna intera, non dei
-            singoli gruppi: qui e&apos; ripartito in proporzione ai Lead Generati. Ne segue che il CPL
-            Generati risulta uguale nelle tre viste, mentre CPL Unici, CPAS, CPA e ROAS cambiano davvero,
-            perche&apos; hanno un altro denominatore. Per la spesa reale usa la vista Unificate.
-          </div>
-        ) : null}
         <CampaignAdsTable adsRows={campaignAdsRows} campaignSummary={campaignSummaryFull} funnelByCampagna={funnelByCampagna} />
       </Card>
 
