@@ -50,9 +50,9 @@ type RawTotals = {
 type DerivedMetrics = RawTotals & {
   cplGenerati: number | null;
   cplUnici: number | null;
-  pctAppFissati: number | null;
+  pctAppuntamento: number | null;
   cpas: number | null;
-  pctAppSvolti: number | null;
+  pctConsulenza: number | null;
   pctShowUp: number | null;
   crSales: number | null;
   cpa: number | null;
@@ -136,9 +136,13 @@ function deriveMetrics(raw: RawTotals): DerivedMetrics {
     ...raw,
     cplGenerati: div(raw.spesa, raw.leadGenerati),
     cplUnici: div(raw.spesa, raw.leadUnici),
-    pctAppFissati: div(raw.fissati, raw.risposte),
+    // % Appuntamento : delle persone raggiunte al telefono, quante hanno
+    //                   fissato un appuntamento
+    pctAppuntamento: div(raw.fissati, raw.risposte),
     cpas: div(raw.spesa, raw.processati),
-    pctAppSvolti: div(raw.processati, raw.fissati),
+    // % Consulenza   : degli appuntamenti fissati, quanti sono diventati una
+    //                   consulenza svolta
+    pctConsulenza: div(raw.processati, raw.fissati),
     pctShowUp: div(raw.processati, raw.processati + raw.noShow),
     crSales: div(raw.chiusure, raw.processati),
     cpa: div(raw.spesa, raw.chiusure),
@@ -190,10 +194,10 @@ const HEADERS = [
   "CPL Unici",
   "Connessioni",
   "Appuntamenti",
-  "% Appuntamenti",
+  "% Appuntamento",
   "Consulenze",
   "CPAS",
-  "% Appuntamento",
+  "% Consulenza",
   "% Show Up",
   "Chiusure",
   "Importo",
@@ -233,8 +237,8 @@ function MetricCells({ m, max }: { m: DerivedMetrics; max: MaxValues }) {
       <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.fissati, max.fissati) }}>
         {formatInt(m.fissati)}
       </td>
-      <td className="px-3 py-1.5 text-right font-semibold tabular-nums" style={{ background: rateBg(m.pctAppFissati) }}>
-        {fmtPct(m.pctAppFissati)}
+      <td className="px-3 py-1.5 text-right font-semibold tabular-nums" style={{ background: rateBg(m.pctAppuntamento) }}>
+        {fmtPct(m.pctAppuntamento)}
       </td>
       <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.processati, max.processati) }}>
         {formatInt(m.processati)}
@@ -245,8 +249,8 @@ function MetricCells({ m, max }: { m: DerivedMetrics; max: MaxValues }) {
       >
         {fmtEur(m.cpas, 2)}
       </td>
-      <td className="px-3 py-1.5 text-right font-semibold tabular-nums" style={{ background: rateBg(m.pctAppSvolti) }}>
-        {fmtPct(m.pctAppSvolti)}
+      <td className="px-3 py-1.5 text-right font-semibold tabular-nums" style={{ background: rateBg(m.pctConsulenza) }}>
+        {fmtPct(m.pctConsulenza)}
       </td>
       <td className="px-3 py-1.5 text-right font-semibold tabular-nums" style={{ background: rateBg(m.pctShowUp) }}>
         {fmtPct(m.pctShowUp)}
