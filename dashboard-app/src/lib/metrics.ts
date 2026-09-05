@@ -9,6 +9,9 @@ export type Filters = {
   campagna?: string;
   vendita?: string;
   prodotto?: string;
+  /** Solo pagina Campagne: restringe le righe della tabella (es. "con_spesa").
+   *  Non filtra le righe del foglio Operatori, agisce a valle sulla tabella. */
+  tipologia?: string;
 };
 
 export function getString(row: CsvRow, key: string): string {

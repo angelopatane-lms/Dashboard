@@ -96,7 +96,6 @@ export default async function Page() {
     ? operatoriRowsOggi.filter((r) => allowedOperatorSet!.has(normalizeName((r["Operatore"] ?? "").toString())))
     : operatoriRowsOggi;
 
-  const operators = uniqueValues(operatoriRowsFiltered, "Operatore");
   const campaigns = uniqueValues(operatoriRowsFiltered, "Campagna");
 
   return (
@@ -104,7 +103,6 @@ export default async function Page() {
       <CampaignsDashboard
         operatoriRows={operatoriRowsFiltered}
         operatoriRowsOggi={operatoriRowsOggiFiltered}
-        operators={operators}
         campaigns={campaigns}
       />
     </Container>

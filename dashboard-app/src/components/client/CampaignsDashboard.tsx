@@ -30,6 +30,15 @@ function normKey(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+// Opzioni del filtro "Tipologia", che su questa pagina prende il posto di
+// "Operatore": le righe sono campagne, non persone.
+//
+// "Con Spesa" riporta la tabella alle sole campagne che hanno investito nel
+// periodo. Dacche' mostriamo anche quelle con attivita' ma senza spesa le righe
+// sono passate da 73 a 445 sul trimestre: la vista completa serve a far tornare
+// i totali, questa a lavorare comodamente.
+const TIPOLOGIE = [{ label: "Con Spesa", value: "con_spesa" }];
+
 // Le righe della tabella Ads rappresentano SOLO le campagne tecniche
 // realmente presenti nella colonna "Campagna" del foglio Ads-spesa (non le
 // voci generiche del foglio Operatori come "DIV COACH", "Imprenditoria",
@@ -84,12 +93,10 @@ function buildCampaignAdsRows(
 export default function CampaignsDashboard({
   operatoriRows,
   operatoriRowsOggi,
-  operators,
   campaigns
 }: {
   operatoriRows: CsvRow[];
   operatoriRowsOggi: CsvRow[];
-  operators: string[];
   campaigns: string[];
 }) {
   const defaultFrom = useMemo(() => {
@@ -373,10 +380,11 @@ export default function CampaignsDashboard({
   const campaignSummary = useMemo(() => campaignSummaryFull.slice(0, 12), [campaignSummaryFull]);
 
   const campaignAdsRows = useMemo(() => {
-    const rows = buildCampaignAdsRows(spesaByCampagna, conversioniByCampagna, funnelByCampagna);
-    if (!filters.campagna) return rows;
-    return rows.filter((r) => r.categoria === filters.campagna);
-  }, [spesaByCampagna, conversioniByCampagna, funnelByCampagna, filters.campagna]);
+    let rows = buildCampaignAdsRows(spesaByCampagna, conversioniByCampagna, funnelByCampagna);
+    if (filters.tipologia === "con_spesa") rows = rows.filter((r) => r.spesa > 0);
+    if (filters.campagna) rows = rows.filter((r) => r.categoria === filters.campagna);
+    return rows;
+  }, [spesaByCampagna, conversioniByCampagna, funnelByCampagna, filters.campagna, filters.tipologia]);
 
   const campaignAnomalies = useMemo(() => {
     const toMs = (iso: string) => new Date(iso).getTime();
@@ -532,8 +540,8 @@ export default function CampaignsDashboard({
         <FiltersBar
           filters={filters}
           setFilters={setFilters}
-          operators={operators}
           campaigns={categoriaOptions}
+          tipologie={TIPOLOGIE}
         />
       </div>
 

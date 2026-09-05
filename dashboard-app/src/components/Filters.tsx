@@ -10,7 +10,8 @@ export function FiltersBar({
   campaigns = [],
   vendite,
   prodotti,
-  operatorLabel = "Operatore"
+  operatorLabel = "Operatore",
+  tipologie
 }: {
   filters: Filters;
   setFilters: (next: Filters) => void;
@@ -19,6 +20,10 @@ export function FiltersBar({
   vendite?: Array<{ label: string; value: string }>;
   prodotti?: Array<{ label: string; value: string }>;
   operatorLabel?: string;
+  /** Se presente, al posto del menu Operatore compare "Tipologia". Serve alla
+   *  pagina Campagne, dove filtrare per operatore non ha significato: le righe
+   *  sono campagne, non persone. */
+  tipologie?: Array<{ label: string; value: string }>;
 }) {
   const hasExtra = vendite !== undefined || prodotti !== undefined;
   const fromRef = useRef<HTMLInputElement | null>(null);
@@ -118,21 +123,36 @@ export function FiltersBar({
           </div>
         </div>
         <div>
-          <label className="text-xs font-medium text-slate-600">{operatorLabel}</label>
-          <select
-            className={controlClassName(Boolean(filters.operatore && filters.operatore.trim()))}
-            value={filters.operatore ?? ""}
-            onChange={(e) =>
-              setFilters({ ...filters, operatore: e.target.value || undefined })
-            }
-          >
-            <option value="">Tutti</option>
-            {(operators ?? []).map((o) => (
-              <option key={o} value={o}>
-                {o}
-              </option>
-            ))}
-          </select>
+          <label className="text-xs font-medium text-slate-600">
+            {tipologie ? "Tipologia" : operatorLabel}
+          </label>
+          {tipologie ? (
+            <select
+              className={controlClassName(Boolean(filters.tipologia && filters.tipologia.trim()))}
+              value={filters.tipologia ?? ""}
+              onChange={(e) => setFilters({ ...filters, tipologia: e.target.value || undefined })}
+            >
+              <option value="">Tutte</option>
+              {tipologie.map((x) => (
+                <option key={x.value} value={x.value}>
+                  {x.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <select
+              className={controlClassName(Boolean(filters.operatore && filters.operatore.trim()))}
+              value={filters.operatore ?? ""}
+              onChange={(e) => setFilters({ ...filters, operatore: e.target.value || undefined })}
+            >
+              <option value="">Tutti</option>
+              {(operators ?? []).map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <div>
           <label className="text-xs font-medium text-slate-600">Campagna</label>
