@@ -406,9 +406,13 @@ export default function CampaignAdsTable({
             categoria, leggero fra le campagne al suo interno) e `divide-y` ne
             imporrebbe uno solo a tutte le righe. Prima la linea marcata sopra
             la prima categoria arrivava dall'intestazione, quindi era un caso
-            fortuito che non si ripeteva sulle altre. */}
+            fortuito che non si ripeteva sulle altre.
+
+            Fra una categoria e l'altra non c'e' riga vuota: a separarle basta
+            la linea marcata che apre la successiva, e senza lo stacco ci stanno
+            piu' campagne nella stessa schermata. */}
         <tbody>
-          {groups.map((g, groupIdx) => (
+          {groups.map((g) => (
             <Fragment key={g.categoria}>
               {g.rows.map((r, idx) => (
                 <tr
@@ -433,14 +437,6 @@ export default function CampaignAdsTable({
                   <MetricCells m={deriveMetrics(r.raw)} max={maxValues} />
                 </tr>
               ))}
-              {groupIdx < groups.length - 1 ? (
-                // Lo spazio bianco fra due categorie, con sopra la linea
-                // leggera che chiude quella appena finita: cosi' ogni categoria
-                // e' aperta da una linea marcata e chiusa da una sottile.
-                <tr key={`${g.categoria}-spacer`} className="border-t border-slate-100 bg-white">
-                  <td className="h-3 p-0" colSpan={2 + HEADERS.length} />
-                </tr>
-              ) : null}
             </Fragment>
           ))}
         </tbody>
