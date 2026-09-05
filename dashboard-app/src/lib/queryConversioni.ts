@@ -21,11 +21,18 @@ import {
 //
 // MARCATORI DI ASSEGNAZIONE: le voci "..._test_instant" NON sono conversioni,
 // sono la stessa campagna riscritta da un workflow quando il contatto viene
-// assegnato subito (vedi src/lib/campagne.ts). Vengono tolte prima di contare
-// qualsiasi cosa: se restassero, una persona verrebbe contata due volte fra la
-// campagna e la sua variante, e un marcatore potrebbe passare per "prima
-// conversione", datandola al momento dell'assegnazione invece che a quello
-// dell'iscrizione.
+// assegnato subito (vedi src/lib/campagne.ts). Vengono tolte prima di contare:
+// se restassero, una persona verrebbe contata due volte, sulla campagna e sulla
+// sua variante. E' l'errore che rendeva i Lead Generati del trimestre 47.051
+// invece di 39.095.
+//
+// Sui Lead Unici invece non cambia nulla, ed e' bene sapere perche' non c'e' da
+// aspettarsi un aumento: il contatto nasce sempre con la campagna base e il
+// workflow riscrive dopo, quindi il marcatore ha per forza un timestamp
+// successivo e non puo' essere la prima conversione di nessuno. Misurato: su
+// 345.844 persone, una sola ha come evento piu' antico un marcatore, ed e'
+// agganciata alla campagna chiamata letteralmente "_test_instant", senza nome
+// base davanti. Toglierli qui e' quindi una garanzia, non una correzione.
 //
 // Restano utili come ETICHETTA: il filtro Variante isola i contatti che su
 // quella campagna hanno un marcatore, per confrontarli con gli altri.
