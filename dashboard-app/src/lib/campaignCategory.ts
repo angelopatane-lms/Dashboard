@@ -29,7 +29,11 @@ const CATEGORY_DEFS: CategoryDef[] = [
   { label: "Imprenditoria", contiene: ["imprenditoria_"] },
   { label: "MBE MKTG", contiene: ["mbe_mktg_"] },
   { label: "MBE MNGT", contiene: ["mbe_mngt_"] },
-  { label: "MBE SALES", contiene: ["mbe_sales_"] },
+  // Le due eccezioni sono campagne MBE che non portano "mbe" nel nome. Si
+  // tirano dietro le varianti con i suffissi soliti, quindi coprono 8 campagne
+  // e 2.793 eventi: le tre famiglie "le_7_frasi", "vendite_artificiali_webinar"
+  // e "sales_skills". Nessuna di queste era gia' classificata altrove.
+  { label: "MBE SALES", contiene: ["mbe_sales_", "lms_sales_", "lms_ew_sales_"] },
   { label: "MEP", contiene: ["mep_"] },
   { label: "REM", contiene: ["rem_"] },
   { label: "ADE", contiene: ["ade_"] },
