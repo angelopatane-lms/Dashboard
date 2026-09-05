@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { leggiVariante, sqlFiltroCampagna, sqlNomeCampagna, type Variante } from "@/lib/campagne";
 
 export const dynamic = "force-dynamic";
 
@@ -43,14 +44,18 @@ export type CampaignConversionRow = {
 // La prima conversione e' calcolata su TUTTA la storia (fuori dal filtro sulle
 // date) e dopo la risoluzione delle fusioni.
 //
-// L'aggregazione e' per NOME NORMALIZZATO e non per campagna_id: in HubSpot
-// esistono campagne che differiscono solo per maiuscole ("rem_meet_greet..." e
-// "Rem_meet_greet..."), che sono la stessa campagna scritta in due modi. Senza
-// unirle qui uscirebbero due righe che a valle si sovrascrivono a vicenda, e ha
-// gia' causato una riga con 1 connessione al posto di 1.749.
-// Per i Generati si usa COUNT(DISTINCT persona), non la somma: chi ha
-// convertito su entrambe le grafie va contato una volta sola.
-const QUERY = `
+// QUALI CAMPAGNE E COME SI RAGGRUPPANO: vedi src/lib/campagne.ts. Il nome di
+// riga e il filtro arrivano da li' perche' devono coincidere con quelli che il
+// client applica alla spesa del foglio Ads.
+//
+// Il raggruppamento avviene QUI e non a valle: unendo la variante instant alla
+// campagna base lato client si sommerebbero due conteggi di persone, contando
+// due volte chi ha convertito su entrambe. COUNT(DISTINCT) sul nome gia' unito
+// lo evita.
+function costruisciQuery(variante: Variante): string {
+  const nome = sqlNomeCampagna(variante);
+  const filtro = sqlFiltroCampagna(variante);
+  return `
   WITH risolti AS (
     SELECT COALESCE(a.nuovo_id, e.contact_id) AS persona_id, e.campagna_id, e.ts
     FROM eventi_conversione e
@@ -65,15 +70,17 @@ const QUERY = `
     ORDER BY persona_id, ts, campagna_id
   ),
   generati AS (
-    SELECT lower(trim(c.nome)) AS nome, COUNT(DISTINCT r.persona_id)::int AS n
+    SELECT ${nome} AS nome, COUNT(DISTINCT r.persona_id)::int AS n
     FROM risolti r JOIN campagna c ON c.id = r.campagna_id
     WHERE r.ts >= $1::date AND r.ts < ($2::date + INTERVAL '1 day')
+      AND ${filtro}
     GROUP BY 1
   ),
   unici AS (
-    SELECT lower(trim(c.nome)) AS nome, COUNT(*)::int AS n
+    SELECT ${nome} AS nome, COUNT(*)::int AS n
     FROM prima_conversione p JOIN campagna c ON c.id = p.campagna_id
     WHERE p.ts >= $1::date AND p.ts < ($2::date + INTERVAL '1 day')
+      AND ${filtro}
     GROUP BY 1
   )
   SELECT COALESCE(g.nome, u.nome) AS campagna,
@@ -83,16 +90,18 @@ const QUERY = `
   FULL OUTER JOIN unici u ON u.nome = g.nome
   ORDER BY lead_generati DESC
 `;
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const from = searchParams.get("from");
   const to = searchParams.get("to");
+  const variante = leggiVariante(searchParams.get("variante"));
   if (!from || !to) return NextResponse.json({ error: "Missing from or to" }, { status: 400 });
 
   try {
     const db = getDb();
-    const { rows } = await db.query<CampaignConversionRow>(QUERY, [from, to]);
+    const { rows } = await db.query<CampaignConversionRow>(costruisciQuery(variante), [from, to]);
 
     const {
       rows: [ultimo]

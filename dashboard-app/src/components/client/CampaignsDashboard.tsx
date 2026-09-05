@@ -6,6 +6,7 @@ import { applyFilters, getString, type Filters } from "@/lib/metrics";
 import { aggregateByCampagna, normalizeOperatori } from "@/lib/analytics";
 import { formatPct } from "@/lib/format";
 import { guessCategoria } from "@/lib/campaignCategory";
+import { chiaveCampagna, leggiVariante, nomeConforme, VARIANTE_DEFAULT, VARIANTI } from "@/lib/campagne";
 import CampaignConversionPeaksChart from "@/components/charts/CampaignConversionPeaksChart";
 import { FiltersBar } from "@/components/Filters";
 import Card from "@/components/ui/Card";
@@ -62,9 +63,10 @@ function buildCampaignAdsRows(
   // sulla sola categoria DIV COACH restavano fuori 22 campagne, 6.646 lead e
   // 1.931 connessioni, e i totali non tornavano con quelli di Looker.
   //
-  // Il nome da mostrare viene preferibilmente dal foglio Ads, che conserva le
-  // maiuscole originali; per le campagne senza spesa si usa quello che arriva
-  // dal database.
+  // Il nome mostrato e' la chiave stessa: dopo l'esclusione dei nomi non
+  // conformi (vedi src/lib/campagne.ts) foglio Ads e database scrivono la
+  // campagna allo stesso modo, quindi non c'e' piu' una grafia "originale" da
+  // preferire.
   const nomi = new Map<string, string>();
   for (const [chiave, entry] of spesaByCampagna) {
     nomi.set(chiave, entry.campagna.trim() || "(Nessuna)");
@@ -110,7 +112,15 @@ export default function CampaignsDashboard({
     []
   );
 
-  const [filters, setFilters] = useState<Filters>(() => ({ from: defaultFrom, to: defaultTo }));
+  const [filters, setFilters] = useState<Filters>(() => ({
+    from: defaultFrom,
+    to: defaultTo,
+    variante: VARIANTE_DEFAULT
+  }));
+
+  // Le tre API raggruppano le righe lato database, quindi il valore va
+  // rispedito a ogni cambio: non basta filtrare a valle.
+  const variante = leggiVariante(filters.variante);
 
   const [adsSpendRows, setAdsSpendRows] = useState<CampaignAdsSpendRow[]>([]);
   const fetchedAdsRangeRef = useRef<{ from: string; to: string } | null>(null);
@@ -145,7 +155,7 @@ export default function CampaignsDashboard({
     const to = filters.to ?? defaultTo;
     let annullato = false;
 
-    fetch(`/api/campaign-conversions?from=${from}&to=${to}`)
+    fetch(`/api/campaign-conversions?from=${from}&to=${to}&variante=${variante}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((data: { righe?: CampaignConversionRow[] }) => {
         if (annullato) return;
@@ -162,7 +172,7 @@ export default function CampaignsDashboard({
     return () => {
       annullato = true;
     };
-  }, [filters.from, filters.to, defaultFrom, defaultTo]);
+  }, [filters.from, filters.to, variante, defaultFrom, defaultTo]);
 
   const conversioniByCampagna = useMemo(() => {
     const map = new Map<string, CampaignConversionRow>();
@@ -200,7 +210,7 @@ export default function CampaignsDashboard({
     const to = filters.to ?? defaultTo;
     let annullato = false;
 
-    fetch(`/api/campaign-chiamate?from=${from}&to=${to}`)
+    fetch(`/api/campaign-chiamate?from=${from}&to=${to}&variante=${variante}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((data: { righe?: CampaignChiamateRow[] }) => {
         if (annullato) return;
@@ -217,14 +227,14 @@ export default function CampaignsDashboard({
     return () => {
       annullato = true;
     };
-  }, [filters.from, filters.to, defaultFrom, defaultTo]);
+  }, [filters.from, filters.to, variante, defaultFrom, defaultTo]);
 
   useEffect(() => {
     const from = filters.from ?? defaultFrom;
     const to = filters.to ?? defaultTo;
     let annullato = false;
 
-    fetch(`/api/campaign-trattative?from=${from}&to=${to}`)
+    fetch(`/api/campaign-trattative?from=${from}&to=${to}&variante=${variante}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((data: { righe?: CampaignTrattativeRow[] }) => {
         if (annullato) return;
@@ -241,7 +251,7 @@ export default function CampaignsDashboard({
     return () => {
       annullato = true;
     };
-  }, [filters.from, filters.to, defaultFrom, defaultTo]);
+  }, [filters.from, filters.to, variante, defaultFrom, defaultTo]);
 
   useEffect(() => {
     const from = filters.from ?? defaultFrom;
@@ -279,8 +289,11 @@ export default function CampaignsDashboard({
 
   const funnelByCampagna = useMemo(() => {
     const map = new Map<string, FunnelCampagna>();
-    const prendi = (campagna: string) => {
-      const k = normKey(campagna);
+    // null = la campagna non va mostrata (nome non conforme, oppure fuori
+    // dalla variante scelta): chi chiama deve saltare la riga.
+    const prendi = (campagna: string): FunnelCampagna | null => {
+      const k = chiaveCampagna(campagna, variante);
+      if (!k) return null;
       const cur = map.get(k) ?? { appuntamenti: 0, chiusure: 0, importo: 0, consulenze: 0, noShow: 0, chiamate: 0, connessioni: 0 };
       map.set(k, cur);
       return cur;
@@ -288,11 +301,13 @@ export default function CampaignsDashboard({
 
     for (const r of dealRecords ?? []) {
       if (!r.id_campagna_track?.trim()) continue;
-      prendi(r.id_campagna_track).appuntamenti += 1;
+      const cur = prendi(r.id_campagna_track);
+      if (cur) cur.appuntamenti += 1;
     }
     for (const r of boomRecords ?? []) {
       if (!r.id_campagna_track?.trim()) continue;
       const cur = prendi(r.id_campagna_track);
+      if (!cur) continue;
       if (CHIUSURE_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.chiusure += 1;
       if (BOOM_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.importo += r.importo;
     }
@@ -302,16 +317,18 @@ export default function CampaignsDashboard({
     // sicurezza sul lato che non controlliamo (i nomi del foglio Ads).
     for (const r of consulenze) {
       const cur = prendi(r.campagna);
+      if (!cur) continue;
       cur.consulenze += r.consulenze;
       cur.noShow += r.no_show;
     }
     for (const r of chiamate) {
       const cur = prendi(r.campagna);
+      if (!cur) continue;
       cur.chiamate += r.chiamate;
       cur.connessioni += r.connessioni;
     }
     return map;
-  }, [dealRecords, boomRecords, consulenze, chiamate]);
+  }, [dealRecords, boomRecords, consulenze, chiamate, variante]);
 
   // Il filtro "Campagna" di questa pagina mostra le Categorie (dedotte dalle
   // campagne tecniche realmente presenti nel foglio Ads-spesa per il periodo
@@ -321,7 +338,7 @@ export default function CampaignsDashboard({
     const set = new Set<string>();
     for (const r of adsSpendRows) {
       const c = r.campagna.trim();
-      if (c) set.add(guessCategoria(c));
+      if (c && nomeConforme(c)) set.add(guessCategoria(c));
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [adsSpendRows]);
@@ -333,13 +350,17 @@ export default function CampaignsDashboard({
     for (const r of adsSpendRows) {
       if (from && r.data && r.data < from) continue;
       if (to && r.data && r.data > to) continue;
-      const key = normKey(r.campagna) || "__nessuna__";
-      const cur = map.get(key) ?? { campagna: r.campagna.trim(), spesa: 0 };
+      // La spesa senza nome campagna resta visibile sotto "(Nessuna)": quello
+      // non e' un nome non conforme, e' un nome assente, e scartarla
+      // toglierebbe euro veri dal totale della pagina.
+      const key = r.campagna.trim() ? chiaveCampagna(r.campagna, variante) : "__nessuna__";
+      if (!key) continue;
+      const cur = map.get(key) ?? { campagna: key, spesa: 0 };
       cur.spesa += r.spesa;
       map.set(key, cur);
     }
     return map;
-  }, [adsSpendRows, filters.from, filters.to, defaultFrom, defaultTo]);
+  }, [adsSpendRows, filters.from, filters.to, variante, defaultFrom, defaultTo]);
 
   const todayIsoRome = useMemo(
     () =>
@@ -542,6 +563,7 @@ export default function CampaignsDashboard({
           setFilters={setFilters}
           campaigns={categoriaOptions}
           tipologie={TIPOLOGIE}
+          varianti={VARIANTI}
         />
       </div>
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { leggiVariante, sqlFiltroCampagna, sqlNomeCampagna, type Variante } from "@/lib/campagne";
 
 export const dynamic = "force-dynamic";
 
@@ -23,22 +24,27 @@ export type CampaignTrattativeRow = {
 // id_campagna_track (circa il 2%) restano nel database ma non hanno una riga a
 // cui appartenere.
 //
-// L'aggregazione e' per NOME NORMALIZZATO: esistono campagne che differiscono
-// solo per maiuscole, e vanno unite prima di uscire da qui.
+// QUALI CAMPAGNE E COME SI RAGGRUPPANO: vedi src/lib/campagne.ts.
+//
 // Consulenze e no-show sono due insiemi di EVENTI con date proprie, contati
 // separatamente e poi uniti: una trattativa puo' comparire in entrambi (ha
 // disertato a luglio, e' stata ripianificata e si e' svolta ad agosto).
-const QUERY = `
+function costruisciQuery(variante: Variante): string {
+  const nome = sqlNomeCampagna(variante);
+  const filtro = sqlFiltroCampagna(variante);
+  return `
   WITH svolte AS (
-    SELECT lower(trim(c.nome)) AS nome, COUNT(*)::int AS n
+    SELECT ${nome} AS nome, COUNT(*)::int AS n
     FROM trattativa t JOIN campagna c ON c.id = t.campagna_id
     WHERE t.svolta_ts >= $1::date AND t.svolta_ts < ($2::date + INTERVAL '1 day')
+      AND ${filtro}
     GROUP BY 1
   ),
   disertati AS (
-    SELECT lower(trim(c.nome)) AS nome, COUNT(*)::int AS n
+    SELECT ${nome} AS nome, COUNT(*)::int AS n
     FROM no_show n JOIN campagna c ON c.id = n.campagna_id
     WHERE n.ts >= $1::date AND n.ts < ($2::date + INTERVAL '1 day')
+      AND ${filtro}
     GROUP BY 1
   )
   SELECT COALESCE(s.nome, d.nome) AS campagna,
@@ -48,16 +54,18 @@ const QUERY = `
   FULL OUTER JOIN disertati d ON d.nome = s.nome
   ORDER BY consulenze DESC
 `;
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const from = searchParams.get("from");
   const to = searchParams.get("to");
+  const variante = leggiVariante(searchParams.get("variante"));
   if (!from || !to) return NextResponse.json({ error: "Missing from or to" }, { status: 400 });
 
   try {
     const db = getDb();
-    const { rows } = await db.query<CampaignTrattativeRow>(QUERY, [from, to]);
+    const { rows } = await db.query<CampaignTrattativeRow>(costruisciQuery(variante), [from, to]);
 
     // Quando e' stata aggiornata l'ultima volta questa tabella: serve a capire
     // se i numeri sono freschi o fermi all'ultimo bootstrap manuale.

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { leggiVariante, sqlFiltroCampagna, sqlNomeCampagna, type Variante } from "@/lib/campagne";
 
 export const dynamic = "force-dynamic";
 
@@ -18,29 +19,31 @@ export type CampaignChiamateRow = {
 // Restano fuori le chiamate senza campagna (contatti chiamati da lista e
 // convertiti dopo): circa lo 0,3%.
 //
-// L'aggregazione e' per NOME NORMALIZZATO: esistono campagne che differiscono
-// solo per maiuscole ("rem_meet_greet..." e "Rem_meet_greet..."), e tenendole
-// separate a valle si sovrascrivevano a vicenda.
-const QUERY = `
-  SELECT lower(trim(c.nome)) AS campagna,
+// QUALI CAMPAGNE E COME SI RAGGRUPPANO: vedi src/lib/campagne.ts.
+function costruisciQuery(variante: Variante): string {
+  return `
+  SELECT ${sqlNomeCampagna(variante)} AS campagna,
          COUNT(*)::int                              AS chiamate,
          COUNT(*) FILTER (WHERE ch.connessa)::int   AS connessioni
   FROM chiamata ch
   JOIN campagna c ON c.id = ch.campagna_id
   WHERE ch.ts >= $1::date AND ch.ts < ($2::date + INTERVAL '1 day')
+    AND ${sqlFiltroCampagna(variante)}
   GROUP BY 1
   ORDER BY connessioni DESC
 `;
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const from = searchParams.get("from");
   const to = searchParams.get("to");
+  const variante = leggiVariante(searchParams.get("variante"));
   if (!from || !to) return NextResponse.json({ error: "Missing from or to" }, { status: 400 });
 
   try {
     const db = getDb();
-    const { rows } = await db.query<CampaignChiamateRow>(QUERY, [from, to]);
+    const { rows } = await db.query<CampaignChiamateRow>(costruisciQuery(variante), [from, to]);
 
     const {
       rows: [ultimo]

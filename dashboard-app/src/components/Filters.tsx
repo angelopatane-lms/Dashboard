@@ -2,6 +2,7 @@
 
 import { useRef, type RefObject } from "react";
 import type { Filters } from "@/lib/metrics";
+import { VARIANTE_DEFAULT } from "@/lib/campagne";
 
 export function FiltersBar({
   filters,
@@ -11,7 +12,8 @@ export function FiltersBar({
   vendite,
   prodotti,
   operatorLabel = "Operatore",
-  tipologie
+  tipologie,
+  varianti
 }: {
   filters: Filters;
   setFilters: (next: Filters) => void;
@@ -24,8 +26,16 @@ export function FiltersBar({
    *  pagina Campagne, dove filtrare per operatore non ha significato: le righe
    *  sono campagne, non persone. */
   tipologie?: Array<{ label: string; value: string }>;
+  /** Se presente, compare il menu "Variante". A differenza degli altri non ha
+   *  una voce vuota: "Tutte" e' gia' una delle opzioni. */
+  varianti?: Array<{ label: string; value: string }>;
 }) {
-  const hasExtra = vendite !== undefined || prodotti !== undefined;
+  // Le classi di Tailwind vanno scritte per intero: costruirle concatenando
+  // ("lg:grid-cols-" + n) le renderebbe invisibili al compilatore, e la barra
+  // resterebbe a una colonna sola sugli schermi larghi.
+  const colonne = 4 + (varianti ? 1 : 0) + (vendite !== undefined ? 1 : 0) + (prodotti !== undefined ? 1 : 0);
+  const classeColonne =
+    colonne >= 7 ? "lg:grid-cols-7" : colonne === 6 ? "lg:grid-cols-6" : colonne === 5 ? "lg:grid-cols-5" : "lg:grid-cols-4";
   const fromRef = useRef<HTMLInputElement | null>(null);
   const toRef = useRef<HTMLInputElement | null>(null);
 
@@ -51,7 +61,7 @@ export function FiltersBar({
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-      <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${hasExtra ? "lg:grid-cols-6" : "lg:grid-cols-4"}`}>
+      <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${classeColonne}`}>
         <div>
           <label className="text-xs font-medium text-slate-600">Da</label>
           <div className="relative">
@@ -154,6 +164,22 @@ export function FiltersBar({
             </select>
           )}
         </div>
+        {varianti && (
+          <div>
+            <label className="text-xs font-medium text-slate-600">Variante</label>
+            <select
+              className={controlClassName((filters.variante ?? VARIANTE_DEFAULT) !== VARIANTE_DEFAULT)}
+              value={filters.variante ?? VARIANTE_DEFAULT}
+              onChange={(e) => setFilters({ ...filters, variante: e.target.value })}
+            >
+              {varianti.map((v) => (
+                <option key={v.value} value={v.value}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div>
           <label className="text-xs font-medium text-slate-600">Campagna</label>
           <select

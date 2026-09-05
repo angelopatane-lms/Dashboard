@@ -12,6 +12,9 @@ export type Filters = {
   /** Solo pagina Campagne: restringe le righe della tabella (es. "con_spesa").
    *  Non filtra le righe del foglio Operatori, agisce a valle sulla tabella. */
   tipologia?: string;
+  /** Solo pagina Campagne: come trattare le varianti "instant" di una stessa
+   *  campagna ("tutte" | "unificate" | "instant"). Vedi src/lib/campagne.ts. */
+  variante?: string;
 };
 
 export function getString(row: CsvRow, key: string): string {
