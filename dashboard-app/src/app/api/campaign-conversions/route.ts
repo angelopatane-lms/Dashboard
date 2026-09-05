@@ -42,6 +42,14 @@ export type CampaignConversionRow = {
 //
 // La prima conversione e' calcolata su TUTTA la storia (fuori dal filtro sulle
 // date) e dopo la risoluzione delle fusioni.
+//
+// L'aggregazione e' per NOME NORMALIZZATO e non per campagna_id: in HubSpot
+// esistono campagne che differiscono solo per maiuscole ("rem_meet_greet..." e
+// "Rem_meet_greet..."), che sono la stessa campagna scritta in due modi. Senza
+// unirle qui uscirebbero due righe che a valle si sovrascrivono a vicenda, e ha
+// gia' causato una riga con 1 connessione al posto di 1.749.
+// Per i Generati si usa COUNT(DISTINCT persona), non la somma: chi ha
+// convertito su entrambe le grafie va contato una volta sola.
 const QUERY = `
   WITH risolti AS (
     SELECT COALESCE(a.nuovo_id, e.contact_id) AS persona_id, e.campagna_id, e.ts
@@ -57,24 +65,22 @@ const QUERY = `
     ORDER BY persona_id, ts, campagna_id
   ),
   generati AS (
-    SELECT campagna_id, COUNT(DISTINCT persona_id)::int AS n
-    FROM risolti
-    WHERE ts >= $1::date AND ts < ($2::date + INTERVAL '1 day')
-    GROUP BY campagna_id
+    SELECT lower(trim(c.nome)) AS nome, COUNT(DISTINCT r.persona_id)::int AS n
+    FROM risolti r JOIN campagna c ON c.id = r.campagna_id
+    WHERE r.ts >= $1::date AND r.ts < ($2::date + INTERVAL '1 day')
+    GROUP BY 1
   ),
   unici AS (
-    SELECT campagna_id, COUNT(*)::int AS n
-    FROM prima_conversione
-    WHERE ts >= $1::date AND ts < ($2::date + INTERVAL '1 day')
-    GROUP BY campagna_id
+    SELECT lower(trim(c.nome)) AS nome, COUNT(*)::int AS n
+    FROM prima_conversione p JOIN campagna c ON c.id = p.campagna_id
+    WHERE p.ts >= $1::date AND p.ts < ($2::date + INTERVAL '1 day')
+    GROUP BY 1
   )
-  SELECT c.nome AS campagna,
+  SELECT COALESCE(g.nome, u.nome) AS campagna,
          COALESCE(g.n, 0) AS lead_generati,
          COALESCE(u.n, 0) AS lead_unici
-  FROM campagna c
-  LEFT JOIN generati g ON g.campagna_id = c.id
-  LEFT JOIN unici u ON u.campagna_id = c.id
-  WHERE COALESCE(g.n, 0) > 0 OR COALESCE(u.n, 0) > 0
+  FROM generati g
+  FULL OUTER JOIN unici u ON u.nome = g.nome
   ORDER BY lead_generati DESC
 `;
 

@@ -269,15 +269,19 @@ export default function CampaignsDashboard({
       if (CHIUSURE_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.chiusure += 1;
       if (BOOM_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.importo += r.importo;
     }
+    // Si SOMMA invece di assegnare: se due righe finissero sulla stessa chiave
+    // normalizzata, assegnare farebbe vincere l'ultima e perdere l'altra. Le
+    // query aggregano gia' per nome normalizzato, questa e' una rete di
+    // sicurezza sul lato che non controlliamo (i nomi del foglio Ads).
     for (const r of consulenze) {
       const cur = prendi(r.campagna);
-      cur.consulenze = r.consulenze;
-      cur.noShow = r.no_show;
+      cur.consulenze += r.consulenze;
+      cur.noShow += r.no_show;
     }
     for (const r of chiamate) {
       const cur = prendi(r.campagna);
-      cur.chiamate = r.chiamate;
-      cur.connessioni = r.connessioni;
+      cur.chiamate += r.chiamate;
+      cur.connessioni += r.connessioni;
     }
     return map;
   }, [dealRecords, boomRecords, consulenze, chiamate]);

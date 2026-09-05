@@ -17,14 +17,18 @@ export type CampaignChiamateRow = {
 //
 // Restano fuori le chiamate senza campagna (contatti chiamati da lista e
 // convertiti dopo): circa lo 0,3%.
+//
+// L'aggregazione e' per NOME NORMALIZZATO: esistono campagne che differiscono
+// solo per maiuscole ("rem_meet_greet..." e "Rem_meet_greet..."), e tenendole
+// separate a valle si sovrascrivevano a vicenda.
 const QUERY = `
-  SELECT c.nome AS campagna,
+  SELECT lower(trim(c.nome)) AS campagna,
          COUNT(*)::int                              AS chiamate,
          COUNT(*) FILTER (WHERE ch.connessa)::int   AS connessioni
   FROM chiamata ch
   JOIN campagna c ON c.id = ch.campagna_id
   WHERE ch.ts >= $1::date AND ch.ts < ($2::date + INTERVAL '1 day')
-  GROUP BY c.nome
+  GROUP BY 1
   ORDER BY connessioni DESC
 `;
 
