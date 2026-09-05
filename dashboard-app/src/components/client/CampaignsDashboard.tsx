@@ -26,7 +26,7 @@ import CampaignSummaryBar from "@/components/charts/CampaignSummaryBar";
 import CampaignAdsTable, { type CampaignAdsRow, type FunnelCampagna } from "@/components/charts/CampaignAdsTable";
 import type { CampaignAdsSpendRow } from "@/app/api/campaign-ads/route";
 import type { CampaignConversionRow } from "@/app/api/campaign-conversions/route";
-import type { RawBoomRecord, RawDealRecord } from "@/app/api/hubspot-data/route";
+import type { RawBoomRecord } from "@/app/api/hubspot-data/route";
 import type { CampaignTrattativeRow } from "@/app/api/campaign-trattative/route";
 import type { CampaignChiamateRow } from "@/app/api/campaign-chiamate/route";
 import { CHIUSURE_TIPOLOGIE, BOOM_TIPOLOGIE } from "@/lib/hubspotRegole";
@@ -244,7 +244,6 @@ export default function CampaignsDashboard({
   // contiene 9 categorie (DIV COACH, REM, MEP...), non i nomi tecnici delle
   // campagne, quindi l'aggancio per nome falliva su ogni riga e queste colonne
   // erano sempre a zero.
-  const [dealRecords, setDealRecords] = useState<RawDealRecord[] | null>(null);
   const [boomRecords, setBoomRecords] = useState<RawBoomRecord[] | null>(null);
   const [hubspotErrore, setHubspotErrore] = useState(false);
 
@@ -313,24 +312,21 @@ export default function CampaignsDashboard({
     const to = filters.to ?? defaultTo;
     let annullato = false;
 
+    // Restano solo gli incassi da HubSpot in diretta: gli Appuntamenti ora
+    // arrivano da /api/campaign-trattative, che li conta dalla nostra tabella e
+    // sa a quale gruppo appartengono. Una chiamata in meno a ogni cambio di
+    // periodo, ed era quella su 2.000 record.
     const leggi = async () => {
       try {
-        const [d, b] = await Promise.all([
-          fetch(`/api/hubspot-deals?from=${from}&to=${to}`).then((r) =>
-            r.ok ? r.json() : Promise.reject(new Error(`deals HTTP ${r.status}`))
-          ),
-          fetch(`/api/hubspot-data?from=${from}&to=${to}`).then((r) =>
-            r.ok ? r.json() : Promise.reject(new Error(`incassi HTTP ${r.status}`))
-          )
-        ]);
+        const b = await fetch(`/api/hubspot-data?from=${from}&to=${to}`).then((r) =>
+          r.ok ? r.json() : Promise.reject(new Error(`incassi HTTP ${r.status}`))
+        );
         if (annullato) return;
-        setDealRecords(d.dealRecords ?? []);
         setBoomRecords(b.boomRecords ?? []);
         setHubspotErrore(false);
       } catch (err) {
         if (annullato) return;
         console.error("[campagne/hubspot]", err);
-        setDealRecords([]);
         setBoomRecords([]);
         setHubspotErrore(true);
       }
@@ -354,11 +350,6 @@ export default function CampaignsDashboard({
       return cur;
     };
 
-    for (const r of dealRecords ?? []) {
-      if (!r.id_campagna_track?.trim()) continue;
-      const cur = prendi(r.id_campagna_track);
-      if (cur) cur.appuntamenti += 1;
-    }
     // GLI INCASSI SI DIVIDONO PER CONTATTO, non per nome campagna: il campo
     // "instant" arriva gia' calcolato da /api/hubspot-data, che sa quali
     // contatti erano stati assegnati subito. Il nome memorizzato non basta,
@@ -397,6 +388,11 @@ export default function CampaignsDashboard({
       if (!cur) continue;
       cur.consulenze += r.consulenze;
       cur.noShow += r.no_show;
+      // Anche gli Appuntamenti vengono da qui: la nostra tabella conserva il
+      // contatto, quindi sa dividerli fra assegnati subito e assegnati dopo.
+      // HubSpot in diretta no, e per saperlo servirebbero venti chiamate alle
+      // associazioni a ogni caricamento di pagina.
+      cur.appuntamenti += r.appuntamenti;
     }
     for (const r of chiamate) {
       const cur = prendi(r.campagna);
@@ -405,7 +401,7 @@ export default function CampaignsDashboard({
       cur.connessioni += r.connessioni;
     }
     return map;
-  }, [dealRecords, boomRecords, consulenze, chiamate, variante, varianti]);
+  }, [boomRecords, consulenze, chiamate, variante, varianti]);
 
   // Il filtro "Campagna" di questa pagina mostra le Categorie (dedotte dalle
   // campagne tecniche realmente presenti nel foglio Ads-spesa per il periodo

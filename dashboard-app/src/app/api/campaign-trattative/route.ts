@@ -24,6 +24,14 @@ export type CampaignTrattativeRow = {
   /** Appuntamenti disertati nel periodo. Una trattativa puo' contribuirne piu'
    *  di uno: viene ripianificata e il cliente diserta di nuovo. */
   no_show: number;
+  /** Appuntamenti fissati: trattative NATE nel periodo.
+   *
+   *  Arrivano da qui e non piu' da HubSpot in diretta perche' la nostra tabella
+   *  ha in piu' il contatto, e senza quello il gruppo instant non si puo'
+   *  ricostruire. Le due fonti contengono gli stessi deal - stessa pipeline,
+   *  stesso filtro sulla data - e sul trimestre differiscono di 3 righe su
+   *  2.022, cioe' deal senza proprietario che l'API in diretta scarta. */
+  appuntamenti: number;
 };
 
 // La data della consulenza e' precalcolata in `trattativa.svolta_ts` dal sync,
@@ -72,11 +80,22 @@ function costruisciQuery(variante: Variante): string {
 
   return `
   WITH ${segmento ? `${SQL_CTE_MARCATI},` : ""}
+  -- Consulenze e appuntamenti escono dalla stessa scansione: sono la stessa
+  -- tabella letta con due date diverse, svolta_ts e creata_ts.
   svolte AS (
-    SELECT ${nome} AS nome, COUNT(*)::int AS n
+    SELECT ${nome} AS nome,
+           COUNT(*) FILTER (
+             WHERE t.svolta_ts >= $1::date AND t.svolta_ts < ($2::date + INTERVAL '1 day')
+           )::int AS n,
+           COUNT(*) FILTER (
+             WHERE t.creata_ts >= $1::date AND t.creata_ts < ($2::date + INTERVAL '1 day')
+           )::int AS nate
     FROM trattativa t JOIN campagna c ON c.id = t.campagna_id
     ${joinBase}
-    WHERE t.svolta_ts >= $1::date AND t.svolta_ts < ($2::date + INTERVAL '1 day')
+    WHERE (
+        (t.svolta_ts >= $1::date AND t.svolta_ts < ($2::date + INTERVAL '1 day'))
+        OR (t.creata_ts >= $1::date AND t.creata_ts < ($2::date + INTERVAL '1 day'))
+      )
       AND ${filtro}
       AND ${appartiene("t.contact_id")}
     GROUP BY 1
@@ -93,8 +112,9 @@ function costruisciQuery(variante: Variante): string {
     GROUP BY 1
   )
   SELECT COALESCE(s.nome, d.nome) AS campagna,
-         COALESCE(s.n, 0) AS consulenze,
-         COALESCE(d.n, 0) AS no_show
+         COALESCE(s.n, 0)    AS consulenze,
+         COALESCE(d.n, 0)    AS no_show,
+         COALESCE(s.nate, 0) AS appuntamenti
   FROM svolte s
   FULL OUTER JOIN disertati d ON d.nome = s.nome
   ORDER BY consulenze DESC
