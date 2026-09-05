@@ -30,13 +30,15 @@ import {
 //   trimestre.
 // - "tutte": lasciati dove sono, perche' quella vista mostra il dato grezzo come
 //   sta in HubSpot e fa vedere da dove nasce la differenza.
-// - "instant": le righe sono quelle col marcatore, ma i numeri sono le
-//   CONVERSIONI VERE dei contatti che quel marcatore ce l'hanno. Contare invece
-//   i marcatori stessi dava Lead Unici a zero su ogni riga - un marcatore non e'
-//   mai la prima conversione di nessuno - facendo leggere "nessun lead nuovo"
-//   dove i lead nuovi del trimestre sono 5.163.
+// - "instant" e "non_instant": i contatti si dividono in due gruppi secondo il
+//   marcatore, e in entrambe le viste i numeri sono le CONVERSIONI VERE di quei
+//   contatti. Contare invece i marcatori stessi dava Lead Unici a zero su ogni
+//   riga - un marcatore non e' mai la prima conversione di nessuno - facendo
+//   leggere "nessun lead nuovo" dove i lead nuovi del trimestre sono 5.163.
+//   I due gruppi partizionano "unificate": 8.243 + 30.852 = 39.095.
 export function costruisciQuery(variante: Variante): string {
   const instant = variante === "instant";
+  const segmento = instant || variante === "non_instant";
 
   // Nella vista unificata e in quella instant i marcatori si tolgono dentro la
   // scansione, non in una CTE a valle: separarli significava materializzare due
@@ -46,12 +48,13 @@ export function costruisciQuery(variante: Variante): string {
       ? ""
       : `WHERE e.campagna_id NOT IN (SELECT id FROM campagna c WHERE ${SQL_E_MARCATORE})`;
 
-  // Solo per la vista instant: chi porta il marcatore, e su quale campagna vera.
+  // Solo per le viste per segmento: chi porta il marcatore, e su quale campagna
+  // vera.
   // L'etichetta si attacca UNA VOLTA sull'insieme completo degli eventi, dove il
   // pianificatore sa quante righe aspettarsi e sceglie una hash join. Agganciarla
   // a valle, su una CTE di cui non ha statistiche, gli faceva stimare una riga,
   // scegliere un ciclo annidato e rileggere i marcatori per ognuna: 47 secondi.
-  const cteInstant = !instant
+  const cteSegmento = !segmento
     ? ""
     : `  basi AS (
     SELECT m.id AS id_marcatore, b.id AS id_base
@@ -71,12 +74,12 @@ export function costruisciQuery(variante: Variante): string {
     LEFT JOIN marcati m ON m.persona_id = r.persona_id AND m.campagna_id = r.campagna_id
   ),
 `;
-  const sorgente = instant ? "etichettati" : "risolti";
-  const filtroRiga = instant ? "AND e.instant" : "";
+  const sorgente = segmento ? "etichettati" : "risolti";
+  const filtroRiga = !segmento ? "" : instant ? "AND e.instant" : "AND NOT e.instant";
 
-  // Con "instant" gli eventi contati stanno sulla campagna BASE, ma la riga deve
-  // continuare a chiamarsi come la variante: e' quella che l'utente ha chiesto
-  // di vedere.
+  // Gli eventi contati stanno sempre sulla campagna BASE. Con "instant" la riga
+  // deve pero' continuare a chiamarsi come la variante, perche' e' quella che si
+  // e' chiesto di vedere; con "non_instant" il nome base va gia' bene.
   const nome = instant ? `lower(trim(c.nome)) || '${SUFFISSO_INSTANT}'` : sqlNomeCampagna(variante);
   // La conformita' del nome vale per tutte e tre le viste; con "instant" non si
   // filtra piu' per suffisso, perche' ora si guardano le campagne base.
@@ -89,7 +92,7 @@ export function costruisciQuery(variante: Variante): string {
     LEFT JOIN alias_contatto a ON a.vecchio_id = e.contact_id
     ${senzaMarcatori}
   ),
-${cteInstant}  -- Prima conversione in assoluto di ogni persona: una riga per persona,
+${cteSegmento}  -- Prima conversione in assoluto di ogni persona: una riga per persona,
   -- calcolata su TUTTA la storia (nessun filtro di data qui dentro) e dopo la
   -- risoluzione delle fusioni, cosi' due schede unite sono una persona sola.
   -- Si calcola su tutti gli eventi della persona e NON solo su quelli della

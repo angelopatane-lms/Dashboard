@@ -6,7 +6,14 @@ import { applyFilters, getString, type Filters } from "@/lib/metrics";
 import { aggregateByCampagna, normalizeOperatori } from "@/lib/analytics";
 import { formatPct } from "@/lib/format";
 import { guessCategoria } from "@/lib/campaignCategory";
-import { chiaveCampagna, leggiVariante, nomeConforme, VARIANTE_DEFAULT, VARIANTI } from "@/lib/campagne";
+import {
+  chiaveCampagna,
+  leggiVariante,
+  nomeConforme,
+  VARIANTE_DEFAULT,
+  VARIANTI,
+  varianteMostraSpesa
+} from "@/lib/campagne";
 import CampaignConversionPeaksChart from "@/components/charts/CampaignConversionPeaksChart";
 import { FiltersBar } from "@/components/Filters";
 import Card from "@/components/ui/Card";
@@ -347,16 +354,15 @@ export default function CampaignsDashboard({
     const from = filters.from ?? defaultFrom;
     const to = filters.to ?? defaultTo;
     const map = new Map<string, { campagna: string; spesa: number }>();
+    // Nelle viste per segmento la spesa non si attribuisce: vedi
+    // varianteMostraSpesa() in src/lib/campagne.ts.
+    if (!varianteMostraSpesa(variante)) return map;
     for (const r of adsSpendRows) {
       if (from && r.data && r.data < from) continue;
       if (to && r.data && r.data > to) continue;
       // La spesa senza nome campagna resta visibile sotto "(Nessuna)": quello
       // non e' un nome non conforme, e' un nome assente, e scartarla
       // toglierebbe euro veri dal totale della pagina.
-      //
-      // Nel foglio Ads il marcatore non compare mai: le varianti instant non
-      // hanno un budget proprio. Con la vista "instant" la tabella mostra
-      // quindi righe senza spesa, ed e' corretto cosi'.
       const key = r.campagna.trim() ? chiaveCampagna(r.campagna, variante) : "__nessuna__";
       if (!key) continue;
       const cur = map.get(key) ?? { campagna: key, spesa: 0 };

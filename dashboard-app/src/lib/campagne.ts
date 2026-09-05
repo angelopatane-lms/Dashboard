@@ -47,20 +47,46 @@ export const SUFFISSO_INSTANT = "_test_instant";
  *   diagnostica: serve a vedere cosa c'e' davvero nel dato grezzo, e li' la
  *   somma dei Lead Generati e' per costruzione piu' alta, perche' la stessa
  *   persona compare sulla campagna e sulla sua variante.
- * - "instant": solo le righe col marcatore, cioe' i contatti assegnati subito.
+ * - "instant": i contatti assegnati subito.
+ * - "non_instant": gli altri, cioe' "unificate" meno "instant".
+ *
+ * Le ultime due partizionano esattamente "unificate": ogni contatto sta in una
+ * sola delle due, quindi i loro numeri si sommano a quelli della vista unificata
+ * (verificato su lead generati, lead unici, connessioni e consulenze).
  */
-export type Variante = "tutte" | "unificate" | "instant";
+export type Variante = "tutte" | "unificate" | "instant" | "non_instant";
 
 export const VARIANTE_DEFAULT: Variante = "unificate";
 
 export const VARIANTI: Array<{ label: string; value: Variante }> = [
   { label: "Tutte", value: "tutte" },
   { label: "Unificate", value: "unificate" },
-  { label: "Instant", value: "instant" }
+  { label: "Instant", value: "instant" },
+  { label: "Non Instant", value: "non_instant" }
 ];
 
 export function leggiVariante(valore: string | null | undefined): Variante {
-  return valore === "tutte" || valore === "instant" || valore === "unificate" ? valore : VARIANTE_DEFAULT;
+  return valore === "tutte" || valore === "instant" || valore === "non_instant" || valore === "unificate"
+    ? valore
+    : VARIANTE_DEFAULT;
+}
+
+/** Le viste che guardano un sottoinsieme dei contatti di una campagna. */
+export function varianteEsegmento(variante: Variante): boolean {
+  return variante === "instant" || variante === "non_instant";
+}
+
+/**
+ * Se la spesa del foglio Ads va attribuita alle righe di questa vista.
+ *
+ * Nelle viste per segmento no: l'investimento e' della campagna intera, non
+ * esiste un budget speso "sui contatti assegnati subito". Spalmarne una quota
+ * sarebbe un numero inventato, e sommando i due segmenti si conterebbe la stessa
+ * spesa due volte. Le colonne in euro restano quindi vuote: li' si guardano i
+ * tassi, e per i costi si torna su "unificate".
+ */
+export function varianteMostraSpesa(variante: Variante): boolean {
+  return !varianteEsegmento(variante);
 }
 
 export function haMarcatoreInstant(nome: string): boolean {
@@ -83,6 +109,7 @@ export function chiaveCampagna(nome: string, variante: Variante): string | null 
   const instant = haMarcatoreInstant(chiave);
 
   if (variante === "instant") return instant ? chiave : null;
+  if (variante === "non_instant") return instant ? null : chiave;
   if (variante === "unificate" && instant) return chiave.slice(0, -SUFFISSO_INSTANT.length);
   return chiave;
 }
@@ -111,5 +138,7 @@ export function sqlNomeCampagna(variante: Variante): string {
 /** Quali campagne tenere. Da concatenare con AND al resto del filtro. */
 export function sqlFiltroCampagna(variante: Variante): string {
   const conforme = "c.nome = lower(c.nome)";
-  return variante === "instant" ? `${conforme} AND ${SQL_E_MARCATORE}` : conforme;
+  if (variante === "instant") return `${conforme} AND ${SQL_E_MARCATORE}`;
+  if (variante === "non_instant") return `${conforme} AND NOT (${SQL_E_MARCATORE})`;
+  return conforme;
 }
