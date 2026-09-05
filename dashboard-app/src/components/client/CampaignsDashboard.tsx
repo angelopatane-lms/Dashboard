@@ -11,6 +11,7 @@ import {
   chiaveCampagna,
   leggiVariante,
   nomeConforme,
+  SUFFISSO_INSTANT,
   VARIANTE_DEFAULT,
   VARIANTI,
   varianteEsegmento,
@@ -358,10 +359,32 @@ export default function CampaignsDashboard({
       const cur = prendi(r.id_campagna_track);
       if (cur) cur.appuntamenti += 1;
     }
+    // GLI INCASSI SI DIVIDONO PER CONTATTO, non per nome campagna: il campo
+    // "instant" arriva gia' calcolato da /api/hubspot-data, che sa quali
+    // contatti erano stati assegnati subito. Il nome memorizzato non basta,
+    // perche' un workflow lo scrive prima che il marcatore venga aggiunto.
+    //
+    // La chiave ricalca quella delle query SQL, altrimenti incassi e lead
+    // finirebbero su righe diverse: nella vista Instant si toglie l'eventuale
+    // marcatore e lo si rimette, cosi' le due grafie collassano su una riga.
+    const chiaveIncasso = (nome: string, instant: boolean): string | null => {
+      if (!varianteEsegmento(variante)) return chiaveCampagna(nome, variante, varianti);
+      const pulito = nome.trim();
+      if (!pulito || !nomeConforme(pulito)) return null;
+      const senzaMarcatore = pulito
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .replace(/_test_instant$/, "");
+      if (variante === "instant") return instant ? `${senzaMarcatore}${SUFFISSO_INSTANT}` : null;
+      return instant ? null : varianti[senzaMarcatore] ?? senzaMarcatore;
+    };
+
     for (const r of boomRecords ?? []) {
       if (!r.id_campagna_track?.trim()) continue;
-      const cur = prendi(r.id_campagna_track);
-      if (!cur) continue;
+      const chiave = chiaveIncasso(r.id_campagna_track, r.instant);
+      if (!chiave) continue;
+      const cur = map.get(chiave) ?? { appuntamenti: 0, chiusure: 0, importo: 0, consulenze: 0, noShow: 0, chiamate: 0, connessioni: 0 };
+      map.set(chiave, cur);
       if (CHIUSURE_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.chiusure += 1;
       if (BOOM_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.importo += r.importo;
     }

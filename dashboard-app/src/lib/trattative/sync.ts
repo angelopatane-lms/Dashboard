@@ -226,6 +226,35 @@ async function* cercaTrattative(
   }
 }
 
+/**
+ * Il contatto associato a ciascuna trattativa.
+ *
+ * Serve a sapere se quella persona era stata assegnata subito: il marcatore
+ * "_test_instant" sta sulla cronologia del contatto, mentre la trattativa porta
+ * il nome campagna com'era alla sua nascita, di solito senza marcatore.
+ *
+ * Ogni trattativa ha esattamente un contatto: verificato su 300 campioni, zero
+ * casi con piu' di uno. Se un giorno ne comparissero due si prende il primo,
+ * che e' anche il piu' antico nell'ordine restituito da HubSpot.
+ *
+ * L'API accetta 200 input per chiamata e risponde in circa 300 ms: sul giro
+ * incrementale sono una o due chiamate in tutto.
+ */
+async function leggiContatti(token: string, dealIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  for (let i = 0; i < dealIds.length; i += 200) {
+    const d = await chiamaHubSpot<any>(token, `${HUBSPOT_API}/crm/v4/associations/deals/contacts/batch/read`, {
+      method: "POST",
+      body: { inputs: dealIds.slice(i, i + 200).map((id) => ({ id })) }
+    });
+    for (const r of d.results ?? []) {
+      const contatto = (r.to ?? [])[0]?.toObjectId;
+      if (contatto) out.set(String(r.from?.id), Number(contatto));
+    }
+  }
+  return out;
+}
+
 const idCampagne = new Map<string, number>();
 
 async function risolviIdCampagne(nomi: string[]): Promise<void> {
@@ -319,6 +348,9 @@ export async function sincronizzaTrattative(
 
   try {
     for await (const blocco of cercaTrattative(token, daIso, tipo)) {
+      // Una chiamata per blocco, non una per trattativa.
+      const contatti = await leggiContatti(token, blocco);
+
       for (let i = 0; i < blocco.length; i += MAX_INPUT_STORICO) {
         const gruppoIds = blocco.slice(i, i + MAX_INPUT_STORICO);
         const d = await chiamaHubSpot<any>(token, `${HUBSPOT_API}/crm/v3/objects/deals/batch/read`, {
@@ -332,6 +364,7 @@ export async function sincronizzaTrattative(
 
         const righe: Array<{
           dealId: number;
+          contactId: number | null;
           campagna: string;
           creata: Date;
           svolta: Date | null;
@@ -342,6 +375,7 @@ export async function sincronizzaTrattative(
           if (Number.isNaN(creata.getTime())) continue;
           righe.push({
             dealId: Number(r.id),
+            contactId: contatti.get(String(r.id)) ?? null,
             campagna: (r.properties?.id_campagna_track ?? "").trim(),
             creata,
             svolta: primaSvolta(gruppi, r.propertiesWithHistory ?? {}, r.properties ?? {}, etichettaFase),
@@ -353,17 +387,21 @@ export async function sincronizzaTrattative(
         await risolviIdCampagne(righe.map((x) => x.campagna));
 
         await db.query(
-          `INSERT INTO trattativa (deal_id, campagna_id, creata_ts, svolta_ts)
-           SELECT * FROM UNNEST($1::bigint[], $2::int[], $3::timestamptz[], $4::timestamptz[])
+          `INSERT INTO trattativa (deal_id, campagna_id, creata_ts, svolta_ts, contact_id)
+           SELECT * FROM UNNEST($1::bigint[], $2::int[], $3::timestamptz[], $4::timestamptz[], $5::bigint[])
            ON CONFLICT (deal_id) DO UPDATE
              SET campagna_id = EXCLUDED.campagna_id,
                  creata_ts   = EXCLUDED.creata_ts,
-                 svolta_ts   = EXCLUDED.svolta_ts`,
+                 svolta_ts   = EXCLUDED.svolta_ts,
+                 -- Se l'associazione non arriva si tiene quella gia' salvata,
+                 -- invece di cancellarla con un NULL.
+                 contact_id  = COALESCE(EXCLUDED.contact_id, trattativa.contact_id)`,
           [
             righe.map((x) => x.dealId),
             righe.map((x) => (x.campagna ? idCampagne.get(x.campagna) ?? null : null)),
             righe.map((x) => x.creata),
-            righe.map((x) => x.svolta)
+            righe.map((x) => x.svolta),
+            righe.map((x) => x.contactId)
           ]
         );
 

@@ -169,6 +169,30 @@ export function sqlNomeBase(alias = "c"): string {
 }
 
 /**
+ * Il nome della riga nella vista Instant: la campagna col marcatore. Normalizza
+ * i due casi che si incontrano - il nome ce l'ha gia' oppure no - cosi' lead,
+ * telefonate e trattative finiscono tutti sulla stessa riga.
+ */
+export function sqlNomeInstant(alias = "c"): string {
+  return `regexp_replace(lower(trim(${alias}.nome)), '${SUFFISSO_INSTANT}$', '') || '${SUFFISSO_INSTANT}'`;
+}
+
+/**
+ * Le coppie (persona, campagna) che portano il marcatore di assegnazione
+ * immediata. E' la definizione di "gruppo instant", e va letta dalla cronologia
+ * del CONTATTO: trattative e incassi conservano il nome campagna com'era quando
+ * sono nati, che di solito e' quello senza marcatore.
+ */
+export const SQL_CTE_MARCATI = `marcati AS (
+    SELECT DISTINCT COALESCE(a.nuovo_id, e.contact_id) AS persona,
+           ${sqlNomeBase("cm")} AS campagna
+    FROM eventi_conversione e
+    LEFT JOIN alias_contatto a ON a.vecchio_id = e.contact_id
+    JOIN campagna cm ON cm.id = e.campagna_id
+    WHERE ${sqlEMarcatore("cm")}
+  )`;
+
+/**
  * Aggancia la campagna base, quando esiste. E' una LEFT JOIN sulla tabella vera
  * e non una CTE: la chiave unica su "nome" la rende una ricerca per indice,
  * mentre una CTE - di cui il pianificatore non sa stimare le righe - lo portava

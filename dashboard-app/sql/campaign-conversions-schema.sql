@@ -79,8 +79,25 @@ CREATE TABLE IF NOT EXISTS trattativa (
   deal_id     BIGINT PRIMARY KEY,
   campagna_id INT REFERENCES campagna (id),
   creata_ts   TIMESTAMPTZ NOT NULL,
-  svolta_ts   TIMESTAMPTZ
+  svolta_ts   TIMESTAMPTZ,
+  -- Il contatto dietro la trattativa, letto dalle associazioni HubSpot.
+  --
+  -- Serve a sapere se quella persona era stata assegnata subito: il marcatore
+  -- "_test_instant" vive sulla cronologia del CONTATTO, mentre la trattativa
+  -- conserva il nome campagna com'era quando e' nata - spesso senza marcatore,
+  -- perche' un workflow scrive id_campagna_track prima che la riscrittura
+  -- avvenga. Misurato sul trimestre: classificando per contatto le consulenze
+  -- del gruppo instant passano da 166 a 192, e le 166 sono tutte dentro le 192.
+  --
+  -- Ogni trattativa ha esattamente un contatto: verificato su 300 campioni,
+  -- zero casi con piu' di uno.
+  contact_id  BIGINT
 );
+
+-- Colonna aggiunta dopo il primo bootstrap: senza questo un database gia'
+-- creato resterebbe indietro, perche' CREATE TABLE IF NOT EXISTS non tocca
+-- una tabella che esiste.
+ALTER TABLE trattativa ADD COLUMN IF NOT EXISTS contact_id BIGINT;
 
 CREATE INDEX IF NOT EXISTS idx_trattativa_creata ON trattativa (creata_ts);
 CREATE INDEX IF NOT EXISTS idx_trattativa_svolta ON trattativa (svolta_ts) WHERE svolta_ts IS NOT NULL;

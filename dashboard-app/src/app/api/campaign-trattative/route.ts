@@ -2,9 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import {
   leggiVariante,
+  SQL_CTE_MARCATI,
   SQL_JOIN_BASE,
   sqlFiltroCampagna,
+  sqlNomeBase,
   sqlNomeCampagna,
+  sqlNomeInstant,
+  varianteEsegmento,
   varianteUnificaNomi,
   type Variante
 } from "@/lib/campagne";
@@ -31,32 +35,61 @@ export type CampaignTrattativeRow = {
 // id_campagna_track (circa il 2%) restano nel database ma non hanno una riga a
 // cui appartenere.
 //
-// NOME E VARIANTE: vedi src/lib/campagne.ts. La trattativa conserva il nome
-// campagna come era al momento in cui e' nata, marcatore di assegnazione
-// compreso, quindi la vista unificata lo toglie e le altre due lo conservano.
+// NOME E VARIANTE: vedi src/lib/campagne.ts.
+//
+// IL GRUPPO INSTANT SI DECIDE DAL CONTATTO, non dal nome campagna. La
+// trattativa conserva il nome com'era quando e' nata, e un workflow scrive
+// id_campagna_track PRIMA che la riscrittura aggiunga il marcatore: il nome
+// quindi quasi sempre non ce l'ha, anche quando il contatto era stato assegnato
+// subito. Misurato sul trimestre: per nome le consulenze instant sono 166, per
+// contatto 192, e le 166 sono tutte dentro le 192 - il criterio del contatto
+// contiene l'altro, quindi lo sostituisce senza perdere nulla.
+//
+// Il contatto arriva da trattativa.contact_id, riempito dal sync leggendo le
+// associazioni HubSpot. Per i no-show si risale alla trattativa tramite
+// deal_id, che e' l'unica chiave che quella tabella conserva.
 //
 // Consulenze e no-show sono due insiemi di EVENTI con date proprie, contati
 // separatamente e poi uniti: una trattativa puo' comparire in entrambi (ha
 // disertato a luglio, e' stata ripianificata e si e' svolta ad agosto).
 function costruisciQuery(variante: Variante): string {
-  const nome = sqlNomeCampagna(variante);
-  const filtro = sqlFiltroCampagna(variante);
+  const segmento = varianteEsegmento(variante);
+  const instant = variante === "instant";
+  // Nelle viste per segmento il nome della riga si ricava dalla campagna base,
+  // non dal nome memorizzato: due trattative della stessa campagna possono
+  // averlo scritto in due modi a seconda di quando sono nate.
+  const nome = !segmento ? sqlNomeCampagna(variante) : instant ? sqlNomeInstant() : sqlNomeBase();
+  // Il filtro sul suffisso non serve piu': a dividere i due gruppi e' il
+  // contatto. Resta la sola regola del minuscolo.
+  const filtro = segmento ? "c.nome = lower(c.nome)" : sqlFiltroCampagna(variante);
   const joinBase = varianteUnificaNomi(variante) ? SQL_JOIN_BASE : "";
+
+  const appartiene = (idContatto: string) =>
+    !segmento
+      ? "TRUE"
+      : `${instant ? "" : "NOT "}EXISTS (SELECT 1 FROM marcati m
+             WHERE m.persona = ${idContatto} AND m.campagna = ${sqlNomeBase()})`;
+
   return `
-  WITH svolte AS (
+  WITH ${segmento ? `${SQL_CTE_MARCATI},` : ""}
+  svolte AS (
     SELECT ${nome} AS nome, COUNT(*)::int AS n
     FROM trattativa t JOIN campagna c ON c.id = t.campagna_id
     ${joinBase}
     WHERE t.svolta_ts >= $1::date AND t.svolta_ts < ($2::date + INTERVAL '1 day')
       AND ${filtro}
+      AND ${appartiene("t.contact_id")}
     GROUP BY 1
   ),
   disertati AS (
     SELECT ${nome} AS nome, COUNT(*)::int AS n
-    FROM no_show n JOIN campagna c ON c.id = n.campagna_id
+    FROM no_show n
+    JOIN campagna c ON c.id = n.campagna_id
+    LEFT JOIN trattativa td ON td.deal_id = n.deal_id
     ${joinBase}
     WHERE n.ts >= $1::date AND n.ts < ($2::date + INTERVAL '1 day')
       AND ${filtro}
+      AND ${appartiene("td.contact_id")}
     GROUP BY 1
   )
   SELECT COALESCE(s.nome, d.nome) AS campagna,
