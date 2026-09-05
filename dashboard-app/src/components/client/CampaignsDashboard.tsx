@@ -74,9 +74,18 @@ function buildCampaignAdsRows(
   // conformi (vedi src/lib/campagne.ts) foglio Ads e database scrivono la
   // campagna allo stesso modo, quindi non c'e' piu' una grafia "originale" da
   // preferire.
+  const segmento = varianteEsegmento(variante);
+
   const nomi = new Map<string, string>();
-  for (const [chiave, entry] of spesaByCampagna) {
-    nomi.set(chiave, entry.campagna.trim() || "(Nessuna)");
+  // Nelle viste per segmento la spesa NON crea righe: e' indicizzata sulla
+  // campagna intera e serve solo da tabella di lookup per ripartirla. Usandola
+  // anche come elenco, in "Instant" comparivano le campagne base a zero lead
+  // accanto alle loro varianti - cioe' esattamente quello che il filtro doveva
+  // togliere.
+  if (!segmento) {
+    for (const [chiave, entry] of spesaByCampagna) {
+      nomi.set(chiave, entry.campagna.trim() || "(Nessuna)");
+    }
   }
   for (const [chiave, r] of conversioniByCampagna) {
     if (!nomi.has(chiave)) nomi.set(chiave, r.campagna);
@@ -84,8 +93,6 @@ function buildCampaignAdsRows(
   for (const chiave of funnelByCampagna.keys()) {
     if (!nomi.has(chiave)) nomi.set(chiave, chiave);
   }
-
-  const segmento = varianteEsegmento(variante);
 
   return Array.from(nomi.entries()).map(([chiave, campagna]) => {
     const conv = conversioniByCampagna.get(chiave);
