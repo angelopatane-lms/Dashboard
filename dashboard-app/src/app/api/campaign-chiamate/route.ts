@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { leggiVariante, sqlFiltroCampagna, sqlNomeCampagna, type Variante } from "@/lib/campagne";
+import {
+  leggiVariante,
+  SQL_CAMPAGNA_CONFORME,
+  SQL_NOME_CAMPAGNA,
+  sqlSegmentoDaNome,
+  type Variante
+} from "@/lib/campagne";
 
 export const dynamic = "force-dynamic";
 
@@ -19,16 +25,18 @@ export type CampaignChiamateRow = {
 // Restano fuori le chiamate senza campagna (contatti chiamati da lista e
 // convertiti dopo): circa lo 0,3%.
 //
-// QUALI CAMPAGNE E COME SI RAGGRUPPANO: vedi src/lib/campagne.ts.
+// NOME E SEGMENTO: vedi src/lib/campagne.ts. Il valore memorizzato porta con se'
+// il marcatore di assegnazione, quindi dice gia' se al momento della telefonata
+// quel contatto era fra quelli assegnati subito.
 function costruisciQuery(variante: Variante): string {
   return `
-  SELECT ${sqlNomeCampagna(variante)} AS campagna,
+  SELECT ${SQL_NOME_CAMPAGNA} AS campagna,
          COUNT(*)::int                              AS chiamate,
          COUNT(*) FILTER (WHERE ch.connessa)::int   AS connessioni
   FROM chiamata ch
   JOIN campagna c ON c.id = ch.campagna_id
   WHERE ch.ts >= $1::date AND ch.ts < ($2::date + INTERVAL '1 day')
-    AND ${sqlFiltroCampagna(variante)}
+    AND ${SQL_CAMPAGNA_CONFORME} AND ${sqlSegmentoDaNome(variante)}
   GROUP BY 1
   ORDER BY connessioni DESC
 `;

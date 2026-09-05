@@ -6,7 +6,7 @@ import { applyFilters, getString, type Filters } from "@/lib/metrics";
 import { aggregateByCampagna, normalizeOperatori } from "@/lib/analytics";
 import { formatPct } from "@/lib/format";
 import { guessCategoria } from "@/lib/campaignCategory";
-import { chiaveCampagna, leggiVariante, nomeConforme, VARIANTE_DEFAULT, VARIANTI } from "@/lib/campagne";
+import { chiaveCampagna, leggiVariante, nelSegmento, nomeConforme, VARIANTE_DEFAULT, VARIANTI } from "@/lib/campagne";
 import CampaignConversionPeaksChart from "@/components/charts/CampaignConversionPeaksChart";
 import { FiltersBar } from "@/components/Filters";
 import Card from "@/components/ui/Card";
@@ -289,10 +289,14 @@ export default function CampaignsDashboard({
 
   const funnelByCampagna = useMemo(() => {
     const map = new Map<string, FunnelCampagna>();
-    // null = la campagna non va mostrata (nome non conforme, oppure fuori
-    // dalla variante scelta): chi chiama deve saltare la riga.
+    // null = nome campagna non conforme, quindi la riga non va mostrata.
+    //
+    // Il segmento NON si applica qui: consulenze e chiamate arrivano dalle API
+    // gia' filtrate e col marcatore tolto, e riapplicarlo su un nome ormai
+    // ripulito le scarterebbe tutte. Va applicato solo ai record grezzi, dove
+    // il marcatore c'e' ancora.
     const prendi = (campagna: string): FunnelCampagna | null => {
-      const k = chiaveCampagna(campagna, variante);
+      const k = chiaveCampagna(campagna);
       if (!k) return null;
       const cur = map.get(k) ?? { appuntamenti: 0, chiusure: 0, importo: 0, consulenze: 0, noShow: 0, chiamate: 0, connessioni: 0 };
       map.set(k, cur);
@@ -301,11 +305,13 @@ export default function CampaignsDashboard({
 
     for (const r of dealRecords ?? []) {
       if (!r.id_campagna_track?.trim()) continue;
+      if (!nelSegmento(r.id_campagna_track, variante)) continue;
       const cur = prendi(r.id_campagna_track);
       if (cur) cur.appuntamenti += 1;
     }
     for (const r of boomRecords ?? []) {
       if (!r.id_campagna_track?.trim()) continue;
+      if (!nelSegmento(r.id_campagna_track, variante)) continue;
       const cur = prendi(r.id_campagna_track);
       if (!cur) continue;
       if (CHIUSURE_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.chiusure += 1;
@@ -353,14 +359,19 @@ export default function CampaignsDashboard({
       // La spesa senza nome campagna resta visibile sotto "(Nessuna)": quello
       // non e' un nome non conforme, e' un nome assente, e scartarla
       // toglierebbe euro veri dal totale della pagina.
-      const key = r.campagna.trim() ? chiaveCampagna(r.campagna, variante) : "__nessuna__";
+      //
+      // Il segmento non si applica alla spesa: il foglio Ads non sa nulla di
+      // assegnazioni, e l'investimento e' della campagna intera. Guardando un
+      // solo segmento la spesa resta quindi quella completa, e le colonne di
+      // costo vanno lette come "costo della campagna per lead di quel gruppo".
+      const key = r.campagna.trim() ? chiaveCampagna(r.campagna) : "__nessuna__";
       if (!key) continue;
       const cur = map.get(key) ?? { campagna: key, spesa: 0 };
       cur.spesa += r.spesa;
       map.set(key, cur);
     }
     return map;
-  }, [adsSpendRows, filters.from, filters.to, variante, defaultFrom, defaultTo]);
+  }, [adsSpendRows, filters.from, filters.to, defaultFrom, defaultTo]);
 
   const todayIsoRome = useMemo(
     () =>
