@@ -36,14 +36,23 @@ type CampaignPeaksDatum = {
   [campaign: string]: string | number | null;
 };
 
-// Opzioni del filtro "Tipologia", che su questa pagina prende il posto di
-// "Operatore": le righe sono campagne, non persone.
+// Opzioni del filtro che su questa pagina prende il posto di "Operatore" e si
+// chiama "Variabile": le righe sono campagne, non persone.
 //
-// "Con Spesa" riporta la tabella alle sole campagne che hanno investito nel
-// periodo. Dacche' mostriamo anche quelle con attivita' ma senza spesa le righe
-// sono passate da 73 a 445 sul trimestre: la vista completa serve a far tornare
-// i totali, questa a lavorare comodamente.
-const TIPOLOGIE = [{ label: "Con Spesa", value: "con_spesa" }];
+// Servono a stringere la tabella su quello che si sta guardando. Da quando
+// mostriamo anche le campagne con attivita' ma senza spesa le righe sono
+// passate da 73 a 445 sul trimestre: la vista completa serve a far tornare i
+// totali, queste a lavorare comodamente.
+//
+// "Con Vendita" tiene le righe che hanno prodotto un incasso: si guardano sia
+// le Chiusure sia l'Importo perche' arrivano da due regole diverse sui
+// tipi di incasso (vedi CHIUSURE_TIPOLOGIE e BOOM_TIPOLOGIE), quindi una riga
+// puo' avere importo senza chiusure e viceversa.
+const TIPOLOGIE = [
+  { label: "Con Spesa", value: "con_spesa" },
+  { label: "Con Vendita", value: "con_vendita" },
+  { label: "Con Spesa e Vendita", value: "con_spesa_e_vendita" }
+];
 
 // Le righe della tabella Ads rappresentano SOLO le campagne tecniche
 // realmente presenti nella colonna "Campagna" del foglio Ads-spesa (non le
@@ -451,7 +460,20 @@ export default function CampaignsDashboard({
 
   const campaignAdsRows = useMemo(() => {
     let rows = buildCampaignAdsRows(spesaByCampagna, conversioniByCampagna, funnelByCampagna, variante, varianti);
-    if (filters.tipologia === "con_spesa") rows = rows.filter((r) => r.spesa > 0);
+
+    const vuoleSpesa = filters.tipologia === "con_spesa" || filters.tipologia === "con_spesa_e_vendita";
+    const vuoleVendita = filters.tipologia === "con_vendita" || filters.tipologia === "con_spesa_e_vendita";
+    if (vuoleSpesa || vuoleVendita) {
+      rows = rows.filter((r) => {
+        if (vuoleSpesa && r.spesa <= 0) return false;
+        if (!vuoleVendita) return true;
+        // Chiusure e Importo non stanno sulla riga: la tabella li prende dal
+        // funnel, indicizzato con la stessa chiave con cui la riga e' nata.
+        const chiave = chiaveCampagna(r.campagna, variante, varianti);
+        const f = chiave ? funnelByCampagna.get(chiave) : undefined;
+        return Boolean(f && (f.chiusure > 0 || f.importo > 0));
+      });
+    }
     if (filters.campagna) rows = rows.filter((r) => r.categoria === filters.campagna);
     return rows;
   }, [spesaByCampagna, conversioniByCampagna, funnelByCampagna, variante, varianti, filters.campagna, filters.tipologia]);
