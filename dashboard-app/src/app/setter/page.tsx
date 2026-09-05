@@ -50,7 +50,6 @@ const SHEET_ID = "1wHpVsYwB_5PKGSYYfD0W2pYa7U_3yWI1Re10T3jGgnM";
 const HUBSPOT_USERS_SHEET_ID = "1XKvzK20x9DkIyJVHBNTYUHxV21kmrdWH0AshNkkgLHQ";
 const GID_OPERATORI = "245526930";
 const GID_OPERATORI_OGGI = "2032731939";
-const GID_TRACKING_EVENTI = "2095098073";
 const GID_HUBSPOT_USERS = "0";
 
 function sheetCsvUrl(gid: string) {
@@ -67,12 +66,10 @@ function normalizeName(value: string): string {
 }
 
 export default async function Page() {
-  const [operatoriRows, operatoriRowsOggi, trackingEventiRows] =
-    await Promise.all([
-      fetchCsv(sheetCsvUrl(GID_OPERATORI)),
-      fetchCsv(sheetCsvUrl(GID_OPERATORI_OGGI)),
-      fetchCsv(sheetCsvUrl(GID_TRACKING_EVENTI))
-    ]);
+  const [operatoriRows, operatoriRowsOggi] = await Promise.all([
+    fetchCsv(sheetCsvUrl(GID_OPERATORI)),
+    fetchCsv(sheetCsvUrl(GID_OPERATORI_OGGI))
+  ]);
 
   let allowedOperatorSet: Set<string> | null = null;
   try {
@@ -107,7 +104,6 @@ export default async function Page() {
       <AdvisorSetterDashboardClient
         operatoriRows={operatoriRowsFiltered}
         operatoriRowsOggi={operatoriRowsOggiFiltered}
-        trackingEventiRows={trackingEventiRows}
         operators={operators}
         campaigns={campaigns}
         operatorLabel="Setter"

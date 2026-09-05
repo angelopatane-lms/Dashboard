@@ -4,7 +4,6 @@ import DashboardEnterprise from "@/components/client/DashboardEnterprise";
 export default function AdvisorSetterDashboardClient({
   operatoriRows,
   operatoriRowsOggi,
-  trackingEventiRows,
   operators,
   campaigns,
   operatorLabel,
@@ -12,7 +11,6 @@ export default function AdvisorSetterDashboardClient({
 }: {
   operatoriRows: CsvRow[];
   operatoriRowsOggi: CsvRow[];
-  trackingEventiRows: CsvRow[];
   operators: string[];
   campaigns: string[];
   operatorLabel?: string;
@@ -22,14 +20,12 @@ export default function AdvisorSetterDashboardClient({
     <DashboardEnterprise
       operatoriRows={operatoriRows}
       operatoriRowsOggi={operatoriRowsOggi}
-      trackingEventiRows={trackingEventiRows}
       operators={operators}
       campaigns={campaigns}
       operatorLabel={operatorLabel}
       hubspotIdToName={hubspotIdToName}
       hideCampagne
       hideInsights
-      hideTimelineEventi
       useHubspot
     />
   );

@@ -22,7 +22,6 @@ import OperatorPerformanceBar from "@/components/charts/OperatorPerformanceBar";
 import CampaignSummaryBar from "@/components/charts/CampaignSummaryBar";
 import CampaignConversionPeaksChart from "@/components/charts/CampaignConversionPeaksChart";
 import FunnelStraightLinesChart, { type FunnelTrendKey } from "@/components/charts/FunnelStraightLinesChart";
-import ContactEventsTimeline from "@/components/charts/ContactEventsTimeline";
 import OperatorStatsTable from "@/components/charts/OperatorStatsTable";
 import type { RawBoomRecord, RawDealRecord } from "@/app/api/hubspot-data/route";
 import { CHIUSURE_TIPOLOGIE, BOOM_TIPOLOGIE } from "@/lib/hubspotRegole";
@@ -36,12 +35,10 @@ type CampaignPeaksDatum = {
 export default function DashboardEnterprise({
   operatoriRows,
   operatoriRowsOggi,
-  trackingEventiRows,
   operators,
   campaigns,
   hideCampagne,
   hideInsights,
-  hideTimelineEventi,
   hideOperatorTable,
   useHubspot,
   operatorLabel,
@@ -49,12 +46,10 @@ export default function DashboardEnterprise({
 }: {
   operatoriRows: CsvRow[];
   operatoriRowsOggi: CsvRow[];
-  trackingEventiRows: CsvRow[];
   operators: string[];
   campaigns: string[];
   hideCampagne?: boolean;
   hideInsights?: boolean;
-  hideTimelineEventi?: boolean;
   hideOperatorTable?: boolean;
   useHubspot?: boolean;
   operatorLabel?: string;
@@ -980,16 +975,6 @@ export default function DashboardEnterprise({
         </>
       )}
 
-      {hideTimelineEventi ? null : (
-        <>
-          <div id="timeline-eventi" className="scroll-mt-6">
-            <SectionTitle className="mt-10">Timeline Eventi</SectionTitle>
-          </div>
-          <div className="mt-4">
-            <ContactEventsTimeline rows={trackingEventiRows} />
-          </div>
-        </>
-      )}
       </div>
     </div>
   );
