@@ -140,9 +140,19 @@ function deriveMetrics(raw: RawTotals): DerivedMetrics {
     //                   fissato un appuntamento
     pctAppuntamento: div(raw.fissati, raw.risposte),
     cpas: div(raw.spesa, raw.processati),
-    // % Consulenza   : degli appuntamenti fissati, quanti sono diventati una
-    //                   consulenza svolta
-    pctConsulenza: div(raw.processati, raw.fissati),
+    // % Consulenza   : delle persone raggiunte al telefono, quante sono
+    //                   arrivate a una consulenza svolta. Stessa formula della
+    //                   colonna "% App S" del report Looker, per poter
+    //                   confrontare le due tabelle riga per riga.
+    //
+    //                   Prima era Consulenze/Appuntamenti. Quel rapporto
+    //                   mescolava due gruppi diversi - consulenze svolte nel
+    //                   periodo contro appuntamenti nati nel periodo - e poteva
+    //                   superare il 100% quando si recuperava un arretrato (su
+    //                   Looker si vede una riga al 160%). La domanda a cui
+    //                   rispondeva e' coperta meglio da % Show Up, che confronta
+    //                   solo appuntamenti giunti a scadenza.
+    pctConsulenza: div(raw.processati, raw.risposte),
     pctShowUp: div(raw.processati, raw.processati + raw.noShow),
     crSales: div(raw.chiusure, raw.processati),
     cpa: div(raw.spesa, raw.chiusure),
