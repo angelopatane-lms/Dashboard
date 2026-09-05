@@ -27,19 +27,37 @@ export function nomeConforme(nome: string): boolean {
 }
 
 /**
- * SUFFISSI DI VARIANTE. Una campagna puo' comparire con un suffisso che parte
- * da "_test": "_test_instant", "_test_creative", o "_test" secco. Sono la
- * stessa campagna in una versione diversa, e nella vista unificata confluiscono
- * nella base.
+ * SUFFISSI DI VARIANTE. La stessa campagna compare con una coda che ne indica
+ * la versione o il pubblico: "_test_instant", "_test_creative", "_2", "_new",
+ * "_lal" (lookalike), "_interessi". Nella vista unificata confluiscono tutte
+ * nella campagna base.
  *
- * IL TAGLIO VALE SOLO SE LA BASE ESISTE DAVVERO. Senza quella condizione si
- * romperebbero le campagne in cui "test" fa parte del nome del prodotto:
- * "ll_ew_test_del_denaro" diventerebbe "ll_ew", "lms_coworking_smoke_test"
- * diventerebbe "lms_coworking_smoke". Misurato: dei 77 nomi che contengono
- * "test", 52 hanno una base esistente e vanno uniti, 25 no e vanno lasciati
- * stare, e la condizione li separa esattamente.
+ * DUE CONDIZIONI, ed entrambe servono.
+ *
+ * 1. La base deve ESISTERE come campagna. Senza, si romperebbero i nomi in cui
+ *    la coda fa parte del prodotto: "ll_ew_test_del_denaro" diventerebbe
+ *    "ll_ew", "lms_coworking_smoke_test" diventerebbe "lms_coworking_smoke".
+ *    Misurato: dei 77 nomi che contengono "test", 52 hanno una base esistente e
+ *    vanno uniti, 25 no, e la condizione li separa esattamente.
+ *
+ * 2. La base deve avere almeno DUE segmenti. Protegge le edizioni numerate, che
+ *    sono programmi diversi e non varianti: senza, "icmd_6" e "icmd_8"
+ *    finirebbero dentro "icmd".
+ *
+ * PERCHE' UN ELENCO E NON UNA REGOLA GENERICA. Tagliare qualsiasi coda finche'
+ * non si trova una campagna esistente sembra piu' comodo ma fonde cose diverse:
+ * misurato, unirebbe 366 campagne e 164.800 eventi, fra cui
+ * "lms_mep_ew_ikigai_vivere_felici" dentro "lms_mep_ew_ikigai" (55.279 eventi,
+ * due campagne distinte) e tutte le code di canale - "_tiktok", "_google",
+ * "_yt" - che invece vanno tenute separate. Con l'elenco esplicito le fusioni
+ * sono 78 per 17.065 eventi.
  */
-export const RE_SUFFISSO_TEST = /_test(_.+)?$/;
+export const RE_SUFFISSO_VARIANTE = /_(test(_.+)?|[0-9]+|new|lal|int|interessi)$/;
+
+/** La base e' accettabile solo se le resta almeno un secondo segmento. */
+export function baseAccettabile(base: string): boolean {
+  return base.includes("_");
+}
 
 /**
  * MARCATORE DI ASSEGNAZIONE IMMEDIATA, non una campagna a se'.
@@ -54,7 +72,7 @@ export const RE_SUFFISSO_TEST = /_test(_.+)?$/;
  * di una conversione vera che lo precede, e la distanza fra i due ha mediana 12
  * secondi.
  *
- * E' un caso particolare di RE_SUFFISSO_TEST, ma va tenuto distinto: solo
+ * E' un caso particolare di RE_SUFFISSO_VARIANTE, ma va tenuto distinto: solo
  * questo suffisso identifica un gruppo di contatti, gli altri sono solo nomi.
  */
 export const SUFFISSO_INSTANT = "_test_instant";
@@ -147,7 +165,7 @@ export const SQL_E_MARCATORE = sqlEMarcatore();
 
 /** Il nome base di una campagna, suffisso di variante rimosso. */
 export function sqlNomeBase(alias = "c"): string {
-  return `regexp_replace(lower(trim(${alias}.nome)), '_test(_.+)?$', '')`;
+  return `regexp_replace(lower(trim(${alias}.nome)), '_(test(_.+)?|[0-9]+|new|lal|int|interessi)$', '')`;
 }
 
 /**
@@ -157,7 +175,9 @@ export function sqlNomeBase(alias = "c"): string {
  * a rileggerla per intero a ogni riga.
  */
 export const SQL_JOIN_BASE = `LEFT JOIN campagna b
-    ON b.nome = ${sqlNomeBase()} AND b.nome <> lower(trim(c.nome))`;
+    ON b.nome = ${sqlNomeBase()}
+   AND b.nome <> lower(trim(c.nome))
+   AND position('_' in b.nome) > 0`;
 
 /** Se la vista ha bisogno di SQL_JOIN_BASE. */
 export function varianteUnificaNomi(variante: Variante): boolean {

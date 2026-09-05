@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { parseCsv } from "@/lib/csv";
 import { getDb } from "@/lib/db";
 import { getString, toDateIso, toNumber } from "@/lib/metrics";
-import { RE_SUFFISSO_TEST, type MappaVarianti } from "@/lib/campagne";
+import { baseAccettabile, RE_SUFFISSO_VARIANTE, type MappaVarianti } from "@/lib/campagne";
 
 export const dynamic = "force-dynamic";
 
@@ -76,8 +76,8 @@ function monthsBetween(fromIso: string, toIso: string): Array<{ year: number; mo
 }
 
 /**
- * Per ogni nome che finisce con un suffisso di variante ("_test", "_test_instant",
- * "_test_creative"...), il nome della campagna base - ma solo se quella base
+ * Per ogni nome che finisce con un suffisso di variante ("_test_instant", "_2",
+ * "_new", "_lal", "_interessi"...), il nome della campagna base - ma solo se quella base
  * esiste davvero fra le campagne HubSpot.
  *
  * La costruisce il server perche' solo lui ha l'elenco delle campagne; il client
@@ -92,8 +92,8 @@ async function mappaVarianti(nomiFoglio: Iterable<string>): Promise<MappaVariant
   const candidati = new Map<string, string>();
   for (const nome of nomiFoglio) {
     const k = nome.trim().toLowerCase();
-    const base = k.replace(RE_SUFFISSO_TEST, "");
-    if (base && base !== k) candidati.set(k, base);
+    const base = k.replace(RE_SUFFISSO_VARIANTE, "");
+    if (base !== k && baseAccettabile(base)) candidati.set(k, base);
   }
 
   try {
@@ -102,8 +102,10 @@ async function mappaVarianti(nomiFoglio: Iterable<string>): Promise<MappaVariant
     const { rows } = await db.query<{ variante: string; base: string }>(
       `SELECT lower(trim(v.nome)) AS variante, b.nome AS base
          FROM campagna v
-         JOIN campagna b ON b.nome = regexp_replace(lower(trim(v.nome)), '_test(_.+)?$', '')
-        WHERE v.nome = lower(v.nome) AND b.nome <> lower(trim(v.nome))`
+         JOIN campagna b ON b.nome = regexp_replace(lower(trim(v.nome)), '_(test(_.+)?|[0-9]+|new|lal|int|interessi)$', '')
+        WHERE v.nome = lower(v.nome)
+          AND b.nome <> lower(trim(v.nome))
+          AND position('_' in b.nome) > 0`
     );
     const mappa: MappaVarianti = {};
     for (const r of rows) mappa[r.variante] = r.base;
