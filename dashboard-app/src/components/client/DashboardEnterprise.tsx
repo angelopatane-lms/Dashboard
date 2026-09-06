@@ -555,15 +555,15 @@ export default function DashboardEnterprise({
           />
         </div>
 
+        {/* Senza titolo di sezione: la tabella si spiega da se'. L'ancora
+            "tabella-operatori" resta pero' sul contenitore, perche' e' la
+            destinazione della voce di menu. */}
         {!hideOperatorTable && (
-          <>
-            <div id="tabella-operatori" className="scroll-mt-6">
-              <SectionTitle className="mt-10">KPI {operatorLabel ?? "Operatori"}</SectionTitle>
-            </div>
+          <div id="tabella-operatori" className="mt-10 scroll-mt-6">
             <Card>
               <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} />
             </Card>
-          </>
+          </div>
         )}
 
         <div id="trend-funnel" className="scroll-mt-6">
