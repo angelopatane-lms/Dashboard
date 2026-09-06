@@ -5,48 +5,16 @@ import Container from "@/components/ui/Container";
 
 export const dynamic = "force-dynamic";
 
-function romeOffsetMinutes(at: Date): number {
-  const tzPart = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Europe/Rome",
-    timeZoneName: "shortOffset"
-  })
-    .formatToParts(at)
-    .find((p) => p.type === "timeZoneName")?.value;
-
-  const m = (tzPart ?? "").match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
-  if (!m) return 0;
-  const sign = m[1] === "-" ? -1 : 1;
-  const hh = Number(m[2] ?? 0);
-  const mm = Number(m[3] ?? 0);
-  return sign * (hh * 60 + mm);
-}
-
-function secondsUntilNextRome1930(nowUtc: Date = new Date()): number {
-  const nowUtcMs = nowUtc.getTime();
-  const offsetNowMin = romeOffsetMinutes(nowUtc);
-  const nowRome = new Date(nowUtcMs + offsetNowMin * 60_000);
-
-  const targetRome = new Date(
-    nowRome.getFullYear(),
-    nowRome.getMonth(),
-    nowRome.getDate(),
-    19,
-    30,
-    0,
-    0
-  );
-
-  if (nowRome.getTime() >= targetRome.getTime()) targetRome.setDate(targetRome.getDate() + 1);
-
-  const targetUtcGuessMs = targetRome.getTime() - offsetNowMin * 60_000;
-  const offsetTargetMin = romeOffsetMinutes(new Date(targetUtcGuessMs));
-  const targetUtcMs = targetRome.getTime() - offsetTargetMin * 60_000;
-
-  const seconds = Math.floor((targetUtcMs - nowUtcMs) / 1000);
-  return Math.max(60, seconds);
-}
-
 const SHEET_ID = "1wHpVsYwB_5PKGSYYfD0W2pYa7U_3yWI1Re10T3jGgnM";
+// L'elenco delle persone si ricontrolla ogni cinque minuti, come gli altri
+// fogli. Prima era in cache fino alle 19:30 di Roma: aggiungendo un Advisor la
+// mattina non compariva fino a sera, ed e' il motivo per cui la lista sembrava
+// non aggiornarsi. Sono 6 KB, non c'era ragione di tenerli fermi un giorno.
+//
+// NOTA SUL TEAM: le persone marcate "Advisor*" o "Setter*" restano fuori di
+// proposito. Verificato che sono ferme da mesi - l'ultima attivita' e' fra
+// maggio e agosto, contro il giorno prima di chi non ha l'asterisco - quindi
+// l'asterisco segna chi non e' piu' operativo.
 const HUBSPOT_USERS_SHEET_ID = "1XKvzK20x9DkIyJVHBNTYUHxV21kmrdWH0AshNkkgLHQ";
 const GID_OPERATORI = "245526930";
 const GID_OPERATORI_OGGI = "2032731939";
@@ -74,8 +42,7 @@ export default async function Page() {
   let allowedOperatorSet: Set<string> | null = null;
   try {
     const hubspotUsersRows = await fetchCsv(
-      `https://docs.google.com/spreadsheets/d/${HUBSPOT_USERS_SHEET_ID}/export?format=csv&gid=${GID_HUBSPOT_USERS}`,
-      { next: { revalidate: secondsUntilNextRome1930() } }
+      `https://docs.google.com/spreadsheets/d/${HUBSPOT_USERS_SHEET_ID}/export?format=csv&gid=${GID_HUBSPOT_USERS}`
     );
 
     const allowedTeams = new Set(["advisor", "setter"]);

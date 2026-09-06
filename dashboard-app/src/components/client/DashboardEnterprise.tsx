@@ -42,7 +42,6 @@ export default function DashboardEnterprise({
   hideOperatorTable,
   useHubspot,
   operatorLabel,
-  hubspotIdToName: hubspotIdToNameProp
 }: {
   operatoriRows: CsvRow[];
   operatoriRowsOggi: CsvRow[];
@@ -53,7 +52,6 @@ export default function DashboardEnterprise({
   hideOperatorTable?: boolean;
   useHubspot?: boolean;
   operatorLabel?: string;
-  hubspotIdToName?: Record<string, string>;
 }) {
   const defaultFrom = useMemo(() => {
     const d = new Date();
@@ -74,8 +72,6 @@ export default function DashboardEnterprise({
   const [rawBoomRecords, setRawBoomRecords] = useState<RawBoomRecord[]>([]);
   const [rawDealRecords, setRawDealRecords] = useState<RawDealRecord[] | null>(null);
   const fetchedRangeRef = useRef<{ from: string; to: string } | null>(null);
-
-  const hubspotIdToName = hubspotIdToNameProp ?? {};
 
   const todayIsoRome = useMemo(
     () =>
