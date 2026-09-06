@@ -7,7 +7,7 @@ import {
   BLOCCATA,
   larghezzaColonnaNumeri,
   larghezzaColonnaTesto,
-  OMBRA_CONFINE
+  LINEE_LATERALI
 } from "@/lib/tabelle";
 
 /**
@@ -461,13 +461,13 @@ export default function CampaignAdsTable({
         <thead>
           <tr className="border-b-2 border-slate-200 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
             <th
-              className={`${BLOCCATA} border-r border-white bg-white py-2 pr-4 pl-0 text-left`}
+              className={`${BLOCCATA} bg-white py-2 pr-4 pl-0 text-left`}
               style={{ left: 0 }}
             >
               Categoria
             </th>
             <th
-              className={`${BLOCCATA} ${OMBRA_CONFINE} border-r border-white bg-white px-3 py-2 text-left`}
+              className={`${BLOCCATA} bg-white px-3 py-2 text-left`}
               style={{ left: larghezze.categoria }}
             >
               Campagna
@@ -503,7 +503,7 @@ export default function CampaignAdsTable({
                 >
                   {idx === 0 ? (
                     <td
-                      className={`${BLOCCATA} border-r border-slate-300 bg-white py-1.5 pr-4 pl-0 align-top font-semibold text-slate-800 whitespace-nowrap`}
+                      className={`${BLOCCATA} bg-white py-1.5 pr-4 pl-0 align-top font-semibold text-slate-800 whitespace-nowrap`}
                       style={{ left: 0 }}
                       rowSpan={g.rows.length}
                     >
@@ -511,7 +511,7 @@ export default function CampaignAdsTable({
                     </td>
                   ) : null}
                   <td
-                    className={`${BLOCCATA} ${OMBRA_CONFINE} border-r border-slate-300 bg-white px-3 py-1.5 text-slate-700 truncate group-hover:bg-slate-50`}
+                    className={`${BLOCCATA} ${LINEE_LATERALI} bg-white px-3 py-1.5 text-slate-700 truncate group-hover:bg-slate-50`}
                     style={{ left: larghezze.categoria }}
                     title={r.campagna}
                   >
@@ -526,7 +526,7 @@ export default function CampaignAdsTable({
         <tfoot>
           <tr className="border-t-2 border-slate-300 bg-slate-100 font-semibold text-slate-900">
             <td
-              className={`${BLOCCATA} ${OMBRA_CONFINE} border-r border-slate-300 bg-slate-100 py-2 pr-4 pl-0`}
+              className={`${BLOCCATA} bg-slate-100 py-2 pr-4 pl-0`}
               colSpan={2}
               style={{ left: 0 }}
             >

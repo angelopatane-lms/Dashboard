@@ -7,7 +7,7 @@ import {
   BLOCCATA,
   larghezzaColonnaNumeri,
   larghezzaColonnaTesto,
-  OMBRA_CONFINE
+  LINEA_DESTRA
 } from "@/lib/tabelle";
 
 function heatBg(value: number, max: number): string {
@@ -142,7 +142,7 @@ export default function OperatorStatsTable({
         <thead>
           <tr className="border-b-2 border-slate-200 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
             <th
-              className={`${BLOCCATA} border-r border-white bg-white py-2 pr-4 pl-0 text-left ${OMBRA_CONFINE}`}
+              className={`${BLOCCATA} bg-white py-2 pr-4 pl-0 text-left`}
               style={{ left: 0 }}
             >
               {operatorLabel}
@@ -165,7 +165,7 @@ export default function OperatorStatsTable({
             return (
               <tr key={r.operatore} className="group hover:bg-slate-50/70 transition-colors">
                 <td
-                  className={`${BLOCCATA} ${OMBRA_CONFINE} border-r border-slate-300 bg-white py-1.5 pr-4 pl-0 font-medium text-slate-800 whitespace-nowrap group-hover:bg-slate-50`}
+                  className={`${BLOCCATA} ${LINEA_DESTRA} bg-white py-1.5 pr-4 pl-0 font-medium text-slate-800 whitespace-nowrap group-hover:bg-slate-50`}
                   style={{ left: 0 }}
                 >
                   {r.operatore}
@@ -231,7 +231,7 @@ export default function OperatorStatsTable({
         <tfoot>
           <tr className="border-t-2 border-slate-300 bg-slate-50 font-semibold text-slate-900">
             <td
-              className={`${BLOCCATA} ${OMBRA_CONFINE} border-r border-slate-300 bg-slate-50 py-2 pr-4 pl-0 text-sm whitespace-nowrap`}
+              className={`${BLOCCATA} bg-slate-50 py-2 pr-4 pl-0 text-sm whitespace-nowrap`}
               style={{ left: 0 }}
             >
               Totale complessivo

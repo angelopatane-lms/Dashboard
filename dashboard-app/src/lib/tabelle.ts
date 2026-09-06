@@ -52,8 +52,20 @@ export function larghezzaColonnaTesto(valori: string[], minimo: number, massimo:
 export const BLOCCATA = "sticky z-10";
 
 /**
- * Il confine della zona bloccata: un'ombra e non un bordo, perche' con
- * border-collapse i bordi appartengono alla tabella e scorrerebbero via insieme
- * al resto, mentre l'ombra resta attaccata alla cella.
+ * LE LINEE VERTICALI DELLA ZONA BLOCCATA, disegnate come ombre e non come bordi.
+ *
+ * Con border-collapse i bordi appartengono alla TABELLA, non alla cella: quando
+ * si scorre in orizzontale se ne vanno insieme al resto e la linea sparisce,
+ * proprio mentre serve di piu'. Le ombre invece si disegnano con la cella, che
+ * essendo bloccata resta ferma.
+ *
+ * Il colore e' slate-300 (#cbd5e1) e non il bianco usato fra le colonne dei
+ * numeri: le colonne di testo non hanno la mappa di calore, quindi su fondo
+ * bianco una linea bianca non si vedrebbe.
  */
-export const OMBRA_CONFINE = "shadow-[1px_0_0_0_rgb(226,232,240)]";
+
+/** Linea a sinistra e a destra: per la colonna di testo che sta in mezzo. */
+export const LINEE_LATERALI = "shadow-[inset_1px_0_0_0_#cbd5e1,1px_0_0_0_#cbd5e1]";
+
+/** Solo la linea a destra: per l'unica colonna di testo di Advisor e Setter. */
+export const LINEA_DESTRA = "shadow-[1px_0_0_0_#cbd5e1]";
