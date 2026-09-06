@@ -4,9 +4,37 @@ import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import AppSidebar from "@/components/layout/AppSidebar";
 
+const CHIAVE_MENU = "menu-aperto";
+
 export default function AppShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  // Su desktop la barra si puo' chiudere per lasciare spazio alle tabelle.
+  //
+  // Parte APERTA sia sul server sia al primo disegno del client, e la
+  // preferenza salvata si applica subito dopo: leggerla dentro useState darebbe
+  // due HTML diversi fra server e client, e React se ne lamenterebbe.
+  const [aperto, setAperto] = useState(true);
   const pathname = usePathname();
+
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(CHIAVE_MENU) === "0") setAperto(false);
+    } catch {
+      // Modalita' in incognito o cookie bloccati: si resta con la barra aperta.
+    }
+  }, []);
+
+  const cambiaBarra = () => {
+    setAperto((prima) => {
+      const dopo = !prima;
+      try {
+        window.localStorage.setItem(CHIAVE_MENU, dopo ? "1" : "0");
+      } catch {
+        // La preferenza non si salva, ma la barra si apre e si chiude lo stesso.
+      }
+      return dopo;
+    });
+  };
 
   useEffect(() => {
     setOpen(false);
@@ -16,7 +44,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto flex min-h-screen w-full">
         <div className="hidden lg:block">
-          <AppSidebar mode="desktop" />
+          <AppSidebar mode="desktop" aperto={aperto} onToggle={cambiaBarra} />
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col">
