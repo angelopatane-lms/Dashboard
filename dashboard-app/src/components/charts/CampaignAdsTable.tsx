@@ -461,13 +461,13 @@ export default function CampaignAdsTable({
         <thead>
           <tr className="border-b-2 border-slate-200 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
             <th
-              className={`${BLOCCATA} border-r border-slate-300 bg-white py-2 pr-4 pl-0 text-left`}
+              className={`${BLOCCATA} border-r border-white bg-white py-2 pr-4 pl-0 text-left`}
               style={{ left: 0 }}
             >
               Categoria
             </th>
             <th
-              className={`${BLOCCATA} ${OMBRA_CONFINE} border-r border-slate-300 bg-white px-3 py-2 text-left`}
+              className={`${BLOCCATA} ${OMBRA_CONFINE} border-r border-white bg-white px-3 py-2 text-left`}
               style={{ left: larghezze.categoria }}
             >
               Campagna

@@ -142,7 +142,7 @@ export default function OperatorStatsTable({
         <thead>
           <tr className="border-b-2 border-slate-200 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
             <th
-              className={`${BLOCCATA} border-r border-slate-300 bg-white py-2 pr-4 pl-0 text-left ${OMBRA_CONFINE}`}
+              className={`${BLOCCATA} border-r border-white bg-white py-2 pr-4 pl-0 text-left ${OMBRA_CONFINE}`}
               style={{ left: 0 }}
             >
               {operatorLabel}
