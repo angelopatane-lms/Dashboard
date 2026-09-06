@@ -21,11 +21,15 @@ const ICONE: Record<string, ReactNode> = {
   )
 };
 
+// L'ordine di questo elenco e' l'unico che conta: decide sia la barra laterale
+// sia, di riflesso, il percorso che si segue passando da una pagina all'altra.
+// Contatti sta in fondo perche' e' la pagina di consultazione del singolo
+// contatto, mentre le prime tre sono le viste di lavoro quotidiane.
 const PAGES: Array<{ label: string; href: string }> = [
   { label: "Advisor", href: "/advisor" },
   { label: "Setter", href: "/setter" },
-  { label: "Contatti", href: "/contatti" },
-  { label: "Campagne", href: "/campagne" }
+  { label: "Campagne", href: "/campagne" },
+  { label: "Contatti", href: "/contatti" }
 ];
 
 const CONTACTS_SECTIONS: Array<{ label: string; id: string }> = [
