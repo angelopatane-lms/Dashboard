@@ -402,18 +402,29 @@ export default function CampaignAdsTable({
       const piuLungo = valori.reduce((acc, v) => Math.max(acc, v.length), 0);
       return Math.min(Math.max(Math.round(piuLungo * 7.6) + 28, minimo), massimo);
     };
-    return {
-      categoria: misura(groups.map((g) => g.categoria), 110, 220),
+    const categoria = misura(groups.map((g) => g.categoria), 110, 220);
       // Il tetto di 900 pixel copre nomi fino a 114 caratteri, contro i 94 del
       // piu' lungo che esiste oggi: serve solo a impedire che un nome fuori
       // scala renda la tabella inutilizzabile. Oltre quella soglia il nome
       // uscirebbe dalla colonna, e si vedrebbe.
-      campagna: misura(
-        groups.flatMap((g) => g.rows.map((r) => r.campagna)),
-        200,
-        900
-      )
-    };
+    const campagna = misura(
+      groups.flatMap((g) => g.rows.map((r) => r.campagna)),
+      200,
+      900
+    );
+    // La tabella riceve una larghezza ESPLICITA, somma delle sue colonne.
+    //
+    // Con table-layout: fixed e larghezza automatica il browser ha margine di
+    // interpretazione su quanto sia larga la tabella, e finisce per ridistribuire
+    // lo spazio fra le colonne invece di rispettare le misure del colgroup: il
+    // risultato era che le colonne dei numeri restavano di larghezze diverse,
+    // ognuna adattata al proprio contenuto. Dandogliela esplicita non c'e' piu'
+    // niente da decidere.
+    //
+    // E' sempre piu' larga dello schermo - le sole diciassette colonne di numeri
+    // fanno 2.244 pixel - quindi si scorre, ed e' esattamente il motivo per cui
+    // le prime due colonne sono bloccate.
+    return { categoria, campagna, totale: categoria + campagna + HEADERS.length * LARGHEZZA_NUMERI };
   }, [groups]);
 
   const grandTotal = useMemo(
@@ -450,7 +461,10 @@ export default function CampaignAdsTable({
           la stessa larghezza: con il calcolo automatico ognuna si adattava al
           proprio contenuto e la griglia risultava sghemba. Categoria e Campagna
           restano piu' larghe perche' contengono testo, non cifre. */}
-      <table className="min-w-full table-fixed border-collapse text-sm">
+      <table
+        className="table-fixed border-collapse text-sm"
+        style={{ width: larghezze.totale, minWidth: larghezze.totale }}
+      >
         <colgroup>
           <col style={{ width: larghezze.categoria }} />
           <col style={{ width: larghezze.campagna }} />
