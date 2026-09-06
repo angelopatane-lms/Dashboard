@@ -359,6 +359,35 @@ export default function CampaignAdsTable({
     });
   }, [adsRows, summaryByCampagna, funnelByCampagna]);
 
+  // LARGHEZZA DELLE DUE COLONNE DI TESTO, misurata sui nomi che ci sono davvero.
+  //
+  // Devono contenere il nome intero su una riga sola: troncarlo nasconderebbe la
+  // fine, che e' dove due campagne si distinguono, e mandarlo a capo darebbe
+  // righe di altezze diverse. Ma fissarla sul caso peggiore - il nome piu' lungo
+  // e' di 94 caratteri, contro una mediana di 29 - sprecherebbe mezzo schermo su
+  // ogni riga normale.
+  //
+  // Si stima da 7,6 pixel per carattere piu' il padding: e' una sovrastima
+  // prudente, perche' se cadesse corta il testo uscirebbe dalla colonna.
+  const larghezze = useMemo(() => {
+    const misura = (valori: string[], minimo: number, massimo: number) => {
+      const piuLungo = valori.reduce((acc, v) => Math.max(acc, v.length), 0);
+      return Math.min(Math.max(Math.round(piuLungo * 7.6) + 28, minimo), massimo);
+    };
+    return {
+      categoria: misura(groups.map((g) => g.categoria), 110, 220),
+      // Il tetto di 900 pixel copre nomi fino a 114 caratteri, contro i 94 del
+      // piu' lungo che esiste oggi: serve solo a impedire che un nome fuori
+      // scala renda la tabella inutilizzabile. Oltre quella soglia il nome
+      // uscirebbe dalla colonna, e si vedrebbe.
+      campagna: misura(
+        groups.flatMap((g) => g.rows.map((r) => r.campagna)),
+        200,
+        900
+      )
+    };
+  }, [groups]);
+
   const grandTotal = useMemo(
     () => groups.reduce((acc, g) => addRaw(acc, g.totale), emptyRaw),
     [groups]
@@ -395,8 +424,8 @@ export default function CampaignAdsTable({
           restano piu' larghe perche' contengono testo, non cifre. */}
       <table className="min-w-full table-fixed border-collapse text-sm">
         <colgroup>
-          <col className="w-[110px]" />
-          <col className="w-[340px]" />
+          <col style={{ width: larghezze.categoria }} />
+          <col style={{ width: larghezze.campagna }} />
           {HEADERS.map((h) => (
             <col key={h} className="w-[100px]" />
           ))}
@@ -438,16 +467,13 @@ export default function CampaignAdsTable({
                 >
                   {idx === 0 ? (
                     <td
-                      className="border-r border-white py-1.5 pr-4 pl-0 align-top font-semibold text-slate-800"
+                      className="border-r border-white py-1.5 pr-4 pl-0 align-top font-semibold text-slate-800 whitespace-nowrap"
                       rowSpan={g.rows.length}
                     >
                       {g.categoria}
                     </td>
                   ) : null}
-                  {/* Il nome va a capo invece di essere troncato: quello che
-                      distingue due campagne sta spesso in fondo, e un taglio
-                      con i puntini nasconderebbe proprio quello. */}
-                  <td className="border-r border-white px-3 py-1.5 align-top text-slate-700 break-words" title={r.campagna}>
+                  <td className="border-r border-white px-3 py-1.5 text-slate-700 whitespace-nowrap" title={r.campagna}>
                     {r.campagna}
                   </td>
                   <MetricCells m={deriveMetrics(r.raw)} max={maxValues} />

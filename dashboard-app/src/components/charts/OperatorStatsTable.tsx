@@ -122,7 +122,7 @@ export default function OperatorStatsTable({
             const tc = tassoChiusura(effChiusure(r), r.consulenze);
             return (
               <tr key={r.operatore} className="hover:bg-slate-50/70 transition-colors">
-                <td className="border-r border-white py-1.5 pr-4 pl-0 font-medium text-slate-800">
+                <td className="border-r border-white py-1.5 pr-4 pl-0 font-medium text-slate-800 whitespace-nowrap">
                   {r.operatore}
                 </td>
                 <td
