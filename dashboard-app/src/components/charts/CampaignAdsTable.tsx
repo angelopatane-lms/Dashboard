@@ -383,11 +383,21 @@ export default function CampaignAdsTable({
       // piu' lungo che esiste oggi: serve solo a impedire che un nome fuori
       // scala renda la tabella inutilizzabile. Oltre quella soglia il nome
       // uscirebbe dalla colonna, e si vedrebbe.
-    const campagna = larghezzaColonnaTesto(
+    // MODERAZIONE: media fra la larghezza fissa che c'era prima (340) e quella
+    // che basterebbe al nome piu' lungo. Dimensionare sul massimo assoluto
+    // costava fino a 742 pixel di colonna - e da quando e' bloccata, quei pixel
+    // sono sempre occupati e non si possono scorrere via.
+    //
+    // Misurato sulle 1.870 campagne conformi: a 541 pixel restano tagliati 7
+    // nomi, lo 0,4%. A 340, cioe' la larghezza di prima, ne restavano tagliati
+    // 335, il 18%. Per quei 7 il nome intero si legge passandoci sopra col
+    // mouse, grazie all'attributo title.
+    const campagnaPiena = larghezzaColonnaTesto(
       groups.flatMap((g) => g.rows.map((r) => r.campagna)),
       200,
       900
     );
+    const campagna = Math.round((340 + campagnaPiena) / 2);
     // La tabella riceve una larghezza ESPLICITA, somma delle sue colonne.
     //
     // Con table-layout: fixed e larghezza automatica il browser ha margine di
@@ -451,13 +461,13 @@ export default function CampaignAdsTable({
         <thead>
           <tr className="border-b-2 border-slate-200 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
             <th
-              className={`${BLOCCATA} border-r border-white bg-white py-2 pr-4 pl-0 text-left`}
+              className={`${BLOCCATA} border-r border-slate-300 bg-white py-2 pr-4 pl-0 text-left`}
               style={{ left: 0 }}
             >
               Categoria
             </th>
             <th
-              className={`${BLOCCATA} ${OMBRA_CONFINE} border-r border-white bg-white px-3 py-2 text-left`}
+              className={`${BLOCCATA} ${OMBRA_CONFINE} border-r border-slate-300 bg-white px-3 py-2 text-left`}
               style={{ left: larghezze.categoria }}
             >
               Campagna
@@ -493,7 +503,7 @@ export default function CampaignAdsTable({
                 >
                   {idx === 0 ? (
                     <td
-                      className={`${BLOCCATA} border-r border-white bg-white py-1.5 pr-4 pl-0 align-top font-semibold text-slate-800 whitespace-nowrap`}
+                      className={`${BLOCCATA} border-r border-slate-300 bg-white py-1.5 pr-4 pl-0 align-top font-semibold text-slate-800 whitespace-nowrap`}
                       style={{ left: 0 }}
                       rowSpan={g.rows.length}
                     >
@@ -501,7 +511,7 @@ export default function CampaignAdsTable({
                     </td>
                   ) : null}
                   <td
-                    className={`${BLOCCATA} ${OMBRA_CONFINE} border-r border-white bg-white px-3 py-1.5 text-slate-700 whitespace-nowrap group-hover:bg-slate-50`}
+                    className={`${BLOCCATA} ${OMBRA_CONFINE} border-r border-slate-300 bg-white px-3 py-1.5 text-slate-700 truncate group-hover:bg-slate-50`}
                     style={{ left: larghezze.categoria }}
                     title={r.campagna}
                   >
@@ -516,7 +526,7 @@ export default function CampaignAdsTable({
         <tfoot>
           <tr className="border-t-2 border-slate-300 bg-slate-100 font-semibold text-slate-900">
             <td
-              className={`${BLOCCATA} ${OMBRA_CONFINE} border-r border-white bg-slate-100 py-2 pr-4 pl-0`}
+              className={`${BLOCCATA} ${OMBRA_CONFINE} border-r border-slate-300 bg-slate-100 py-2 pr-4 pl-0`}
               colSpan={2}
               style={{ left: 0 }}
             >
