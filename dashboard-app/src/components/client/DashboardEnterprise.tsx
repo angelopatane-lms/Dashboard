@@ -559,7 +559,7 @@ export default function DashboardEnterprise({
             "tabella-operatori" resta pero' sul contenitore, perche' e' la
             destinazione della voce di menu. */}
         {!hideOperatorTable && (
-          <div id="tabella-operatori" className="mt-10 scroll-mt-6">
+          <div id="tabella-operatori" className="mt-6 scroll-mt-6">
             <Card>
               <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} />
             </Card>
