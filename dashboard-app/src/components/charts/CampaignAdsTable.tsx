@@ -7,6 +7,7 @@ import {
   BLOCCATA,
   larghezzaColonnaNumeri,
   larghezzaColonnaTesto,
+  LINEA_DESTRA,
   LINEE_LATERALI
 } from "@/lib/tabelle";
 
@@ -321,11 +322,15 @@ function MetricCells({ m, max }: { m: DerivedMetrics; max: MaxValues }) {
 export default function CampaignAdsTable({
   adsRows,
   campaignSummary,
-  funnelByCampagna
+  funnelByCampagna,
+  mostraCategoria = true
 }: {
   adsRows: CampaignAdsRow[];
   campaignSummary: CampaignSummary[];
   funnelByCampagna?: Map<string, FunnelCampagna>;
+  /** Falso quando si sta guardando una categoria sola: ripeterne il nome su
+   *  ogni riga toglierebbe spazio senza dire niente. */
+  mostraCategoria?: boolean;
 }) {
   const summaryByCampagna = useMemo(() => {
     const map = new Map<string, CampaignSummary>();
@@ -410,8 +415,13 @@ export default function CampaignAdsTable({
     // E' sempre piu' larga dello schermo - le sole diciassette colonne di numeri
     // fanno 2.244 pixel - quindi si scorre, ed e' esattamente il motivo per cui
     // le prime due colonne sono bloccate.
-    return { categoria, campagna, totale: categoria + campagna + HEADERS.length * LARGHEZZA_NUMERI };
-  }, [groups]);
+    const larghezzaCategoria = mostraCategoria ? categoria : 0;
+    return {
+      categoria: larghezzaCategoria,
+      campagna,
+      totale: larghezzaCategoria + campagna + HEADERS.length * LARGHEZZA_NUMERI
+    };
+  }, [groups, mostraCategoria]);
 
   const grandTotal = useMemo(
     () => groups.reduce((acc, g) => addRaw(acc, g.totale), emptyRaw),
@@ -452,7 +462,7 @@ export default function CampaignAdsTable({
         style={{ width: larghezze.totale, minWidth: larghezze.totale }}
       >
         <colgroup>
-          <col style={{ width: larghezze.categoria }} />
+          {mostraCategoria ? <col style={{ width: larghezze.categoria }} /> : null}
           <col style={{ width: larghezze.campagna }} />
           {HEADERS.map((h) => (
             <col key={h} style={{ width: LARGHEZZA_NUMERI }} />
@@ -460,12 +470,11 @@ export default function CampaignAdsTable({
         </colgroup>
         <thead>
           <tr className="border-b-2 border-slate-200 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-            <th
-              className={`${BLOCCATA} bg-white py-2 pr-4 pl-0 text-left`}
-              style={{ left: 0 }}
-            >
-              Categoria
-            </th>
+            {mostraCategoria ? (
+              <th className={`${BLOCCATA} bg-white py-2 pr-4 pl-0 text-left`} style={{ left: 0 }}>
+                Categoria
+              </th>
+            ) : null}
             <th
               className={`${BLOCCATA} bg-white px-3 py-2 text-left`}
               style={{ left: larghezze.categoria }}
@@ -501,7 +510,7 @@ export default function CampaignAdsTable({
                       : "border-t border-slate-100"
                   }`}
                 >
-                  {idx === 0 ? (
+                  {mostraCategoria && idx === 0 ? (
                     <td
                       className={`${BLOCCATA} bg-white py-1.5 pr-4 pl-0 align-top font-semibold text-slate-800 whitespace-nowrap`}
                       style={{ left: 0 }}
@@ -511,7 +520,9 @@ export default function CampaignAdsTable({
                     </td>
                   ) : null}
                   <td
-                    className={`${BLOCCATA} ${LINEE_LATERALI} bg-white px-3 py-1.5 text-slate-700 truncate group-hover:bg-slate-50`}
+                    className={`${BLOCCATA} ${
+                      mostraCategoria ? LINEE_LATERALI : LINEA_DESTRA
+                    } bg-white px-3 py-1.5 text-slate-700 truncate group-hover:bg-slate-50`}
                     style={{ left: larghezze.categoria }}
                     title={r.campagna}
                   >
@@ -527,7 +538,7 @@ export default function CampaignAdsTable({
           <tr className="border-t-2 border-slate-300 bg-slate-100 font-semibold text-slate-900">
             <td
               className={`${BLOCCATA} bg-slate-100 py-2 pr-4 pl-0`}
-              colSpan={2}
+              colSpan={mostraCategoria ? 2 : 1}
               style={{ left: 0 }}
             >
               Totale

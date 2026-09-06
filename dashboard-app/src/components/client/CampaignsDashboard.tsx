@@ -676,7 +676,12 @@ export default function CampaignsDashboard({
       ) : null}
 
       <Card className="mt-6">
-        <CampaignAdsTable adsRows={campaignAdsRows} campaignSummary={campaignSummaryFull} funnelByCampagna={funnelByCampagna} />
+        <CampaignAdsTable
+          adsRows={campaignAdsRows}
+          campaignSummary={campaignSummaryFull}
+          funnelByCampagna={funnelByCampagna}
+          mostraCategoria={!filters.campagna}
+        />
       </Card>
 
       <div id="campagne" className="scroll-mt-6">
