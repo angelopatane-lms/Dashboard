@@ -3,6 +3,12 @@
 import { useMemo } from "react";
 import type { OperatorSummary } from "@/lib/analytics";
 import { formatInt, formatPct, formatEur } from "@/lib/format";
+import {
+  BLOCCATA,
+  larghezzaColonnaNumeri,
+  larghezzaColonnaTesto,
+  OMBRA_CONFINE
+} from "@/lib/tabelle";
 
 function heatBg(value: number, max: number): string {
   if (max === 0 || value === 0) return "";
@@ -23,6 +29,19 @@ function tassoPresa(appt: number, conn: number): number | null {
 function tassoChiusura(chius: number, cons: number): number | null {
   return cons > 0 ? chius / cons : null;
 }
+
+const INTESTAZIONI_NUMERI = [
+  "Assegnati",
+  "Chiamate",
+  "Connessioni",
+  "Appuntamenti",
+  "% Appuntamento",
+  "Consulenze",
+  "Chiusure",
+  "% Chiusura",
+  "Boom"
+];
+const LARGHEZZA_NUMERI = larghezzaColonnaNumeri(INTESTAZIONI_NUMERI);
 
 export default function OperatorStatsTable({
   data,
@@ -90,21 +109,44 @@ export default function OperatorStatsTable({
 
   if (!data.length) return null;
 
+  // Stessa griglia della tabella Campagne, e stesse ragioni: le nove colonne dei
+  // numeri hanno tutte la stessa larghezza, ricavata dall'intestazione piu'
+  // lunga, e la colonna del nome si dimensiona sul nome piu' lungo presente.
+  //
+  // Le misure sono in pixel e non in percentuale perche' su un telefono una
+  // tabella a percentuali schiaccerebbe dieci colonne dentro 375 pixel,
+  // rendendole illeggibili. Cosi' invece la tabella scorre - ed e' il motivo per
+  // cui la prima colonna e' bloccata: scorrendo verso Boom si continua a vedere
+  // di chi sono i numeri che si stanno leggendo.
+  const larghezzaNome = larghezzaColonnaTesto(
+    [operatorLabel, ...sorted.map((r) => r.operatore)],
+    140,
+    320
+  );
+  const larghezzaTotale = larghezzaNome + 9 * LARGHEZZA_NUMERI;
+
   return (
     <div className="overflow-x-auto">
-      {/* Stessa griglia della tabella Campagne: le nove colonne di numeri hanno
-          tutte la stessa larghezza, espressa in percentuale perche' qui le
-          colonne sono poche e la tabella entra nello schermo senza scorrere. */}
-      <table className="min-w-full table-fixed border-collapse text-sm">
+      {/* width al 100% con un minimo: su schermo largo le colonne crescono in
+          proporzione restando uguali fra loro, su schermo stretto si scorre. */}
+      <table
+        className="table-fixed border-collapse text-sm"
+        style={{ width: "100%", minWidth: larghezzaTotale }}
+      >
         <colgroup>
-          <col className="w-[16%]" />
+          <col style={{ width: larghezzaNome }} />
           {Array.from({ length: 9 }).map((_, i) => (
-            <col key={i} className="w-[9.33%]" />
+            <col key={i} style={{ width: LARGHEZZA_NUMERI }} />
           ))}
         </colgroup>
         <thead>
           <tr className="border-b-2 border-slate-200 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-            <th className="border-r border-white py-2 pr-4 pl-0 text-left">{operatorLabel}</th>
+            <th
+              className={`${BLOCCATA} border-r border-white bg-white py-2 pr-4 pl-0 text-left ${OMBRA_CONFINE}`}
+              style={{ left: 0 }}
+            >
+              {operatorLabel}
+            </th>
             <th className="border-r border-white px-2 py-2 leading-tight">Assegnati</th>
             <th className="border-r border-white px-2 py-2 leading-tight">Chiamate</th>
             <th className="border-r border-white px-2 py-2 leading-tight">Connessioni</th>
@@ -121,8 +163,11 @@ export default function OperatorStatsTable({
             const tp = tassoPresa(effAppuntamenti(r), r.connessioni);
             const tc = tassoChiusura(effChiusure(r), r.consulenze);
             return (
-              <tr key={r.operatore} className="hover:bg-slate-50/70 transition-colors">
-                <td className="border-r border-white py-1.5 pr-4 pl-0 font-medium text-slate-800 whitespace-nowrap">
+              <tr key={r.operatore} className="group hover:bg-slate-50/70 transition-colors">
+                <td
+                  className={`${BLOCCATA} ${OMBRA_CONFINE} border-r border-white bg-white py-1.5 pr-4 pl-0 font-medium text-slate-800 whitespace-nowrap group-hover:bg-slate-50`}
+                  style={{ left: 0 }}
+                >
                   {r.operatore}
                 </td>
                 <td
@@ -185,20 +230,25 @@ export default function OperatorStatsTable({
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-slate-300 bg-slate-50 font-semibold text-slate-900">
-            <td className="py-2 pr-4 pl-0 text-sm">Totale complessivo</td>
-            <td className="px-3 py-2 text-right tabular-nums">{formatInt(totals.assegnati)}</td>
-            <td className="px-3 py-2 text-right tabular-nums">{formatInt(totals.chiamate)}</td>
-            <td className="px-3 py-2 text-right tabular-nums">{formatInt(totals.connessioni)}</td>
-            <td className="px-3 py-2 text-right tabular-nums">{trattativeLoading ? <span className="font-normal text-slate-400">–</span> : formatInt(totals.appuntamenti)}</td>
-            <td className="px-3 py-2 text-right tabular-nums">
+            <td
+              className={`${BLOCCATA} ${OMBRA_CONFINE} border-r border-white bg-slate-50 py-2 pr-4 pl-0 text-sm whitespace-nowrap`}
+              style={{ left: 0 }}
+            >
+              Totale complessivo
+            </td>
+            <td className="border-r border-white px-2 py-2 text-right tabular-nums">{formatInt(totals.assegnati)}</td>
+            <td className="border-r border-white px-2 py-2 text-right tabular-nums">{formatInt(totals.chiamate)}</td>
+            <td className="border-r border-white px-2 py-2 text-right tabular-nums">{formatInt(totals.connessioni)}</td>
+            <td className="border-r border-white px-2 py-2 text-right tabular-nums">{trattativeLoading ? <span className="font-normal text-slate-400">–</span> : formatInt(totals.appuntamenti)}</td>
+            <td className="border-r border-white px-2 py-2 text-right tabular-nums">
               {trattativeLoading ? <span className="font-normal text-slate-400">–</span> : totalTp !== null ? formatPct(totalTp, 2) : <span className="font-normal text-slate-400">–</span>}
             </td>
-            <td className="px-3 py-2 text-right tabular-nums">{formatInt(totals.consulenze)}</td>  {/* consulenze or noShow */}
-            <td className="px-3 py-2 text-right tabular-nums">{hubspotLoading ? <span className="font-normal text-slate-400">–</span> : formatInt(totals.chiusure)}</td>
-            <td className="px-3 py-2 text-right tabular-nums">
+            <td className="border-r border-white px-2 py-2 text-right tabular-nums">{formatInt(totals.consulenze)}</td>  {/* consulenze or noShow */}
+            <td className="border-r border-white px-2 py-2 text-right tabular-nums">{hubspotLoading ? <span className="font-normal text-slate-400">–</span> : formatInt(totals.chiusure)}</td>
+            <td className="border-r border-white px-2 py-2 text-right tabular-nums">
               {hubspotLoading ? <span className="font-normal text-slate-400">–</span> : totalTc !== null ? formatPct(totalTc, 2) : <span className="font-normal text-slate-400">–</span>}
             </td>
-            <td className="px-3 py-2 text-right tabular-nums">{hubspotLoading ? <span className="font-normal text-slate-400">–</span> : formatEur(totals.boom)}</td>
+            <td className="border-r border-white px-2 py-2 text-right tabular-nums">{hubspotLoading ? <span className="font-normal text-slate-400">–</span> : formatEur(totals.boom)}</td>
           </tr>
         </tfoot>
       </table>

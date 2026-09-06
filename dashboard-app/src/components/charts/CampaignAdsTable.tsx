@@ -3,6 +3,12 @@
 import { Fragment, useMemo, type ReactNode } from "react";
 import type { CampaignSummary } from "@/lib/analytics";
 import { formatInt, formatEur, formatPct, formatFloat } from "@/lib/format";
+import {
+  BLOCCATA,
+  larghezzaColonnaNumeri,
+  larghezzaColonnaTesto,
+  OMBRA_CONFINE
+} from "@/lib/tabelle";
 
 /**
  * Dati "Ads" per campagna e Categoria di raggruppamento.
@@ -236,33 +242,7 @@ const HEADERS = [
   "ROAS"
 ];
 
-/**
- * Larghezza delle colonne dei numeri, ricavata dall'intestazione piu' lunga
- * invece che scelta a occhio.
- *
- * Sono tutte uguali, e devono contenere l'intestazione su UNA RIGA SOLA: con
- * whitespace-nowrap un valore troppo stretto non manderebbe il testo a capo, lo
- * farebbe uscire nella colonna accanto. Le intestazioni sono in maiuscoletto a
- * 12px con spaziatura allargata, dove un carattere occupa circa 8 pixel; i 20
- * di margine coprono il padding orizzontale.
- *
- * Cosi' se un giorno si rinomina una colonna la larghezza segue da sola.
- */
-const LARGHEZZA_NUMERI = Math.max(...HEADERS.map((h) => h.length)) * 8 + 20;
-
-// LE DUE COLONNE DI TESTO RESTANO FERME MENTRE SI SCORRE IN ORIZZONTALE.
-//
-// Serve a tenere le intestazioni su una riga sola: "% Appuntamento" non ci sta
-// in 100 pixel, quindi le colonne dei numeri sono passate a 130 e la tabella e'
-// diventata piu' larga dello schermo. Senza il blocco, scorrendo verso ROAS non
-// si saprebbe piu' di quale campagna si stanno leggendo i numeri.
-//
-// Ogni cella bloccata ha bisogno di un fondo opaco - altrimenti il contenuto che
-// scorre le passerebbe sotto in trasparenza - e di un'ombra a destra che segna
-// il confine. L'ombra e non un bordo: con border-collapse i bordi appartengono
-// alla tabella e scorrerebbero via insieme al resto.
-const BLOCCATA = "sticky z-10";
-const OMBRA_CONFINE = "shadow-[1px_0_0_0_rgb(226,232,240)]";
+const LARGHEZZA_NUMERI = larghezzaColonnaNumeri(HEADERS);
 
 function MetricCells({ m, max }: { m: DerivedMetrics; max: MaxValues }) {
   return (
@@ -398,16 +378,12 @@ export default function CampaignAdsTable({
   // Si stima da 7,6 pixel per carattere piu' il padding: e' una sovrastima
   // prudente, perche' se cadesse corta il testo uscirebbe dalla colonna.
   const larghezze = useMemo(() => {
-    const misura = (valori: string[], minimo: number, massimo: number) => {
-      const piuLungo = valori.reduce((acc, v) => Math.max(acc, v.length), 0);
-      return Math.min(Math.max(Math.round(piuLungo * 7.6) + 28, minimo), massimo);
-    };
-    const categoria = misura(groups.map((g) => g.categoria), 110, 220);
+    const categoria = larghezzaColonnaTesto(groups.map((g) => g.categoria), 110, 220);
       // Il tetto di 900 pixel copre nomi fino a 114 caratteri, contro i 94 del
       // piu' lungo che esiste oggi: serve solo a impedire che un nome fuori
       // scala renda la tabella inutilizzabile. Oltre quella soglia il nome
       // uscirebbe dalla colonna, e si vedrebbe.
-    const campagna = misura(
+    const campagna = larghezzaColonnaTesto(
       groups.flatMap((g) => g.rows.map((r) => r.campagna)),
       200,
       900
