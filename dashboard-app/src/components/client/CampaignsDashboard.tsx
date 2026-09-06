@@ -245,19 +245,19 @@ export default function CampaignsDashboard({
   // campagne, quindi l'aggancio per nome falliva su ogni riga e queste colonne
   // erano sempre a zero.
   const [boomRecords, setBoomRecords] = useState<RawBoomRecord[] | null>(null);
-  const [hubspotErrore, setHubspotErrore] = useState(false);
+  const [hubspotErrore, setHubspotErrore] = useState<boolean | null>(null);
 
   // Consulenze svolte, precalcolate su Postgres dal sync delle trattative: la
   // data della consulenza non e' ricavabile dallo stato attuale, va ricostruita
   // dalla cronologia delle fasi.
   const [consulenze, setConsulenze] = useState<CampaignTrattativeRow[]>([]);
-  const [consulenzeErrore, setConsulenzeErrore] = useState(false);
+  const [consulenzeErrore, setConsulenzeErrore] = useState<boolean | null>(null);
 
   // Chiamate e Connessioni, anch'esse precalcolate: la campagna di una
   // telefonata e' quella che il contatto aveva in quel momento, e ricavarla in
   // lettura vorrebbe dire scandagliare 740.000 eventi a ogni caricamento.
   const [chiamate, setChiamate] = useState<CampaignChiamateRow[]>([]);
-  const [chiamateErrore, setChiamateErrore] = useState(false);
+  const [chiamateErrore, setChiamateErrore] = useState<boolean | null>(null);
 
   useEffect(() => {
     const from = filters.from ?? defaultFrom;
@@ -477,6 +477,22 @@ export default function CampaignsDashboard({
 
   const campaignSummary = useMemo(() => campaignSummaryFull.slice(0, 12), [campaignSummaryFull]);
 
+  // LA TABELLA SI MOSTRA SOLO QUANDO CI SONO TUTTE E QUATTRO LE FONTI.
+  //
+  // Le righe nascono dall'unione di spesa, lead, telefonate, trattative e
+  // incassi, che arrivano da richieste separate: disegnandola a ogni risposta
+  // si vedevano quattro rimescolamenti di fila, con righe che comparivano e
+  // numeri che cambiavano sotto gli occhi. Meglio aspettare e disegnare una
+  // volta sola con i valori definitivi.
+  //
+  // "Arrivata" comprende anche "fallita": se una fonte non risponde la tabella
+  // deve comunque comparire, con l'avviso che spiega quali colonne sono a zero.
+  const pronto =
+    conversioniErrore !== null &&
+    consulenzeErrore !== null &&
+    chiamateErrore !== null &&
+    hubspotErrore !== null;
+
   const campaignAdsRows = useMemo(() => {
     let rows = buildCampaignAdsRows(spesaByCampagna, conversioniByCampagna, funnelByCampagna, variante, varianti);
 
@@ -676,12 +692,18 @@ export default function CampaignsDashboard({
       ) : null}
 
       <Card className="mt-6">
-        <CampaignAdsTable
-          adsRows={campaignAdsRows}
-          campaignSummary={campaignSummaryFull}
-          funnelByCampagna={funnelByCampagna}
-          mostraCategoria={!filters.campagna}
-        />
+        {pronto ? (
+          <CampaignAdsTable
+            adsRows={campaignAdsRows}
+            campaignSummary={campaignSummaryFull}
+            funnelByCampagna={funnelByCampagna}
+            mostraCategoria={!filters.campagna}
+          />
+        ) : (
+          <div className="flex h-64 items-center justify-center text-sm text-slate-500">
+            Caricamento dei dati in corso...
+          </div>
+        )}
       </Card>
 
       <div id="campagne" className="scroll-mt-6">

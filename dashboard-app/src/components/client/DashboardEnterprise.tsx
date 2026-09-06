@@ -553,11 +553,22 @@ export default function DashboardEnterprise({
 
         {/* Senza titolo di sezione: la tabella si spiega da se'. L'ancora
             "tabella-operatori" resta pero' sul contenitore, perche' e' la
-            destinazione della voce di menu. */}
+            destinazione della voce di menu.
+
+            La tabella compare solo quando HubSpot ha risposto: prima si
+            disegnava subito con le colonne del foglio piene e quelle di HubSpot
+            a trattino, poi i trattini diventavano numeri e le righe si
+            riordinavano sotto gli occhi. Meglio una attesa sola. */}
         {!hideOperatorTable && (
           <div id="tabella-operatori" className="mt-6 scroll-mt-6">
             <Card>
+              {useHubspot && (dealsLoading || boomLoading) ? (
+                <div className="flex h-64 items-center justify-center text-sm text-slate-500">
+                  Caricamento dei dati in corso...
+                </div>
+              ) : (
               <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} />
+              )}
             </Card>
           </div>
         )}
