@@ -236,6 +236,34 @@ const HEADERS = [
   "ROAS"
 ];
 
+/**
+ * Larghezza delle colonne dei numeri, ricavata dall'intestazione piu' lunga
+ * invece che scelta a occhio.
+ *
+ * Sono tutte uguali, e devono contenere l'intestazione su UNA RIGA SOLA: con
+ * whitespace-nowrap un valore troppo stretto non manderebbe il testo a capo, lo
+ * farebbe uscire nella colonna accanto. Le intestazioni sono in maiuscoletto a
+ * 12px con spaziatura allargata, dove un carattere occupa circa 8 pixel; i 20
+ * di margine coprono il padding orizzontale.
+ *
+ * Cosi' se un giorno si rinomina una colonna la larghezza segue da sola.
+ */
+const LARGHEZZA_NUMERI = Math.max(...HEADERS.map((h) => h.length)) * 8 + 20;
+
+// LE DUE COLONNE DI TESTO RESTANO FERME MENTRE SI SCORRE IN ORIZZONTALE.
+//
+// Serve a tenere le intestazioni su una riga sola: "% Appuntamento" non ci sta
+// in 100 pixel, quindi le colonne dei numeri sono passate a 130 e la tabella e'
+// diventata piu' larga dello schermo. Senza il blocco, scorrendo verso ROAS non
+// si saprebbe piu' di quale campagna si stanno leggendo i numeri.
+//
+// Ogni cella bloccata ha bisogno di un fondo opaco - altrimenti il contenuto che
+// scorre le passerebbe sotto in trasparenza - e di un'ombra a destra che segna
+// il confine. L'ombra e non un bordo: con border-collapse i bordi appartengono
+// alla tabella e scorrerebbero via insieme al resto.
+const BLOCCATA = "sticky z-10";
+const OMBRA_CONFINE = "shadow-[1px_0_0_0_rgb(226,232,240)]";
+
 function MetricCells({ m, max }: { m: DerivedMetrics; max: MaxValues }) {
   return (
     <>
@@ -427,17 +455,25 @@ export default function CampaignAdsTable({
           <col style={{ width: larghezze.categoria }} />
           <col style={{ width: larghezze.campagna }} />
           {HEADERS.map((h) => (
-            <col key={h} className="w-[100px]" />
+            <col key={h} style={{ width: LARGHEZZA_NUMERI }} />
           ))}
         </colgroup>
         <thead>
           <tr className="border-b-2 border-slate-200 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-            <th className="border-r border-white py-2 pr-4 pl-0 text-left">Categoria</th>
-            <th className="border-r border-white px-3 py-2 text-left">Campagna</th>
-            {/* Le intestazioni lunghe vanno a capo invece di uscire dalla
-                colonna: "% Appuntamento" su una riga sola non ci starebbe. */}
+            <th
+              className={`${BLOCCATA} border-r border-white bg-white py-2 pr-4 pl-0 text-left`}
+              style={{ left: 0 }}
+            >
+              Categoria
+            </th>
+            <th
+              className={`${BLOCCATA} ${OMBRA_CONFINE} border-r border-white bg-white px-3 py-2 text-left`}
+              style={{ left: larghezze.categoria }}
+            >
+              Campagna
+            </th>
             {HEADERS.map((h) => (
-              <th key={h} className="border-r border-white px-2 py-2 leading-tight">
+              <th key={h} className="border-r border-white px-2 py-2 whitespace-nowrap">
                 {h}
               </th>
             ))}
@@ -459,7 +495,7 @@ export default function CampaignAdsTable({
               {g.rows.map((r, idx) => (
                 <tr
                   key={`${g.categoria}-${r.campagna}`}
-                  className={`hover:bg-slate-50/70 transition-colors ${
+                  className={`group hover:bg-slate-50/70 transition-colors ${
                     idx === 0
                       ? "border-t-2 border-slate-200"
                       : "border-t border-slate-100"
@@ -467,13 +503,18 @@ export default function CampaignAdsTable({
                 >
                   {idx === 0 ? (
                     <td
-                      className="border-r border-white py-1.5 pr-4 pl-0 align-top font-semibold text-slate-800 whitespace-nowrap"
+                      className={`${BLOCCATA} border-r border-white bg-white py-1.5 pr-4 pl-0 align-top font-semibold text-slate-800 whitespace-nowrap`}
+                      style={{ left: 0 }}
                       rowSpan={g.rows.length}
                     >
                       {g.categoria}
                     </td>
                   ) : null}
-                  <td className="border-r border-white px-3 py-1.5 text-slate-700 whitespace-nowrap" title={r.campagna}>
+                  <td
+                    className={`${BLOCCATA} ${OMBRA_CONFINE} border-r border-white bg-white px-3 py-1.5 text-slate-700 whitespace-nowrap group-hover:bg-slate-50`}
+                    style={{ left: larghezze.categoria }}
+                    title={r.campagna}
+                  >
                     {r.campagna}
                   </td>
                   <MetricCells m={deriveMetrics(r.raw)} max={maxValues} />
@@ -484,7 +525,11 @@ export default function CampaignAdsTable({
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-slate-300 bg-slate-100 font-semibold text-slate-900">
-            <td className="border-r border-white py-2 pr-4 pl-0" colSpan={2}>
+            <td
+              className={`${BLOCCATA} ${OMBRA_CONFINE} border-r border-white bg-slate-100 py-2 pr-4 pl-0`}
+              colSpan={2}
+              style={{ left: 0 }}
+            >
               Totale
             </td>
             <MetricCells m={deriveMetrics(grandTotal)} max={maxValues} />
