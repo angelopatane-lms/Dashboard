@@ -59,13 +59,17 @@ export const BLOCCATA = "sticky z-10";
  * proprio mentre serve di piu'. Le ombre invece si disegnano con la cella, che
  * essendo bloccata resta ferma.
  *
+ * Sono ombre INTERNE, disegnate dentro la cella. Un'ombra esterna cadrebbe
+ * sopra la cella accanto, che scorre e ha un fondo suo: la linea finiva coperta
+ * e a destra non si vedeva. All'interno non c'e' niente che possa coprirla.
+ *
  * Il colore e' slate-300 (#cbd5e1) e non il bianco usato fra le colonne dei
  * numeri: le colonne di testo non hanno la mappa di calore, quindi su fondo
  * bianco una linea bianca non si vedrebbe.
  */
 
 /** Linea a sinistra e a destra: per la colonna di testo che sta in mezzo. */
-export const LINEE_LATERALI = "shadow-[inset_1px_0_0_0_#cbd5e1,1px_0_0_0_#cbd5e1]";
+export const LINEE_LATERALI = "shadow-[inset_1px_0_0_0_#cbd5e1,inset_-1px_0_0_0_#cbd5e1]";
 
 /** Solo la linea a destra: per l'unica colonna di testo di Advisor e Setter. */
-export const LINEA_DESTRA = "shadow-[1px_0_0_0_#cbd5e1]";
+export const LINEA_DESTRA = "shadow-[inset_-1px_0_0_0_#cbd5e1]";
