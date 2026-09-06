@@ -239,69 +239,69 @@ const HEADERS = [
 function MetricCells({ m, max }: { m: DerivedMetrics; max: MaxValues }) {
   return (
     <>
-      <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.spesa, max.spesa) }}>
+      <td className="border-r border-white px-2 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.spesa, max.spesa) }}>
         {/* Due decimali: il foglio Ads riporta la spesa al centesimo. */}
         {fmtEur(m.spesa, 2)}
       </td>
-      <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.leadGenerati, max.leadGenerati) }}>
+      <td className="border-r border-white px-2 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.leadGenerati, max.leadGenerati) }}>
         {formatInt(m.leadGenerati)}
       </td>
       <td
-        className="px-3 py-1.5 text-right tabular-nums"
+        className="border-r border-white px-2 py-1.5 text-right tabular-nums"
         style={{ background: m.cplGenerati !== null ? heatBg(m.cplGenerati, max.cplGenerati) : undefined }}
       >
         {fmtEur(m.cplGenerati, 2)}
       </td>
-      <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.leadUnici, max.leadUnici) }}>
+      <td className="border-r border-white px-2 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.leadUnici, max.leadUnici) }}>
         {formatInt(m.leadUnici)}
       </td>
       <td
-        className="px-3 py-1.5 text-right tabular-nums"
+        className="border-r border-white px-2 py-1.5 text-right tabular-nums"
         style={{ background: m.cplUnici !== null ? heatBg(m.cplUnici, max.cplUnici) : undefined }}
       >
         {fmtEur(m.cplUnici, 2)}
       </td>
-      <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.risposte, max.risposte) }}>
+      <td className="border-r border-white px-2 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.risposte, max.risposte) }}>
         {formatInt(m.risposte)}
       </td>
-      <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.fissati, max.fissati) }}>
+      <td className="border-r border-white px-2 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.fissati, max.fissati) }}>
         {formatInt(m.fissati)}
       </td>
-      <td className="px-3 py-1.5 text-right font-semibold tabular-nums" style={{ background: rateBg(m.pctAppuntamento) }}>
+      <td className="border-r border-white px-2 py-1.5 text-right font-semibold tabular-nums" style={{ background: rateBg(m.pctAppuntamento) }}>
         {fmtPct(m.pctAppuntamento)}
       </td>
-      <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.processati, max.processati) }}>
+      <td className="border-r border-white px-2 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.processati, max.processati) }}>
         {formatInt(m.processati)}
       </td>
       <td
-        className="px-3 py-1.5 text-right tabular-nums"
+        className="border-r border-white px-2 py-1.5 text-right tabular-nums"
         style={{ background: m.cpas !== null ? heatBg(m.cpas, max.cpas) : undefined }}
       >
         {fmtEur(m.cpas, 2)}
       </td>
-      <td className="px-3 py-1.5 text-right font-semibold tabular-nums" style={{ background: rateBg(m.pctConsulenza) }}>
+      <td className="border-r border-white px-2 py-1.5 text-right font-semibold tabular-nums" style={{ background: rateBg(m.pctConsulenza) }}>
         {fmtPct(m.pctConsulenza)}
       </td>
-      <td className="px-3 py-1.5 text-right font-semibold tabular-nums" style={{ background: rateBg(m.pctShowUp) }}>
+      <td className="border-r border-white px-2 py-1.5 text-right font-semibold tabular-nums" style={{ background: rateBg(m.pctShowUp) }}>
         {fmtPct(m.pctShowUp)}
       </td>
-      <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.chiusure, max.chiusure) }}>
+      <td className="border-r border-white px-2 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.chiusure, max.chiusure) }}>
         {formatInt(m.chiusure)}
       </td>
-      <td className="px-3 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.importo, max.importo) }}>
+      <td className="border-r border-white px-2 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.importo, max.importo) }}>
         {fmtEur(m.importo)}
       </td>
-      <td className="px-3 py-1.5 text-right font-semibold tabular-nums" style={{ background: rateBg(m.crSales) }}>
+      <td className="border-r border-white px-2 py-1.5 text-right font-semibold tabular-nums" style={{ background: rateBg(m.crSales) }}>
         {fmtPct(m.crSales)}
       </td>
       <td
-        className="px-3 py-1.5 text-right tabular-nums"
+        className="border-r border-white px-2 py-1.5 text-right tabular-nums"
         style={{ background: m.cpa !== null ? heatBg(m.cpa, max.cpa) : undefined }}
       >
         {fmtEur(m.cpa, 2)}
       </td>
       <td
-        className="px-3 py-1.5 text-right font-semibold tabular-nums"
+        className="border-r border-white px-2 py-1.5 text-right font-semibold tabular-nums"
         style={{ background: m.roas !== null ? heatBg(m.roas, max.roas) : undefined }}
       >
         {m.roas !== null ? `${formatFloat(m.roas, 2)}x` : <span className="text-slate-400">–</span>}
@@ -389,13 +389,26 @@ export default function CampaignAdsTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full border-collapse text-sm">
+      {/* table-fixed piu' il colgroup danno alle diciassette colonne di numeri
+          la stessa larghezza: con il calcolo automatico ognuna si adattava al
+          proprio contenuto e la griglia risultava sghemba. Categoria e Campagna
+          restano piu' larghe perche' contengono testo, non cifre. */}
+      <table className="min-w-full table-fixed border-collapse text-sm">
+        <colgroup>
+          <col className="w-[110px]" />
+          <col className="w-[340px]" />
+          {HEADERS.map((h) => (
+            <col key={h} className="w-[100px]" />
+          ))}
+        </colgroup>
         <thead>
           <tr className="border-b-2 border-slate-200 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-            <th className="py-2 pr-4 pl-0 text-left">Categoria</th>
-            <th className="px-3 py-2 text-left">Campagna</th>
+            <th className="border-r border-white py-2 pr-4 pl-0 text-left">Categoria</th>
+            <th className="border-r border-white px-3 py-2 text-left">Campagna</th>
+            {/* Le intestazioni lunghe vanno a capo invece di uscire dalla
+                colonna: "% Appuntamento" su una riga sola non ci starebbe. */}
             {HEADERS.map((h) => (
-              <th key={h} className="px-3 py-2 whitespace-nowrap">
+              <th key={h} className="border-r border-white px-2 py-2 leading-tight">
                 {h}
               </th>
             ))}
@@ -425,13 +438,16 @@ export default function CampaignAdsTable({
                 >
                   {idx === 0 ? (
                     <td
-                      className="py-1.5 pr-4 pl-0 align-top font-semibold text-slate-800 whitespace-nowrap"
+                      className="border-r border-white py-1.5 pr-4 pl-0 align-top font-semibold text-slate-800"
                       rowSpan={g.rows.length}
                     >
                       {g.categoria}
                     </td>
                   ) : null}
-                  <td className="px-3 py-1.5 text-slate-700 whitespace-nowrap" title={r.campagna}>
+                  {/* Il nome va a capo invece di essere troncato: quello che
+                      distingue due campagne sta spesso in fondo, e un taglio
+                      con i puntini nasconderebbe proprio quello. */}
+                  <td className="border-r border-white px-3 py-1.5 align-top text-slate-700 break-words" title={r.campagna}>
                     {r.campagna}
                   </td>
                   <MetricCells m={deriveMetrics(r.raw)} max={maxValues} />
@@ -442,7 +458,7 @@ export default function CampaignAdsTable({
         </tbody>
         <tfoot>
           <tr className="border-t-2 border-slate-300 bg-slate-100 font-semibold text-slate-900">
-            <td className="py-2 pr-4 pl-0" colSpan={2}>
+            <td className="border-r border-white py-2 pr-4 pl-0" colSpan={2}>
               Totale
             </td>
             <MetricCells m={deriveMetrics(grandTotal)} max={maxValues} />
