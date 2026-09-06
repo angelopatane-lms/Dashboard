@@ -33,9 +33,19 @@ export function larghezzaColonnaNumeri(intestazioni: string[]): number {
  * La stima e' 7,6 pixel per carattere piu' il padding, volutamente per eccesso:
  * se cadesse corta il testo uscirebbe dalla colonna.
  */
-export function larghezzaColonnaTesto(valori: string[], minimo: number, massimo: number): number {
+export function larghezzaColonnaTesto(
+  valori: string[],
+  minimo: number,
+  massimo: number,
+  // Spazio oltre al testo: copre il padding della cella e l'errore della stima.
+  // Le colonne strette - Categoria, e il nome su Advisor e Setter - usano 14
+  // invece di 28, perche' li' il margine si vedeva come vuoto sprecato accanto
+  // alla voce piu' lunga. La colonna Campagna tiene 28: e' quella dove un nome
+  // che non entra viene troncato, quindi vale la pena essere prudenti.
+  margine = 28
+): number {
   const piuLungo = valori.reduce((acc, v) => Math.max(acc, v.length), 0);
-  return Math.min(Math.max(Math.round(piuLungo * 7.6) + 28, minimo), massimo);
+  return Math.min(Math.max(Math.round(piuLungo * 7.6) + margine, minimo), massimo);
 }
 
 /**

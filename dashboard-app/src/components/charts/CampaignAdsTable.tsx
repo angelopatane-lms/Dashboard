@@ -378,7 +378,7 @@ export default function CampaignAdsTable({
   // Si stima da 7,6 pixel per carattere piu' il padding: e' una sovrastima
   // prudente, perche' se cadesse corta il testo uscirebbe dalla colonna.
   const larghezze = useMemo(() => {
-    const categoria = larghezzaColonnaTesto(groups.map((g) => g.categoria), 110, 220);
+    const categoria = larghezzaColonnaTesto(groups.map((g) => g.categoria), 96, 220, 14);
       // Il tetto di 900 pixel copre nomi fino a 114 caratteri, contro i 94 del
       // piu' lungo che esiste oggi: serve solo a impedire che un nome fuori
       // scala renda la tabella inutilizzabile. Oltre quella soglia il nome

@@ -120,8 +120,9 @@ export default function OperatorStatsTable({
   // di chi sono i numeri che si stanno leggendo.
   const larghezzaNome = larghezzaColonnaTesto(
     [operatorLabel, ...sorted.map((r) => r.operatore)],
-    140,
-    320
+    120,
+    320,
+    14
   );
   const larghezzaTotale = larghezzaNome + 9 * LARGHEZZA_NUMERI;
 
