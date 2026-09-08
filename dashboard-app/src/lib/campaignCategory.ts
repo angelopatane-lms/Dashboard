@@ -42,6 +42,22 @@ const CATEGORY_DEFS: CategoryDef[] = [
   { label: "ICMD", contiene: ["icmd_", "icmd"] }
 ];
 
+/**
+ * Le due voci di raccolta, che vanno in fondo a ogni elenco di categorie.
+ *
+ * "Altro" e "Nessuna" non sono linee di prodotto ma il posto dove finisce cio'
+ * che la regola non riconosce: in mezzo alle altre, in ordine alfabetico,
+ * "Altro" comparirebbe per primo e sembrerebbe una categoria come le altre.
+ *
+ * Sta qui e non nei due punti che ne hanno bisogno - l'elenco del filtro e
+ * l'ordine delle righe in tabella - perche' i due ordinamenti devono
+ * coincidere: separati sarebbero divergiuti alla prima modifica.
+ */
+export function categoriaResidua(categoria: string): boolean {
+  const c = categoria.trim().toLowerCase();
+  return c === "altro" || c === "nessuna";
+}
+
 export function guessCategoria(campagna: string): string {
   const nome = campagna.trim().toLowerCase();
   if (!nome) return "Nessuna";

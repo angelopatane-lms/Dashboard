@@ -5,7 +5,7 @@ import type { CsvRow } from "@/lib/csv";
 import { applyFilters, getString, type Filters } from "@/lib/metrics";
 import { aggregateByCampagna, normalizeOperatori } from "@/lib/analytics";
 import { formatPct } from "@/lib/format";
-import { guessCategoria } from "@/lib/campaignCategory";
+import { categoriaResidua, guessCategoria } from "@/lib/campaignCategory";
 import type { Variante } from "@/lib/campagne";
 import {
   chiaveCampagna,
@@ -421,7 +421,14 @@ export default function CampaignsDashboard({
       const c = r.campagna.trim();
       if (c && (variante === "tutte" || nomeConforme(c))) set.add(guessCategoria(c));
     }
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
+    // "Altro" in fondo, insieme a "Nessuna": sono voci di raccolta, non linee
+    // di prodotto, e in ordine alfabetico "Altro" finirebbe per primo.
+    return Array.from(set).sort((a, b) => {
+      const aResidua = categoriaResidua(a);
+      const bResidua = categoriaResidua(b);
+      if (aResidua !== bResidua) return aResidua ? 1 : -1;
+      return a.localeCompare(b);
+    });
   }, [adsSpendRows, variante]);
 
   const spesaByCampagna = useMemo(() => {

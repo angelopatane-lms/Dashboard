@@ -3,6 +3,7 @@
 import { Fragment, useMemo, type ReactNode } from "react";
 import type { CampaignSummary } from "@/lib/analytics";
 import { formatInt, formatEur, formatPct, formatFloat } from "@/lib/format";
+import { categoriaResidua } from "@/lib/campaignCategory";
 import {
   BLOCCATA,
   larghezzaColonnaNumeri,
@@ -359,14 +360,9 @@ export default function CampaignAdsTable({
       totale: rows.reduce((acc, r) => addRaw(acc, r.raw), emptyRaw)
     }));
 
-    const isAltroONessuna = (categoria: string) => {
-      const c = categoria.trim().toLowerCase();
-      return c === "altro" || c === "nessuna";
-    };
-
     return list.sort((a, b) => {
-      const aLast = isAltroONessuna(a.categoria);
-      const bLast = isAltroONessuna(b.categoria);
+      const aLast = categoriaResidua(a.categoria);
+      const bLast = categoriaResidua(b.categoria);
       if (aLast !== bLast) return aLast ? 1 : -1;
       return b.totale.spesa - a.totale.spesa;
     });
