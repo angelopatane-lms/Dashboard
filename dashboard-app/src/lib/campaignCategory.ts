@@ -67,3 +67,35 @@ export function guessCategoria(campagna: string): string {
   }
   return "Altro";
 }
+
+/**
+ * Il nome campagna senza il pezzo iniziale che ne indica la categoria.
+ *
+ * "lms_imprenditoria_workshop_marketing_artificiale" diventa
+ * "workshop_marketing_artificiale": la categoria e' gia' scritta nella colonna
+ * accanto, ripeterla dentro ogni nome occupa mezza tabella per non dire niente.
+ *
+ * Taglia dopo lo STESSO frammento che ha deciso la categoria - stesso elenco,
+ * stesso ordine di priorita' - percio' i due valori non possono contraddirsi:
+ * se la riga dice MEP, il taglio e' avvenuto su "mep_".
+ *
+ * Restituisce il nome intero quando non c'e' niente da togliere: nomi in
+ * "Altro", che nessun frammento riconosce, e il caso limite del nome che
+ * finisce col codice e non lascerebbe che una stringa vuota.
+ */
+export function nomeSenzaCategoria(campagna: string): string {
+  const nome = campagna.trim();
+  const minuscolo = nome.toLowerCase();
+
+  for (const def of CATEGORY_DEFS) {
+    for (const frammento of def.contiene) {
+      const i = minuscolo.indexOf(frammento);
+      if (i < 0) continue;
+      // Il trattino basso di apertura se ne va con il prefisso: fa parte del
+      // taglio, non del nome.
+      const resto = nome.slice(i + frammento.length).replace(/^_+/, "");
+      return resto || nome;
+    }
+  }
+  return nome;
+}

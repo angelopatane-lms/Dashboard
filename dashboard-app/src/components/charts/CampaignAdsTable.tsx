@@ -1,16 +1,15 @@
 "use client";
 
-import { Fragment, useMemo, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import type { CampaignSummary } from "@/lib/analytics";
 import { formatInt, formatEur, formatPct, formatFloat } from "@/lib/format";
-import { categoriaResidua } from "@/lib/campaignCategory";
+import { categoriaResidua, nomeSenzaCategoria } from "@/lib/campaignCategory";
 import {
   BLOCCATA,
   INTESTAZIONE_ANGOLO,
   INTESTAZIONE_FERMA,
   larghezzaColonnaNumeri,
   larghezzaColonnaTesto,
-  LINEA_DESTRA,
   LINEA_SOTTO,
   LINEE_LATERALI
 } from "@/lib/tabelle";
@@ -333,19 +332,69 @@ function MetricCells({ m, max }: { m: DerivedMetrics; max: MaxValues }) {
   );
 }
 
+/**
+ * La cella con il nome della campagna, che si apre e si chiude con un click.
+ *
+ * Chiusa mostra il nome accorciato - quando la vista lo prevede - e lo tiene su
+ * una riga sola, tagliandolo con i puntini se non ci sta. Aperta mostra il nome
+ * intero andando a capo: la riga diventa piu' alta, ma e' successo perche' lo
+ * si e' chiesto, e un altro click la richiude.
+ *
+ * Il click e' attivo anche dove i nomi non vengono accorciati: la colonna ha
+ * comunque una larghezza massima, e i nomi piu' lunghi restano tagliati.
+ */
+function CellaNome({
+  campagna,
+  sinistra,
+  abbrevia,
+  espanso,
+  onToggle
+}: {
+  campagna: string;
+  sinistra: number;
+  abbrevia: boolean;
+  espanso: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <td
+      className={`${BLOCCATA} ${LINEE_LATERALI} cursor-pointer bg-white px-3 py-1.5 text-slate-700 group-hover:bg-slate-50 ${
+        espanso ? "whitespace-normal break-words" : "truncate"
+      }`}
+      style={{ left: sinistra }}
+      // Il nome intero resta raggiungibile col mouse anche senza aprire.
+      title={campagna}
+      onClick={onToggle}
+    >
+      {abbrevia && !espanso ? nomeSenzaCategoria(campagna) : campagna}
+    </td>
+  );
+}
+
 export default function CampaignAdsTable({
   adsRows,
   campaignSummary,
   funnelByCampagna,
-  mostraCategoria = true
+  abbreviaNomi = false
 }: {
   adsRows: CampaignAdsRow[];
   campaignSummary: CampaignSummary[];
   funnelByCampagna?: Map<string, FunnelCampagna>;
-  /** Falso quando si sta guardando una categoria sola: ripeterne il nome su
-   *  ogni riga toglierebbe spazio senza dire niente. */
-  mostraCategoria?: boolean;
+  /** Mostra i nomi senza il prefisso di categoria (vedi nomeSenzaCategoria).
+   *
+   *  Vale in Unificate, Instant e Non Instant, non in Tutte: li' si guardano le
+   *  singole varianti, e conviene avere il nome esattamente com'e' scritto in
+   *  HubSpot per poterlo cercare. */
+  abbreviaNomi?: boolean;
 }) {
+  // Le campagne di cui si e' chiesto il nome per intero, una per click.
+  const [espansi, setEspansi] = useState<ReadonlySet<string>>(() => new Set());
+  const alternaNome = (campagna: string) =>
+    setEspansi((prima) => {
+      const dopo = new Set(prima);
+      if (!dopo.delete(campagna)) dopo.add(campagna);
+      return dopo;
+    });
   const summaryByCampagna = useMemo(() => {
     const map = new Map<string, CampaignSummary>();
     for (const s of campaignSummary) map.set(normKey(s.campagna), s);
@@ -397,21 +446,30 @@ export default function CampaignAdsTable({
       // piu' lungo che esiste oggi: serve solo a impedire che un nome fuori
       // scala renda la tabella inutilizzabile. Oltre quella soglia il nome
       // uscirebbe dalla colonna, e si vedrebbe.
-    // MODERAZIONE: media fra la larghezza fissa che c'era prima (340) e quella
-    // che basterebbe al nome piu' lungo. Dimensionare sul massimo assoluto
-    // costava fino a 742 pixel di colonna - e da quando e' bloccata, quei pixel
-    // sono sempre occupati e non si possono scorrere via.
-    //
-    // Misurato sulle 1.870 campagne conformi: a 541 pixel restano tagliati 7
-    // nomi, lo 0,4%. A 340, cioe' la larghezza di prima, ne restavano tagliati
-    // 335, il 18%. Per quei 7 il nome intero si legge passandoci sopra col
-    // mouse, grazie all'attributo title.
+    // La misura si prende sui nomi COME SI VEDONO: accorciati dove la vista li
+    // accorcia, altrimenti interi. Misurarla sempre sugli interi terrebbe
+    // occupata una colonna larga il doppio del suo contenuto.
     const campagnaPiena = larghezzaColonnaTesto(
-      groups.flatMap((g) => g.rows.map((r) => r.campagna)),
+      groups.flatMap((g) =>
+        g.rows.map((r) => (abbreviaNomi ? nomeSenzaCategoria(r.campagna) : r.campagna))
+      ),
       200,
       900
     );
-    const campagna = Math.round((340 + campagnaPiena) / 2);
+    // MODERAZIONE, solo sui nomi interi: media fra la larghezza fissa che
+    // c'era prima (340) e quella che basterebbe al nome piu' lungo.
+    // Dimensionare sul massimo assoluto costava fino a 742 pixel - e da quando
+    // la colonna e' bloccata, quei pixel sono sempre occupati e non si possono
+    // scorrere via.
+    //
+    // Misurato sulle 1.870 campagne conformi: a 541 pixel restano tagliati 7
+    // nomi, lo 0,4%. A 340, cioe' la larghezza di prima, ne restavano tagliati
+    // 335, il 18%. Per quei 7 il nome intero si legge col mouse sopra, o
+    // aprendo la cella con un click.
+    //
+    // Accorciati la moderazione non serve: sono gia' corti, e prenderli per
+    // intero non taglia niente e non costa spazio.
+    const campagna = abbreviaNomi ? campagnaPiena : Math.round((340 + campagnaPiena) / 2);
     // La tabella riceve una larghezza ESPLICITA, somma delle sue colonne.
     //
     // Con table-layout: fixed e larghezza automatica il browser ha margine di
@@ -424,13 +482,12 @@ export default function CampaignAdsTable({
     // E' sempre piu' larga dello schermo - le sole diciassette colonne di numeri
     // fanno 2.244 pixel - quindi si scorre, ed e' esattamente il motivo per cui
     // le prime due colonne sono bloccate.
-    const larghezzaCategoria = mostraCategoria ? categoria : 0;
     return {
-      categoria: larghezzaCategoria,
+      categoria,
       campagna,
-      totale: larghezzaCategoria + campagna + HEADERS.length * LARGHEZZA_NUMERI
+      totale: categoria + campagna + HEADERS.length * LARGHEZZA_NUMERI
     };
-  }, [groups, mostraCategoria]);
+  }, [groups, abbreviaNomi]);
 
   const grandTotal = useMemo(
     () => groups.reduce((acc, g) => addRaw(acc, g.totale), emptyRaw),
@@ -477,7 +534,7 @@ export default function CampaignAdsTable({
         style={{ width: larghezze.totale, minWidth: larghezze.totale }}
       >
         <colgroup>
-          {mostraCategoria ? <col style={{ width: larghezze.categoria }} /> : null}
+          <col style={{ width: larghezze.categoria }} />
           <col style={{ width: larghezze.campagna }} />
           {HEADERS.map((h) => (
             <col key={h} style={{ width: LARGHEZZA_NUMERI }} />
@@ -485,14 +542,12 @@ export default function CampaignAdsTable({
         </colgroup>
         <thead>
           <tr className="text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-            {mostraCategoria ? (
-              <th
-                className={`${INTESTAZIONE_ANGOLO} ${LINEA_SOTTO} bg-white py-2 pr-4 pl-0 text-left`}
-                style={{ left: 0 }}
-              >
-                Categoria
-              </th>
-            ) : null}
+            <th
+              className={`${INTESTAZIONE_ANGOLO} ${LINEA_SOTTO} bg-white py-2 pr-4 pl-0 text-left`}
+              style={{ left: 0 }}
+            >
+              Categoria
+            </th>
             <th
               className={`${INTESTAZIONE_ANGOLO} ${LINEA_SOTTO} bg-white px-3 py-2 text-left`}
               style={{ left: larghezze.categoria }}
@@ -537,7 +592,7 @@ export default function CampaignAdsTable({
                         : "border-t-2 border-slate-200"
                   }`}
                 >
-                  {mostraCategoria && idx === 0 ? (
+                  {idx === 0 ? (
                     <td
                       className={`${BLOCCATA} bg-white py-1.5 pr-4 pl-0 align-top font-semibold text-slate-800 whitespace-nowrap`}
                       style={{ left: 0 }}
@@ -546,15 +601,13 @@ export default function CampaignAdsTable({
                       {g.categoria}
                     </td>
                   ) : null}
-                  <td
-                    className={`${BLOCCATA} ${
-                      mostraCategoria ? LINEE_LATERALI : LINEA_DESTRA
-                    } bg-white px-3 py-1.5 text-slate-700 truncate group-hover:bg-slate-50`}
-                    style={{ left: larghezze.categoria }}
-                    title={r.campagna}
-                  >
-                    {r.campagna}
-                  </td>
+                  <CellaNome
+                    campagna={r.campagna}
+                    sinistra={larghezze.categoria}
+                    abbrevia={abbreviaNomi}
+                    espanso={espansi.has(r.campagna)}
+                    onToggle={() => alternaNome(r.campagna)}
+                  />
                   <MetricCells m={deriveMetrics(r.raw)} max={maxValues} />
                 </tr>
               ))}
@@ -565,7 +618,7 @@ export default function CampaignAdsTable({
           <tr className="border-t-2 border-slate-300 bg-slate-100 font-semibold text-slate-900">
             <td
               className={`${BLOCCATA} bg-slate-100 py-2 pr-4 pl-0`}
-              colSpan={mostraCategoria ? 2 : 1}
+              colSpan={2}
               style={{ left: 0 }}
             >
               Totale
