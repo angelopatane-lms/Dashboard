@@ -697,6 +697,18 @@ export default function CampaignsDashboard({
   return (
     <div>
       <div id="filtri" className="w-full scroll-mt-6">
+        {/* ATTENZIONE AI NOMI: qui si decide come si chiamano i filtri sullo
+            schermo, e su questa pagina nessuno dei quattro si chiama come la
+            proprieta' che lo porta. Leggendo il codice piu' avanti conviene
+            tenere presente la corrispondenza:
+
+              campaigns  -> "Categoria"    l'elenco delle categorie
+              varianti   -> "Campagna"     unificate, instant, tutte
+              formati    -> "Tipologia"    dal vivo o sempre attivo
+              tipologie  -> "Variabile"    con spesa, con vendita...
+
+            I nomi interni sono rimasti quelli con cui i filtri sono nati; sullo
+            schermo hanno preso via via le parole che usa chi li guarda. */}
         <FiltersBar
           filters={filters}
           setFilters={setFilters}
@@ -706,6 +718,7 @@ export default function CampaignsDashboard({
           varianti={VARIANTI}
           varianteLabel="Campagna"
           formati={FORMATI}
+          formatoLabel="Tipologia"
           tipologie={TIPOLOGIE}
           tipologiaLabel="Variabile"
         />
