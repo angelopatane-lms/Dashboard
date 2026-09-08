@@ -121,7 +121,8 @@ export function FiltersBar({
   varianti,
   varianteLabel = "Variante",
   formati,
-  formatoLabel = "Formato"
+  formatoLabel = "Formato",
+  campagnaMultipla = false
 }: {
   filters: Filters;
   setFilters: (next: Filters) => void;
@@ -146,6 +147,10 @@ export function FiltersBar({
    *  attivo. Ha la voce vuota, perche' "tutti" e' il valore predefinito. */
   formati?: Array<{ label: string; value: string }>;
   formatoLabel?: string;
+  /** Se vero il menu delle campagne diventa a piu' scelte e scrive in
+   *  filters.categorie. Lo usa la sola pagina Campagne, dove quel menu elenca
+   *  le categorie e serve poterne escludere qualcuna. */
+  campagnaMultipla?: boolean;
 }) {
   // Le classi di Tailwind vanno scritte per intero: costruirle concatenando
   // ("lg:grid-cols-" + n) le renderebbe invisibili al compilatore, e la barra
@@ -286,7 +291,15 @@ export function FiltersBar({
     />
   ) : null;
 
-  const bloccoCampagna = menu(
+  const bloccoCampagna = campagnaMultipla ? (
+    <MenuMultiplo
+      etichetta={campaignLabel}
+      opzioni={(campaigns ?? []).map((c) => ({ label: c, value: c }))}
+      scelti={(filters.categorie ?? "").split(",").filter(Boolean)}
+      onChange={(scelti) => setFilters({ ...filters, categorie: scelti.length ? scelti.join(",") : undefined })}
+    />
+  ) : (
+    menu(
     campaignLabel,
     Boolean(filters.campagna && filters.campagna.trim()),
     filters.campagna ?? "",
@@ -299,6 +312,7 @@ export function FiltersBar({
         </option>
       ))}
     </>
+    )
   );
 
   const bloccoVendite =

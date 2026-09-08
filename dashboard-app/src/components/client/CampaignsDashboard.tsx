@@ -172,6 +172,12 @@ export default function CampaignsDashboard({
   // rispedito a ogni cambio: non basta filtrare a valle.
   const variante = leggiVariante(filters.variante);
 
+  // Le categorie scelte nel filtro a piu' voci. Elenco vuoto = tutte.
+  const categorieScelte = useMemo(
+    () => (filters.categorie ?? "").split(",").filter(Boolean),
+    [filters.categorie]
+  );
+
   const [adsSpendRows, setAdsSpendRows] = useState<CampaignAdsSpendRow[]>([]);
   // Mappa "nome con suffisso" -> "nome base", costruita dal server perche' solo
   // lui ha l'elenco delle campagne. Vedi /api/campaign-ads.
@@ -464,14 +470,14 @@ export default function CampaignsDashboard({
   );
 
   const operatoriFiltered = useMemo(() => {
-    // filters.campagna qui contiene una Categoria (non un nome di campagna
-    // tecnico): applichiamo gli altri filtri normalmente e poi filtriamo per
-    // categoria dedotta dal campo "Campagna" di ogni riga.
-    const { campagna: categoriaFilter, ...restFilters } = filters;
+    // La colonna "Campagna" del foglio Operatori contiene una Categoria e non
+    // un nome di campagna tecnico, quindi si filtra per categoria dedotta. Il
+    // filtro campagna non si applica a queste righe: si toglie prima.
+    const { campagna: _ignorato, ...restFilters } = filters;
     const base = applyFilters(operatoriRowsWithToday, restFilters);
-    if (!categoriaFilter) return base;
-    return base.filter((r) => guessCategoria(getString(r, "Campagna")) === categoriaFilter);
-  }, [operatoriRowsWithToday, filters]);
+    if (!categorieScelte.length) return base;
+    return base.filter((r) => categorieScelte.includes(guessCategoria(getString(r, "Campagna"))));
+  }, [operatoriRowsWithToday, filters, categorieScelte]);
 
   const operatoriNorm = useMemo(() => normalizeOperatori(operatoriFiltered), [operatoriFiltered]);
 
@@ -511,7 +517,10 @@ export default function CampaignsDashboard({
         return Boolean(f && (f.chiusure > 0 || f.importo > 0));
       });
     }
-    if (filters.campagna) rows = rows.filter((r) => r.categoria === filters.campagna);
+    // La colonna Categoria resta visibile se le categorie scelte sono piu' di
+    // una, perche' li' serve a distinguere le righe: sparisce solo quando ce
+    // n'e' una sola. Vedi mostraCategoria piu' sotto.
+    if (categorieScelte.length) rows = rows.filter((r) => categorieScelte.includes(r.categoria));
     // Il formato si legge dal nome della campagna, quindi si filtra qui e non
     // nelle query: nessuna delle fonti sa distinguere un live da un evergreen.
     // La scelta e' multipla e arriva come elenco separato da virgole.
@@ -526,7 +535,7 @@ export default function CampaignsDashboard({
     funnelByCampagna,
     variante,
     varianti,
-    filters.campagna,
+    categorieScelte,
     filters.tipologia,
     filters.formato
   ]);
@@ -687,6 +696,7 @@ export default function CampaignsDashboard({
           setFilters={setFilters}
           campaigns={categoriaOptions}
           campaignLabel="Categoria"
+          campagnaMultipla
           varianti={VARIANTI}
           varianteLabel="Campagna"
           formati={FORMATI}
@@ -716,7 +726,7 @@ export default function CampaignsDashboard({
             adsRows={campaignAdsRows}
             campaignSummary={campaignSummaryFull}
             funnelByCampagna={funnelByCampagna}
-            mostraCategoria={!filters.campagna}
+            mostraCategoria={categorieScelte.length !== 1}
           />
         ) : (
           <div className="flex h-64 items-center justify-center text-sm text-slate-500">

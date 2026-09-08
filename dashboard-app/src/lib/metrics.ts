@@ -18,6 +18,12 @@ export type Filters = {
   /** Solo pagina Campagne: evento dal vivo o funnel sempre attivo
    *  ("evergreen" | "live" | "non_marcate"). Vuoto = tutti. */
   formato?: string;
+  /** Solo pagina Campagne: le categorie scelte, separate da virgola.
+   *
+   *  Campo a parte e non "campagna" perche' quello, su Advisor e Setter, e' un
+   *  filtro a scelta singola con un elenco di valori diverso: cambiargli forma
+   *  avrebbe rotto due pagine per servirne una. */
+  categorie?: string;
 };
 
 export function getString(row: CsvRow, key: string): string {
