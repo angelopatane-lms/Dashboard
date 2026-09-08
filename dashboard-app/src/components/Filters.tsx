@@ -4,6 +4,7 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Filters } from "@/lib/metrics";
 import { VARIANTE_DEFAULT } from "@/lib/campagne";
 import { PERIODO_DEFAULT, periodi, periodoScelto } from "@/lib/periodi";
+import { coloriCampo } from "@/lib/campiFiltro";
 
 /**
  * Menu a piu' scelte, con caselle di spunta dentro una tendina.
@@ -65,11 +66,9 @@ function MenuMultiplo({
       <button
         type="button"
         onClick={() => setAperto((v) => !v)}
-        className={`mt-1 flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm shadow-sm outline-none transition ${
-          tutti
-            ? "border-slate-200 bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
-            : "border-slate-700 bg-black text-white focus:border-slate-200 focus:ring-2 focus:ring-slate-200/20"
-        }`}
+        className={`mt-1 flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm shadow-sm outline-none transition ${coloriCampo(
+          !tutti
+        )}`}
       >
         <span className="truncate">{riassunto}</span>
         <svg
@@ -91,7 +90,7 @@ function MenuMultiplo({
           {opzioni.map((o) => (
             <label
               key={o.value}
-              className="group flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50"
+              className="group flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-neutral-100"
             >
               <input
                 type="checkbox"
@@ -158,11 +157,9 @@ export function FiltersBar({
   campagnaMultipla?: boolean;
 }) {
   const controlClassName = (isActive: boolean) =>
-    `mt-1 w-full rounded-md border px-3 py-2 text-sm shadow-sm outline-none transition ${
+    `mt-1 w-full rounded-md border px-3 py-2 text-sm shadow-sm outline-none transition ${coloriCampo(
       isActive
-        ? "border-slate-700 bg-black text-white focus:border-slate-200 focus:ring-2 focus:ring-slate-200/20"
-        : "border-slate-200 bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
-    }`;
+    )}`;
 
   const menu = (
     etichetta: string,
@@ -212,7 +209,9 @@ export function FiltersBar({
   const bloccoVarianti = varianti
     ? menu(
         varianteLabel,
-        (filters.variante ?? VARIANTE_DEFAULT) !== VARIANTE_DEFAULT,
+        // Sempre nero: questo menu una scelta ce l'ha sempre, anche quando e'
+        // quella predefinita, e sta comunque restringendo quello che si vede.
+        true,
         filters.variante ?? VARIANTE_DEFAULT,
         (v) => setFilters({ ...filters, variante: v }),
         varianti.map((v) => (
@@ -304,7 +303,8 @@ export function FiltersBar({
   const periodoAttuale = filters.periodo ?? PERIODO_DEFAULT;
   const bloccoPeriodo = menu(
     "Periodo",
-    periodoAttuale !== PERIODO_DEFAULT,
+    // Sempre nero, come Campagna: un periodo c'e' sempre.
+    true,
     periodoAttuale,
     (v) => {
       const scelto = periodoScelto(v);

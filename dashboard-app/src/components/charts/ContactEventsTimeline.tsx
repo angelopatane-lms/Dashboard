@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CsvRow } from "@/lib/csv";
 import { getString, toDateIso } from "@/lib/metrics";
+import { coloriCampo } from "@/lib/campiFiltro";
 import Card from "@/components/ui/Card";
 
 type TimelineEvent = {
@@ -471,11 +472,9 @@ export default function ContactEventsTimeline({
                   }}
                   placeholder="Nome Contatto"
                   list="contact-names"
-                  className={`w-full rounded-md border px-3 py-2 text-sm shadow-sm outline-none transition ${
+                  className={`w-full rounded-md border px-3 py-2 text-sm shadow-sm outline-none transition ${coloriCampo(
                     isNameActive
-                      ? "border-slate-700 bg-black text-white placeholder:text-white/60 focus:border-slate-200 focus:ring-2 focus:ring-slate-200/20"
-                      : "border-slate-200 bg-white text-slate-900 focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
-                  }`}
+                  )} ${isNameActive ? "placeholder:text-white/60" : "text-slate-900"}`}
                 />
                 <datalist id="contact-names">
                   {suggestions.map((s) => (

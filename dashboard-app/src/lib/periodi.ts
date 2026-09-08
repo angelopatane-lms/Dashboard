@@ -75,25 +75,25 @@ export function periodi(): Periodo[] {
     { value: "ieri", label: "Ieri", from: aIso(ieri), to: aIso(ieri) },
     {
       value: "settimana_corrente",
-      label: "Settimana corrente",
+      label: "Settimana Corrente",
       from: aIso(lunediQuesta),
       to: aIso(oggi)
     },
     {
       value: "settimana_scorsa",
-      label: "Scorsa settimana",
+      label: "Scorsa Settimana",
       from: aIso(lunediScorsa),
       to: aIso(piuGiorni(lunediQuesta, -1))
     },
-    { value: "mese_corrente", label: "Mese corrente", from: aIso(primoQuesto), to: aIso(oggi) },
+    { value: "mese_corrente", label: "Mese Corrente", from: aIso(primoQuesto), to: aIso(oggi) },
     {
       value: "mese_scorso",
-      label: "Scorso mese",
+      label: "Scorso Mese",
       from: aIso(primoDelMese(ultimoScorso)),
       to: aIso(ultimoScorso)
     },
-    { value: "anno_corrente", label: "Anno corrente", from: `${anno}-01-01`, to: aIso(oggi) },
-    { value: "anno_scorso", label: "Anno scorso", from: `${anno - 1}-01-01`, to: `${anno - 1}-12-31` }
+    { value: "anno_corrente", label: "Anno Corrente", from: `${anno}-01-01`, to: aIso(oggi) },
+    { value: "anno_scorso", label: "Anno Scorso", from: `${anno - 1}-01-01`, to: `${anno - 1}-12-31` }
   ];
 }
 
