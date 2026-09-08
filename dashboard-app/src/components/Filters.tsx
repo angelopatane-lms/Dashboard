@@ -159,18 +159,23 @@ function MenuMultiplo({
   etichetta,
   opzioni,
   scelti,
-  onChange
+  onChange,
+  // Il genere segue il nome del filtro: le categorie sono "Tutte", i formati
+  // sono "Tutti". Scritto una volta sola dentro il componente, uno dei due
+  // sarebbe rimasto sbagliato.
+  tuttiLabel = "Tutti"
 }: {
   etichetta: string;
   opzioni: Array<{ label: string; value: string }>;
   scelti: string[];
   onChange: (scelti: string[]) => void;
+  tuttiLabel?: string;
 }) {
   const { aperto, setAperto, contenitore } = useTendina();
 
   const tutti = scelti.length === 0 || scelti.length === opzioni.length;
   const riassunto = tutti
-    ? "Tutti"
+    ? tuttiLabel
     : opzioni
         .filter((o) => scelti.includes(o.value))
         .map((o) => o.label)
@@ -327,6 +332,7 @@ export function FiltersBar({
   const bloccoCampagna = campagnaMultipla ? (
     <MenuMultiplo
       etichetta={campaignLabel}
+      tuttiLabel="Tutte"
       opzioni={(campaigns ?? []).map((c) => ({ label: c, value: c }))}
       scelti={(filters.categorie ?? "").split(",").filter(Boolean)}
       onChange={(scelti) => setFilters({ ...filters, categorie: scelti.length ? scelti.join(",") : undefined })}
