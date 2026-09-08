@@ -86,7 +86,23 @@ function MenuMultiplo({
       </button>
 
       {aperto ? (
-        <div className="absolute z-30 mt-1 w-full rounded-md border border-slate-200 bg-white p-1 shadow-lg">
+        // LA SCALA DEI PIANI, per non doverla piu' ricostruire:
+        //   10  le colonne bloccate delle tabelle
+        //   20  la riga delle intestazioni, e la barra in cima su telefono
+        //   30  le celle d'angolo, ferme in tutte e due le direzioni
+        //   40  questa tendina, e il velo scuro del menu laterale
+        //   50  il menu laterale aperto su telefono
+        //
+        // A 30 stava alla pari con le celle d'angolo, e a parita' vince chi
+        // viene dopo nella pagina: la tabella, che sta sotto i filtri. La riga
+        // delle intestazioni si disegnava quindi sopra la tendina, tagliandola
+        // in due con la sua striscia bianca e la sua linea grigia.
+        //
+        // 40 e non 50 di proposito: cosi' resta sotto al velo del menu
+        // laterale, che a parita' di piano vince perche' viene dopo. Una
+        // tendina che galleggiasse sopra il velo sarebbe l'unica cosa a fuoco
+        // di una pagina spenta.
+        <div className="absolute z-40 mt-1 w-full rounded-md border border-slate-200 bg-white p-1 shadow-lg">
           {opzioni.map((o) => (
             <label
               key={o.value}
