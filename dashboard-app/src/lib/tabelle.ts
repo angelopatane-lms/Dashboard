@@ -83,3 +83,40 @@ export const LINEE_LATERALI = "shadow-[inset_1px_0_0_0_#cbd5e1,inset_-1px_0_0_0_
 
 /** Solo la linea a destra: per l'unica colonna di testo di Advisor e Setter. */
 export const LINEA_DESTRA = "shadow-[inset_-1px_0_0_0_#cbd5e1]";
+
+/**
+ * LA RIGA DELLE INTESTAZIONI RESTA IN ALTO mentre le righe le scorrono sotto.
+ *
+ * Su una tabella da centinaia di campagne, arrivati a meta' elenco non si
+ * saprebbe piu' quale numero sta in quale colonna, e si dovrebbe tornare su a
+ * ricontrollare a ogni riga.
+ *
+ * Perche' funzioni il contenitore della tabella deve avere un'altezza massima.
+ * Ha overflow-x per lo scorrimento orizzontale, e per specifica CSS questo lo
+ * rende contenitore di scorrimento anche in verticale: l'intestazione si
+ * aggancia a lui, e senza un tetto d'altezza lui non scorre mai, quindi non si
+ * fisserebbe a niente. Con il tetto la tabella scorre dentro di se'.
+ */
+export const INTESTAZIONE_FERMA = "sticky top-0 z-20";
+
+/**
+ * Le celle d'angolo: quelle dell'intestazione sopra le colonne bloccate.
+ *
+ * Sono ferme in due direzioni insieme, quindi devono stare sopra sia alle altre
+ * intestazioni sia alle colonne bloccate, altrimenti scorrendo in diagonale una
+ * delle due passerebbe sopra il proprio titolo.
+ */
+export const INTESTAZIONE_ANGOLO = "sticky top-0 z-30";
+
+/**
+ * La linea sotto l'intestazione, disegnata come ombra ESTERNA.
+ *
+ * Un bordo qui non servirebbe: con border-collapse appartiene alla tabella e se
+ * ne andrebbe scorrendo, lasciando i titoli a galleggiare sulle righe. L'ombra
+ * invece si disegna con la cella, che resta ferma.
+ *
+ * Esterna e non interna - al contrario delle linee verticali - perche' cade
+ * esattamente dove stava il bordo di prima: l'intestazione e' sopra le righe, e
+ * quindi la copre invece di sommarsi a lei e raddoppiare lo spessore.
+ */
+export const LINEA_SOTTO = "shadow-[0_2px_0_0_#e2e8f0]";

@@ -6,9 +6,12 @@ import { formatInt, formatEur, formatPct, formatFloat } from "@/lib/format";
 import { categoriaResidua } from "@/lib/campaignCategory";
 import {
   BLOCCATA,
+  INTESTAZIONE_ANGOLO,
+  INTESTAZIONE_FERMA,
   larghezzaColonnaNumeri,
   larghezzaColonnaTesto,
   LINEA_DESTRA,
+  LINEA_SOTTO,
   LINEE_LATERALI
 } from "@/lib/tabelle";
 
@@ -459,7 +462,12 @@ export default function CampaignAdsTable({
   if (!adsRows.length) return null;
 
   return (
-    <div className="overflow-x-auto">
+    // Il tetto di altezza non e' una scelta estetica: senza, la riga delle
+    // intestazioni non avrebbe niente a cui restare agganciata. Vedi
+    // INTESTAZIONE_FERMA. 75vh lascia sempre in vista i filtri sopra e
+    // l'inizio della sezione sotto, cosi' si capisce che la tabella e' un
+    // riquadro che scorre per conto suo.
+    <div className="max-h-[75vh] overflow-auto">
       {/* table-fixed piu' il colgroup danno alle diciassette colonne di numeri
           la stessa larghezza: con il calcolo automatico ognuna si adattava al
           proprio contenuto e la griglia risultava sghemba. Categoria e Campagna
@@ -476,20 +484,26 @@ export default function CampaignAdsTable({
           ))}
         </colgroup>
         <thead>
-          <tr className="border-b-2 border-slate-200 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <tr className="text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
             {mostraCategoria ? (
-              <th className={`${BLOCCATA} bg-white py-2 pr-4 pl-0 text-left`} style={{ left: 0 }}>
+              <th
+                className={`${INTESTAZIONE_ANGOLO} ${LINEA_SOTTO} bg-white py-2 pr-4 pl-0 text-left`}
+                style={{ left: 0 }}
+              >
                 Categoria
               </th>
             ) : null}
             <th
-              className={`${BLOCCATA} bg-white px-3 py-2 text-left`}
+              className={`${INTESTAZIONE_ANGOLO} ${LINEA_SOTTO} bg-white px-3 py-2 text-left`}
               style={{ left: larghezze.categoria }}
             >
               Campagna
             </th>
             {HEADERS.map((h) => (
-              <th key={h} className="border-r border-white px-2 py-2 whitespace-nowrap">
+              <th
+                key={h}
+                className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 whitespace-nowrap`}
+              >
                 {h}
               </th>
             ))}

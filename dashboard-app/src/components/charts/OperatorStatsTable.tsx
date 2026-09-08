@@ -5,9 +5,12 @@ import type { OperatorSummary } from "@/lib/analytics";
 import { formatInt, formatPct, formatEur } from "@/lib/format";
 import {
   BLOCCATA,
+  INTESTAZIONE_ANGOLO,
+  INTESTAZIONE_FERMA,
   larghezzaColonnaNumeri,
   larghezzaColonnaTesto,
-  LINEA_DESTRA
+  LINEA_DESTRA,
+  LINEA_SOTTO
 } from "@/lib/tabelle";
 
 function heatBg(value: number, max: number): string {
@@ -127,7 +130,10 @@ export default function OperatorStatsTable({
   const larghezzaTotale = larghezzaNome + 9 * LARGHEZZA_NUMERI;
 
   return (
-    <div className="overflow-x-auto">
+    // Il tetto d'altezza serve alla riga delle intestazioni per restare ferma:
+    // vedi INTESTAZIONE_FERMA. Qui le righe sono poche e quasi sempre ci stanno
+    // tutte, quindi il piu' delle volte non si vede nemmeno la barra.
+    <div className="max-h-[75vh] overflow-auto">
       {/* width al 100% con un minimo: su schermo largo le colonne crescono in
           proporzione restando uguali fra loro, su schermo stretto si scorre. */}
       <table
@@ -141,22 +147,22 @@ export default function OperatorStatsTable({
           ))}
         </colgroup>
         <thead>
-          <tr className="border-b-2 border-slate-200 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <tr className="text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
             <th
-              className={`${BLOCCATA} bg-white py-2 pr-4 pl-0 text-left`}
+              className={`${INTESTAZIONE_ANGOLO} ${LINEA_SOTTO} bg-white py-2 pr-4 pl-0 text-left`}
               style={{ left: 0 }}
             >
               {operatorLabel}
             </th>
-            <th className="border-r border-white px-2 py-2 leading-tight">Assegnati</th>
-            <th className="border-r border-white px-2 py-2 leading-tight">Chiamate</th>
-            <th className="border-r border-white px-2 py-2 leading-tight">Connessioni</th>
-            <th className="border-r border-white px-2 py-2 leading-tight">Appuntamenti</th>
-            <th className="border-r border-white px-2 py-2 leading-tight">% Appuntamento</th>
-            <th className="border-r border-white px-2 py-2 leading-tight">{isSetterView ? "No Show" : "Consulenze"}</th>
-            <th className="border-r border-white px-2 py-2 leading-tight">Chiusure</th>
-            <th className="border-r border-white px-2 py-2 leading-tight">% Chiusura</th>
-            <th className="border-r border-white px-2 py-2 leading-tight">Boom</th>
+            <th className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 leading-tight`}>Assegnati</th>
+            <th className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 leading-tight`}>Chiamate</th>
+            <th className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 leading-tight`}>Connessioni</th>
+            <th className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 leading-tight`}>Appuntamenti</th>
+            <th className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 leading-tight`}>% Appuntamento</th>
+            <th className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 leading-tight`}>{isSetterView ? "No Show" : "Consulenze"}</th>
+            <th className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 leading-tight`}>Chiusure</th>
+            <th className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 leading-tight`}>% Chiusura</th>
+            <th className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 leading-tight`}>Boom</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
