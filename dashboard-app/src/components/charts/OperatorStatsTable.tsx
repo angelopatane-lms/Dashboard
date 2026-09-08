@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { OperatorSummary } from "@/lib/analytics";
 import { formatInt, formatPct, formatEur } from "@/lib/format";
 import {
@@ -33,6 +33,9 @@ function tassoChiusura(chius: number, cons: number): number | null {
   return cons > 0 ? chius / cons : null;
 }
 
+// Serve solo a dare la larghezza alle colonne, che e' quella dell'intestazione
+// piu' lunga. I titoli veri, con il campo su cui ordinano, si costruiscono
+// dentro il componente: due di loro cambiano fra Advisor e Setter.
 const INTESTAZIONI_NUMERI = [
   "Assegnati",
   "Chiamate",
@@ -107,6 +110,41 @@ export default function OperatorStatsTable({
     [data, hubspotOverrides, trattativeOverrides]
   );
 
+  /**
+   * Le nove colonne dei numeri: titolo e valore su cui ordina il suo click.
+   *
+   * Stanno qui e non fuori dal componente perche' i valori dipendono da quello
+   * che arriva da HubSpot - appuntamenti e chiusure sostituiti riga per riga -
+   * e perche' una colonna cambia nome fra Advisor e Setter.
+   */
+  const colonne: Array<{ label: string; valore: (r: OperatorSummary) => number | null }> = [
+    { label: "Assegnati", valore: (r) => r.assegnati },
+    { label: "Chiamate", valore: (r) => r.chiamate },
+    { label: "Connessioni", valore: (r) => r.connessioni },
+    { label: "Appuntamenti", valore: (r) => effAppuntamenti(r) },
+    { label: "% Appuntamento", valore: (r) => tassoPresa(effAppuntamenti(r), r.connessioni) },
+    {
+      label: isSetterView ? "No Show" : "Consulenze",
+      valore: (r) => (isSetterView ? r.noShow : r.consulenze)
+    },
+    { label: "Chiusure", valore: (r) => effChiusure(r) },
+    { label: "% Chiusura", valore: (r) => tassoChiusura(effChiusure(r), r.consulenze) },
+    { label: "Boom", valore: (r) => effBoom(r) }
+  ];
+
+  // La colonna su cui si sta ordinando. Vuota vuol dire ordine di partenza -
+  // per Boom, poi per appuntamenti - e non viene ricordata da nessuna parte,
+  // quindi ogni ricaricamento riporta la tabella li'.
+  const [ordina, setOrdina] = useState<string | null>(null);
+  const colonnaOrdinata = colonne.find((c) => c.label === ordina);
+  // Le celle vuote - una percentuale senza denominatore - vanno in fondo:
+  // trattarle come zero le metterebbe in mezzo ai valori bassi veri.
+  const righe = colonnaOrdinata
+    ? [...sorted].sort(
+        (a, b) => (colonnaOrdinata.valore(b) ?? -Infinity) - (colonnaOrdinata.valore(a) ?? -Infinity)
+      )
+    : sorted;
+
   const totalTp = tassoPresa(totals.appuntamenti, totals.connessioni);
   const totalTc = tassoChiusura(totals.chiusure, isSetterView ? 0 : totals.consulenze);
 
@@ -154,19 +192,31 @@ export default function OperatorStatsTable({
             >
               {operatorLabel}
             </th>
-            <th className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 leading-tight`}>Assegnati</th>
-            <th className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 leading-tight`}>Chiamate</th>
-            <th className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 leading-tight`}>Connessioni</th>
-            <th className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 leading-tight`}>Appuntamenti</th>
-            <th className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 leading-tight`}>% Appuntamento</th>
-            <th className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 leading-tight`}>{isSetterView ? "No Show" : "Consulenze"}</th>
-            <th className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 leading-tight`}>Chiusure</th>
-            <th className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 leading-tight`}>% Chiusura</th>
-            <th className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 leading-tight`}>Boom</th>
+            {colonne.map((c) => {
+              const attiva = ordina === c.label;
+              return (
+                <th
+                  key={c.label}
+                  onClick={() => setOrdina((prima) => (prima === c.label ? null : c.label))}
+                  title={
+                    attiva ? "Torna all'ordine di partenza" : `Ordina per ${c.label}, dal piu' grande`
+                  }
+                  // La colonna su cui si ordina si riconosce dal fondo grigio e
+                  // dal testo nero. Niente frecce: le colonne sono larghe
+                  // quanto la loro intestazione, e una freccia in piu' le
+                  // avrebbe allargate tutte per servirne una.
+                  className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} cursor-pointer select-none px-2 py-2 leading-tight transition hover:text-black ${
+                    attiva ? "bg-neutral-100 text-black" : "bg-white"
+                  }`}
+                >
+                  {c.label}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {sorted.map((r) => {
+          {righe.map((r) => {
             const tp = tassoPresa(effAppuntamenti(r), r.connessioni);
             const tc = tassoChiusura(effChiusure(r), r.consulenze);
             return (

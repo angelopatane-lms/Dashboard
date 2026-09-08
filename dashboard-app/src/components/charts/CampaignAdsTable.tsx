@@ -232,26 +232,41 @@ function fmtEur(v: number | null, digits = 0): ReactNode {
   return v !== null ? formatEur(v, digits) : <span className="text-slate-400">–</span>;
 }
 
-const HEADERS = [
-  "Spesa",
-  "Lead Generati",
-  "CPL Generati",
-  "Lead Unici",
-  "CPL Unici",
-  "Chiamate",
-  "Connessioni",
-  "Appuntamenti",
-  "% Appuntamento",
-  "Consulenze",
-  "CPAS",
-  "% Consulenza",
-  "% Show Up",
-  "Chiusure",
-  "Importo",
-  "CR Sales",
-  "CPA",
-  "ROAS"
+/**
+ * Le colonne dei numeri: intestazione e campo su cui ordina il suo click.
+ *
+ * L'intestazione e il campo stanno nella stessa riga di proposito. Erano due
+ * elenchi separati - i titoli qui, i valori dentro MetricCells - e finche' si
+ * trattava solo di scriverli nello stesso ordine bastava attenzione; ora che il
+ * titolo deve anche sapere su cosa ordinare, tenerli separati vorrebbe dire che
+ * cliccando "Consulenze" si ordina per "CPAS" senza che niente se ne accorga.
+ *
+ * L'ORDINE DEVE RESTARE QUELLO DELLE CELLE in MetricCells, che disegna le
+ * colonne una dopo l'altra: sono diciotto in fila, e le due liste vanno lette
+ * insieme quando se ne aggiunge una.
+ */
+const COLONNE: Array<{ label: string; chiave: keyof DerivedMetrics }> = [
+  { label: "Spesa", chiave: "spesa" },
+  { label: "Lead Generati", chiave: "leadGenerati" },
+  { label: "CPL Generati", chiave: "cplGenerati" },
+  { label: "Lead Unici", chiave: "leadUnici" },
+  { label: "CPL Unici", chiave: "cplUnici" },
+  { label: "Chiamate", chiave: "chiamate" },
+  { label: "Connessioni", chiave: "risposte" },
+  { label: "Appuntamenti", chiave: "fissati" },
+  { label: "% Appuntamento", chiave: "pctAppuntamento" },
+  { label: "Consulenze", chiave: "processati" },
+  { label: "CPAS", chiave: "cpas" },
+  { label: "% Consulenza", chiave: "pctConsulenza" },
+  { label: "% Show Up", chiave: "pctShowUp" },
+  { label: "Chiusure", chiave: "chiusure" },
+  { label: "Importo", chiave: "importo" },
+  { label: "CR Sales", chiave: "crSales" },
+  { label: "CPA", chiave: "cpa" },
+  { label: "ROAS", chiave: "roas" }
 ];
+
+const HEADERS = COLONNE.map((c) => c.label);
 
 const LARGHEZZA_NUMERI = larghezzaColonnaNumeri(HEADERS);
 
@@ -333,40 +348,29 @@ function MetricCells({ m, max }: { m: DerivedMetrics; max: MaxValues }) {
 }
 
 /**
- * La cella con il nome della campagna, che si apre e si chiude con un click.
+ * La cella con il nome della campagna.
  *
- * Chiusa mostra il nome accorciato - quando la vista lo prevede - e lo tiene su
- * una riga sola, tagliandolo con i puntini se non ci sta. Aperta mostra il nome
- * intero andando a capo: la riga diventa piu' alta, ma e' successo perche' lo
- * si e' chiesto, e un altro click la richiude.
- *
- * Il click e' attivo anche dove i nomi non vengono accorciati: la colonna ha
- * comunque una larghezza massima, e i nomi piu' lunghi restano tagliati.
+ * Mostra il nome accorciato - quando la vista lo prevede - su una riga sola,
+ * tagliandolo con i puntini se non ci sta. Il nome intero si legge fermandoci
+ * sopra il mouse, che e' l'unico modo che non muove niente: aprirlo dentro la
+ * cella allungava la riga e faceva ballare la tabella sotto le mani.
  */
 function CellaNome({
   campagna,
   sinistra,
-  abbrevia,
-  espanso,
-  onToggle
+  abbrevia
 }: {
   campagna: string;
   sinistra: number;
   abbrevia: boolean;
-  espanso: boolean;
-  onToggle: () => void;
 }) {
   return (
     <td
-      className={`${BLOCCATA} ${LINEE_LATERALI} cursor-pointer bg-white px-3 py-1.5 text-slate-700 group-hover:bg-slate-50 ${
-        espanso ? "whitespace-normal break-words" : "truncate"
-      }`}
+      className={`${BLOCCATA} ${LINEE_LATERALI} truncate bg-white px-3 py-1.5 text-slate-700 group-hover:bg-slate-50`}
       style={{ left: sinistra }}
-      // Il nome intero resta raggiungibile col mouse anche senza aprire.
       title={campagna}
-      onClick={onToggle}
     >
-      {abbrevia && !espanso ? nomeSenzaCategoria(campagna) : campagna}
+      {abbrevia ? nomeSenzaCategoria(campagna) : campagna}
     </td>
   );
 }
@@ -387,14 +391,6 @@ export default function CampaignAdsTable({
    *  HubSpot per poterlo cercare. */
   abbreviaNomi?: boolean;
 }) {
-  // Le campagne di cui si e' chiesto il nome per intero, una per click.
-  const [espansi, setEspansi] = useState<ReadonlySet<string>>(() => new Set());
-  const alternaNome = (campagna: string) =>
-    setEspansi((prima) => {
-      const dopo = new Set(prima);
-      if (!dopo.delete(campagna)) dopo.add(campagna);
-      return dopo;
-    });
   const summaryByCampagna = useMemo(() => {
     const map = new Map<string, CampaignSummary>();
     for (const s of campaignSummary) map.set(normKey(s.campagna), s);
@@ -429,6 +425,47 @@ export default function CampaignAdsTable({
       return b.totale.spesa - a.totale.spesa;
     });
   }, [adsRows, summaryByCampagna, funnelByCampagna]);
+
+  // La colonna su cui si sta ordinando, dal piu' grande al piu' piccolo.
+  //
+  // Vuota vuol dire ordine di partenza: categorie per spesa, e dentro ognuna le
+  // campagne per spesa. Non viene ricordata da nessuna parte, quindi ogni
+  // ricaricamento riporta la tabella li'.
+  const [ordina, setOrdina] = useState<keyof DerivedMetrics | null>(null);
+
+  /**
+   * ORDINANDO, IL RAGGRUPPAMENTO PER CATEGORIA SI SCIOGLIE.
+   *
+   * Ordinare dentro ogni categoria avrebbe lasciato la campagna piu' grande a
+   * meta' pagina, sotto a un'intera categoria che pesa meno: la domanda che si
+   * fa cliccando "Consulenze" e' quali sono le prime dieci, non quali sono le
+   * prime dieci di ognuna. Diventa un elenco unico, e la categoria si legge
+   * riga per riga nella sua colonna, che per questo non sparisce mai.
+   *
+   * Ogni riga diventa un gruppo da una riga sola: cosi' il disegno della
+   * tabella resta uno, invece di avere due strade da tenere allineate.
+   */
+  const gruppiVisibili = useMemo(() => {
+    if (!ordina) return groups;
+    const tutte = groups.flatMap((g) =>
+      g.rows.map((r) => ({
+        categoria: g.categoria,
+        rows: [r],
+        totale: r.raw,
+        // Il valore si calcola una volta sola e non a ogni confronto: sono
+        // centinaia di righe, e ordinarle ne fa migliaia.
+        valore: deriveMetrics(r.raw)[ordina]
+      }))
+    );
+    // Le celle vuote - un costo per lead dove non c'e' spesa - vanno in fondo:
+    // trattarle come zero le metterebbe in mezzo ai valori bassi veri.
+    return tutte.sort((a, b) => (b.valore ?? -Infinity) - (a.valore ?? -Infinity));
+  }, [groups, ordina]);
+
+  const alternaOrdine = (chiave: keyof DerivedMetrics) =>
+    // Ricliccando la stessa colonna si torna all'ordine di partenza: senza,
+    // l'unico modo di riaverlo sarebbe ricaricare la pagina.
+    setOrdina((prima) => (prima === chiave ? null : chiave));
 
   // LARGHEZZA DELLE DUE COLONNE DI TESTO, misurata sui nomi che ci sono davvero.
   //
@@ -554,14 +591,29 @@ export default function CampaignAdsTable({
             >
               Campagna
             </th>
-            {HEADERS.map((h) => (
-              <th
-                key={h}
-                className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} bg-white px-2 py-2 whitespace-nowrap`}
-              >
-                {h}
-              </th>
-            ))}
+            {COLONNE.map((c) => {
+              const attiva = ordina === c.chiave;
+              return (
+                <th
+                  key={c.label}
+                  onClick={() => alternaOrdine(c.chiave)}
+                  title={
+                    attiva
+                      ? "Torna all'ordine di partenza"
+                      : `Ordina per ${c.label}, dal piu' grande`
+                  }
+                  // La colonna su cui si ordina si riconosce dal fondo grigio e
+                  // dal testo nero. Niente frecce: le colonne sono larghe
+                  // quanto la loro intestazione, e una freccia in piu' le
+                  // avrebbe allargate tutte e diciotto per servirne una.
+                  className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} cursor-pointer select-none px-2 py-2 whitespace-nowrap transition hover:text-black ${
+                    attiva ? "bg-neutral-100 text-black" : "bg-white"
+                  }`}
+                >
+                  {c.label}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         {/* I bordi sono espliciti riga per riga invece che con `divide-y` sul
@@ -575,21 +627,25 @@ export default function CampaignAdsTable({
             la linea marcata che apre la successiva, e senza lo stacco ci stanno
             piu' campagne nella stessa schermata. */}
         <tbody>
-          {groups.map((g, gIdx) => (
-            <Fragment key={g.categoria}>
+          {gruppiVisibili.map((g, gIdx) => (
+            // La chiave porta anche la posizione: ordinando, la stessa
+            // categoria compare su piu' gruppi e il solo nome non basterebbe a
+            // distinguerli.
+            <Fragment key={`${g.categoria}-${gIdx}`}>
               {g.rows.map((r, idx) => (
                 <tr
                   key={`${g.categoria}-${r.campagna}`}
                   // La primissima riga non ha bordo alto: li' la linea la
                   // disegna gia' l'intestazione, e due linee attaccate ne
-                  // farebbero una doppia. Le altre categorie lo tengono, e'
-                  // quello che le separa fra loro.
+                  // farebbero una doppia. La linea marcata apre una categoria
+                  // nuova, quindi ordinando - dove ogni riga fa storia a se' -
+                  // non ha piu' niente da separare e resta quella leggera.
                   className={`group hover:bg-slate-50/70 transition-colors ${
-                    idx !== 0
-                      ? "border-t border-slate-100"
-                      : gIdx === 0
-                        ? ""
-                        : "border-t-2 border-slate-200"
+                    gIdx === 0 && idx === 0
+                      ? ""
+                      : idx === 0 && !ordina
+                        ? "border-t-2 border-slate-200"
+                        : "border-t border-slate-100"
                   }`}
                 >
                   {idx === 0 ? (
@@ -605,8 +661,6 @@ export default function CampaignAdsTable({
                     campagna={r.campagna}
                     sinistra={larghezze.categoria}
                     abbrevia={abbreviaNomi}
-                    espanso={espansi.has(r.campagna)}
-                    onToggle={() => alternaNome(r.campagna)}
                   />
                   <MetricCells m={deriveMetrics(r.raw)} max={maxValues} />
                 </tr>

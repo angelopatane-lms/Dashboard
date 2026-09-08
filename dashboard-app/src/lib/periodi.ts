@@ -81,14 +81,14 @@ export function periodi(): Periodo[] {
     },
     {
       value: "settimana_scorsa",
-      label: "Scorsa Settimana",
+      label: "Settimana Scorsa",
       from: aIso(lunediScorsa),
       to: aIso(piuGiorni(lunediQuesta, -1))
     },
     { value: "mese_corrente", label: "Mese Corrente", from: aIso(primoQuesto), to: aIso(oggi) },
     {
       value: "mese_scorso",
-      label: "Scorso Mese",
+      label: "Mese Scorso",
       from: aIso(primoDelMese(ultimoScorso)),
       to: aIso(ultimoScorso)
     },
