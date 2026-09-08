@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import type { Filters } from "@/lib/metrics";
 import { VARIANTE_DEFAULT } from "@/lib/campagne";
+import { periodi } from "@/lib/periodi";
 
 /**
  * Menu a piu' scelte, con caselle di spunta dentro una tendina.
@@ -362,6 +363,10 @@ export function FiltersBar({
     ? [bloccoCampagna, bloccoFormato, bloccoVarianti, bloccoOperatoreOTipologia]
     : [bloccoOperatoreOTipologia, bloccoCampagna, bloccoVendite, bloccoProdotti];
 
+  // I periodi si ricalcolano a ogni disegno, e devono: tenuti fermi in memoria,
+  // una scheda lasciata aperta la notte offrirebbe ancora l'"Oggi" di ieri.
+  const rapidi = periodi();
+
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${classeColonne}`}>
@@ -370,6 +375,36 @@ export function FiltersBar({
         {blocchi.map((b, i) => (
           <Fragment key={i}>{b}</Fragment>
         ))}
+      </div>
+
+      {/* I periodi ricorrenti come tasti: scrivono loro le due date sopra.
+          Restano sotto la griglia e non dentro, come nona colonna, perche' sono
+          otto e schiacciati in una colonna sola non si leggerebbero. */}
+      <div className="mt-3">
+        <div className="text-xs font-medium text-slate-600">Periodo</div>
+        <div className="mt-1 flex flex-wrap gap-2">
+          {rapidi.map((p) => {
+            // Acceso quando le date sono esattamente le sue: cosi' si vede a
+            // colpo d'occhio se quelle in alto sono un periodo intero o un
+            // intervallo scelto a mano.
+            const attivo = filters.from === p.from && filters.to === p.to;
+            return (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => setFilters({ ...filters, from: p.from, to: p.to })}
+                title={`${p.from} - ${p.to}`}
+                className={`rounded-md border px-3 py-1.5 text-xs font-medium shadow-sm transition ${
+                  attivo
+                    ? "border-slate-700 bg-black text-white"
+                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-400 hover:text-black"
+                }`}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
