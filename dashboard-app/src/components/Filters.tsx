@@ -90,13 +90,15 @@ function MenuMultiplo({
           {opzioni.map((o) => (
             <label
               key={o.value}
-              className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50"
+              className="group flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50"
             >
               <input
                 type="checkbox"
-                // accent-black: la spunta segue il nero del tema dei filtri
-                // attivi invece del blu predefinito del browser.
-                className="h-4 w-4 rounded border-slate-300 accent-black"
+                // La spunta e' grigio molto scuro e diventa nera passandoci
+                // sopra col mouse. Il grigio e' "neutral" e non "gray", che
+                // nella tavolozza tira al blu: qui serve un grigio puro,
+                // altrimenti accanto al nero si vedrebbe la sfumatura fredda.
+                className="h-4 w-4 rounded border-slate-300 accent-neutral-800 group-hover:accent-black"
                 checked={scelti.length === 0 || scelti.includes(o.value)}
                 onChange={() => cambia(o.value)}
               />
