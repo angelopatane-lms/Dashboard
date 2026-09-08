@@ -1,10 +1,148 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { Filters } from "@/lib/metrics";
 import { VARIANTE_DEFAULT } from "@/lib/campagne";
 import { PERIODO_DEFAULT, periodi, periodoScelto } from "@/lib/periodi";
 import { coloriCampo } from "@/lib/campiFiltro";
+
+/**
+ * Apre e chiude una tendina, e la chiude da sola quando si clicca fuori o si
+ * preme Esc.
+ *
+ * Sta in un posto solo perche' i due menu la vogliono uguale: separati, uno dei
+ * due sarebbe rimasto indietro alla prima correzione.
+ */
+function useTendina() {
+  const [aperto, setAperto] = useState(false);
+  const contenitore = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!aperto) return;
+    const chiudiFuori = (e: MouseEvent) => {
+      if (contenitore.current && !contenitore.current.contains(e.target as Node)) setAperto(false);
+    };
+    const chiudiConEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAperto(false);
+    };
+    document.addEventListener("mousedown", chiudiFuori);
+    document.addEventListener("keydown", chiudiConEsc);
+    return () => {
+      document.removeEventListener("mousedown", chiudiFuori);
+      document.removeEventListener("keydown", chiudiConEsc);
+    };
+  }, [aperto]);
+
+  return { aperto, setAperto, contenitore };
+}
+
+/** La freccia in fondo al campo, uguale per tutti i menu. */
+function Freccia() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4 shrink-0 opacity-70"
+      aria-hidden="true"
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+/**
+ * IL PIANO DELLE TENDINE APERTE, per non doverlo piu' ricostruire:
+ *   10  le colonne bloccate delle tabelle
+ *   20  la riga delle intestazioni, e la barra in cima su telefono
+ *   30  le celle d'angolo, ferme in tutte e due le direzioni
+ *   40  le tendine dei filtri, e il velo scuro del menu laterale
+ *   50  il menu laterale aperto su telefono
+ *
+ * A 30 stavano alla pari con le celle d'angolo, e a parita' vince chi viene
+ * dopo nella pagina: la tabella, che sta sotto i filtri. La riga delle
+ * intestazioni si disegnava quindi sopra la tendina, tagliandola in due con la
+ * sua striscia bianca e la sua linea grigia.
+ *
+ * 40 e non 50 di proposito: cosi' resta sotto al velo del menu laterale, che a
+ * parita' di piano vince perche' viene dopo. Una tendina che galleggiasse sopra
+ * il velo sarebbe l'unica cosa a fuoco di una pagina spenta.
+ *
+ * L'altezza massima serve agli elenchi lunghi - gli operatori, le campagne -
+ * che altrimenti uscirebbero dal fondo della pagina.
+ */
+const TENDINA =
+  "absolute z-40 mt-1 max-h-72 w-full overflow-auto rounded-md border border-slate-200 bg-white p-1 shadow-lg";
+
+/**
+ * Menu a scelta singola, scritto da noi al posto del <select> del browser.
+ *
+ * IL MOTIVO E' UNA RIGA BLU. Nell'elenco aperto di un <select> la voce sotto al
+ * mouse viene evidenziata dal browser con il suo azzurro di sistema, e il CSS
+ * su <option> non la tocca: era l'unico blu rimasto in una dashboard per il
+ * resto in bianco e nero. Disegnando la tendina si decide anche quel colore.
+ *
+ * Costa la tastiera: frecce e ricerca per iniziale, che il <select> nativo dava
+ * gratis, qui non ci sono. Restano il click e Esc per chiudere.
+ */
+function MenuSingolo({
+  etichetta,
+  opzioni,
+  scelto,
+  attivo,
+  onChange
+}: {
+  etichetta: string;
+  opzioni: Array<{ label: string; value: string }>;
+  scelto: string;
+  attivo: boolean;
+  onChange: (valore: string) => void;
+}) {
+  const { aperto, setAperto, contenitore } = useTendina();
+  const corrente = opzioni.find((o) => o.value === scelto);
+
+  return (
+    <div ref={contenitore} className="relative">
+      <label className="text-xs font-medium text-slate-600">{etichetta}</label>
+      <button
+        type="button"
+        onClick={() => setAperto((v) => !v)}
+        className={`mt-1 flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm shadow-sm outline-none transition ${coloriCampo(
+          attivo
+        )}`}
+      >
+        <span className="truncate">{corrente?.label ?? ""}</span>
+        <Freccia />
+      </button>
+
+      {aperto ? (
+        <div className={TENDINA}>
+          {opzioni.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => {
+                onChange(o.value);
+                setAperto(false);
+              }}
+              // La voce sotto al mouse si riempie di grigio scuro: e' la stessa
+              // barra piena dell'elenco di sistema, nel colore della dashboard
+              // invece che nell'azzurro del browser.
+              className={`flex w-full cursor-pointer items-center rounded px-2 py-1.5 text-left text-sm transition hover:bg-neutral-800 hover:text-white ${
+                o.value === scelto ? "bg-neutral-100 font-medium" : ""
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * Menu a piu' scelte, con caselle di spunta dentro una tendina.
@@ -28,24 +166,7 @@ function MenuMultiplo({
   scelti: string[];
   onChange: (scelti: string[]) => void;
 }) {
-  const [aperto, setAperto] = useState(false);
-  const contenitore = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!aperto) return;
-    const chiudiFuori = (e: MouseEvent) => {
-      if (contenitore.current && !contenitore.current.contains(e.target as Node)) setAperto(false);
-    };
-    const chiudiConEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setAperto(false);
-    };
-    document.addEventListener("mousedown", chiudiFuori);
-    document.addEventListener("keydown", chiudiConEsc);
-    return () => {
-      document.removeEventListener("mousedown", chiudiFuori);
-      document.removeEventListener("keydown", chiudiConEsc);
-    };
-  }, [aperto]);
+  const { aperto, setAperto, contenitore } = useTendina();
 
   const tutti = scelti.length === 0 || scelti.length === opzioni.length;
   const riassunto = tutti
@@ -71,38 +192,11 @@ function MenuMultiplo({
         )}`}
       >
         <span className="truncate">{riassunto}</span>
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-4 w-4 shrink-0 opacity-70"
-          aria-hidden="true"
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
+        <Freccia />
       </button>
 
       {aperto ? (
-        // LA SCALA DEI PIANI, per non doverla piu' ricostruire:
-        //   10  le colonne bloccate delle tabelle
-        //   20  la riga delle intestazioni, e la barra in cima su telefono
-        //   30  le celle d'angolo, ferme in tutte e due le direzioni
-        //   40  questa tendina, e il velo scuro del menu laterale
-        //   50  il menu laterale aperto su telefono
-        //
-        // A 30 stava alla pari con le celle d'angolo, e a parita' vince chi
-        // viene dopo nella pagina: la tabella, che sta sotto i filtri. La riga
-        // delle intestazioni si disegnava quindi sopra la tendina, tagliandola
-        // in due con la sua striscia bianca e la sua linea grigia.
-        //
-        // 40 e non 50 di proposito: cosi' resta sotto al velo del menu
-        // laterale, che a parita' di piano vince perche' viene dopo. Una
-        // tendina che galleggiasse sopra il velo sarebbe l'unica cosa a fuoco
-        // di una pagina spenta.
-        <div className="absolute z-40 mt-1 w-full rounded-md border border-slate-200 bg-white p-1 shadow-lg">
+        <div className={TENDINA}>
           {opzioni.map((o) => (
             <label
               key={o.value}
@@ -172,25 +266,24 @@ export function FiltersBar({
    *  le categorie e serve poterne escludere qualcuna. */
   campagnaMultipla?: boolean;
 }) {
-  const controlClassName = (isActive: boolean) =>
-    `mt-1 w-full rounded-md border px-3 py-2 text-sm shadow-sm outline-none transition ${coloriCampo(
-      isActive
-    )}`;
-
   const menu = (
     etichetta: string,
     attivo: boolean,
     valore: string,
     onChange: (v: string) => void,
-    voci: ReactNode
+    opzioni: Array<{ label: string; value: string }>
   ) => (
-    <div>
-      <label className="text-xs font-medium text-slate-600">{etichetta}</label>
-      <select className={controlClassName(attivo)} value={valore} onChange={(e) => onChange(e.target.value)}>
-        {voci}
-      </select>
-    </div>
+    <MenuSingolo
+      etichetta={etichetta}
+      opzioni={opzioni}
+      scelto={valore}
+      attivo={attivo}
+      onChange={onChange}
+    />
   );
+
+  /** La voce di apertura degli elenchi dove "nessun filtro" e' uno stato vero. */
+  const tutte = (etichetta: string) => ({ label: etichetta, value: "" });
 
   const bloccoOperatoreOTipologia = tipologie
     ? menu(
@@ -198,28 +291,14 @@ export function FiltersBar({
         Boolean(filters.tipologia && filters.tipologia.trim()),
         filters.tipologia ?? "",
         (v) => setFilters({ ...filters, tipologia: v || undefined }),
-        <>
-          <option value="">Tutte</option>
-          {tipologie.map((x) => (
-            <option key={x.value} value={x.value}>
-              {x.label}
-            </option>
-          ))}
-        </>
+        [tutte("Tutte"), ...tipologie]
       )
     : menu(
         operatorLabel,
         Boolean(filters.operatore && filters.operatore.trim()),
         filters.operatore ?? "",
         (v) => setFilters({ ...filters, operatore: v || undefined }),
-        <>
-          <option value="">Tutti</option>
-          {(operators ?? []).map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </>
+        [tutte("Tutti"), ...(operators ?? []).map((o) => ({ label: o, value: o }))]
       );
 
   const bloccoVarianti = varianti
@@ -230,11 +309,7 @@ export function FiltersBar({
         true,
         filters.variante ?? VARIANTE_DEFAULT,
         (v) => setFilters({ ...filters, variante: v }),
-        varianti.map((v) => (
-          <option key={v.value} value={v.value}>
-            {v.label}
-          </option>
-        ))
+        varianti
       )
     : null;
 
@@ -262,14 +337,7 @@ export function FiltersBar({
     Boolean(filters.campagna && filters.campagna.trim()),
     filters.campagna ?? "",
     (v) => setFilters({ ...filters, campagna: v || undefined }),
-    <>
-      <option value="">Tutte</option>
-      {(campaigns ?? []).map((c) => (
-        <option key={c} value={c}>
-          {c}
-        </option>
-      ))}
-    </>
+    [tutte("Tutte"), ...(campaigns ?? []).map((c) => ({ label: c, value: c }))]
     )
   );
 
@@ -280,14 +348,7 @@ export function FiltersBar({
           Boolean(filters.vendita && filters.vendita.trim()),
           filters.vendita ?? "",
           (v) => setFilters({ ...filters, vendita: v || undefined }),
-          <>
-            <option value="">Tutte</option>
-            {vendite.map((v) => (
-              <option key={v.value} value={v.value}>
-                {v.label}
-              </option>
-            ))}
-          </>
+          [tutte("Tutte"), ...vendite]
         )
       : null;
 
@@ -298,14 +359,7 @@ export function FiltersBar({
           Boolean(filters.prodotto && filters.prodotto.trim()),
           filters.prodotto ?? "",
           (v) => setFilters({ ...filters, prodotto: v || undefined }),
-          <>
-            <option value="">Tutti</option>
-            {prodotti.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </>
+          [tutte("Tutti"), ...prodotti]
         )
       : null;
 
@@ -326,11 +380,7 @@ export function FiltersBar({
       const scelto = periodoScelto(v);
       setFilters({ ...filters, periodo: scelto.value, from: scelto.from, to: scelto.to });
     },
-    periodi().map((p) => (
-      <option key={p.value} value={p.value}>
-        {p.label}
-      </option>
-    ))
+    periodi().map((p) => ({ label: p.label, value: p.value }))
   );
 
   // L'ordine cambia con la pagina. Su Campagne si va dal contenitore al
