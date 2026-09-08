@@ -94,7 +94,9 @@ function MenuMultiplo({
             >
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-slate-300"
+                // accent-black: la spunta segue il nero del tema dei filtri
+                // attivi invece del blu predefinito del browser.
+                className="h-4 w-4 rounded border-slate-300 accent-black"
                 checked={scelti.length === 0 || scelti.includes(o.value)}
                 onChange={() => cambia(o.value)}
               />
