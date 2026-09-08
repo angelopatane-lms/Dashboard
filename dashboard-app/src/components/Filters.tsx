@@ -16,7 +16,9 @@ export function FiltersBar({
   tipologie,
   tipologiaLabel = "Tipologia",
   varianti,
-  varianteLabel = "Variante"
+  varianteLabel = "Variante",
+  formati,
+  formatoLabel = "Formato"
 }: {
   filters: Filters;
   setFilters: (next: Filters) => void;
@@ -37,11 +39,17 @@ export function FiltersBar({
    *  ha una voce vuota: "Tutte" e' gia' una delle opzioni. */
   varianti?: Array<{ label: string; value: string }>;
   varianteLabel?: string;
+  /** Se presente, compare il menu del formato: evento dal vivo o funnel sempre
+   *  attivo. Ha la voce vuota, perche' "tutti" e' il valore predefinito. */
+  formati?: Array<{ label: string; value: string }>;
+  formatoLabel?: string;
 }) {
   // Le classi di Tailwind vanno scritte per intero: costruirle concatenando
   // ("lg:grid-cols-" + n) le renderebbe invisibili al compilatore, e la barra
   // resterebbe a una colonna sola sugli schermi larghi.
-  const colonne = varianti ? 5 : 4 + (vendite !== undefined ? 1 : 0) + (prodotti !== undefined ? 1 : 0);
+  const colonne =
+    (varianti ? 5 : 4 + (vendite !== undefined ? 1 : 0) + (prodotti !== undefined ? 1 : 0)) +
+    (formati ? 1 : 0);
   const classeColonne =
     colonne >= 7 ? "lg:grid-cols-7" : colonne === 6 ? "lg:grid-cols-6" : colonne === 5 ? "lg:grid-cols-5" : "lg:grid-cols-4";
   const fromRef = useRef<HTMLInputElement | null>(null);
@@ -164,6 +172,23 @@ export function FiltersBar({
       )
     : null;
 
+  const bloccoFormato = formati
+    ? menu(
+        formatoLabel,
+        Boolean(filters.formato && filters.formato.trim()),
+        filters.formato ?? "",
+        (v) => setFilters({ ...filters, formato: v || undefined }),
+        <>
+          <option value="">Tutti</option>
+          {formati.map((f) => (
+            <option key={f.value} value={f.value}>
+              {f.label}
+            </option>
+          ))}
+        </>
+      )
+    : null;
+
   const bloccoCampagna = menu(
     campaignLabel,
     Boolean(filters.campagna && filters.campagna.trim()),
@@ -219,7 +244,7 @@ export function FiltersBar({
   // dettaglio - Categoria, poi Campagna - e la variabile di taglio resta in
   // fondo; altrove il menu delle persone viene prima di quello delle campagne.
   const blocchi = varianti
-    ? [bloccoCampagna, bloccoVarianti, bloccoOperatoreOTipologia]
+    ? [bloccoCampagna, bloccoFormato, bloccoVarianti, bloccoOperatoreOTipologia]
     : [bloccoOperatoreOTipologia, bloccoCampagna, bloccoVendite, bloccoProdotti];
 
   return (

@@ -78,6 +78,54 @@ export function baseAccettabile(base: string): boolean {
 export const SUFFISSO_INSTANT = "_test_instant";
 
 /**
+ * FORMATO DI EROGAZIONE: evento dal vivo oppure funnel sempre attivo.
+ *
+ * Serve a non mescolare le due cose quando si legge il ROAS: la spesa di un
+ * LIVE entra subito mentre i suoi risultati arrivano dopo, e messa insieme a
+ * quella dell'evergreen fa sembrare disastrosa una categoria che non lo e'.
+ *
+ * COME SI RICONOSCE. Il segno affidabile e' "ew" (Evergreen Webinar), applicato
+ * per procedura; i live si riconoscono da "live", "webinar" o "workshop" nel
+ * nome. Il confronto e' per SEGMENTO e non per sottostringa, altrimenti "ew"
+ * comparirebbe dentro parole qualsiasi.
+ *
+ * QUANDO CI SONO ENTRAMBI vince evergreen: sono tre campagne in tutto, del tipo
+ * "lms_mep_ew_indipendenza_femminile_webinar", dove "webinar" descrive il
+ * contenuto e "ew" dice come viene erogato.
+ *
+ * LA TERZA OPZIONE NON E' UN RIPIEGO. Misurato sulle 1.872 campagne conformi:
+ * evergreen 448 campagne e il 60,0% degli eventi, live 63 e il 4,3%, ma 1.361
+ * campagne e il 35,7% degli eventi non portano nessun segno.
+ *
+ * E in buona parte non e' un difetto di etichettatura: fra le piu' grosse senza
+ * segno ci sono "chatter_mep", "sette_email_aperte",
+ * "quiz_scopri_che_donna_sei", "carrello_abbandonato". Non sono eventi ne'
+ * funnel evergreen, sono altre sorgenti di acquisizione, e una terza voce e'
+ * l'unico posto onesto dove metterle.
+ */
+export type Formato = "evergreen" | "live" | "non_marcate";
+
+export const FORMATI: Array<{ label: string; value: Formato }> = [
+  { label: "Evergreen", value: "evergreen" },
+  { label: "Live", value: "live" },
+  { label: "Non marcate", value: "non_marcate" }
+];
+
+/** Le parole che identificano un evento dal vivo. */
+const MARCATORI_LIVE = ["live", "webinar", "workshop"];
+
+export function formatoCampagna(nome: string): Formato {
+  const segmenti = nome.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  // "ew" vince su "webinar" quando ci sono entrambi: sono tre campagne del tipo
+  // "lms_mep_ew_indipendenza_femminile_webinar", dove "webinar" descrive il
+  // contenuto e "ew", che sta nella posizione strutturale del nome, dice come
+  // viene erogato.
+  if (segmenti.includes("ew")) return "evergreen";
+  if (segmenti.some((t) => MARCATORI_LIVE.includes(t))) return "live";
+  return "non_marcate";
+}
+
+/**
  * Come trattare le varianti nella tabella.
  *
  * - "unificate" (preimpostata): ogni variante confluisce nella campagna base e

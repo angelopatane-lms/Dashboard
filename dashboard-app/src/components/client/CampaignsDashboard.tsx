@@ -9,6 +9,8 @@ import { guessCategoria } from "@/lib/campaignCategory";
 import type { Variante } from "@/lib/campagne";
 import {
   chiaveCampagna,
+  FORMATI,
+  formatoCampagna,
   leggiVariante,
   nomeConforme,
   SUFFISSO_INSTANT,
@@ -510,8 +512,20 @@ export default function CampaignsDashboard({
       });
     }
     if (filters.campagna) rows = rows.filter((r) => r.categoria === filters.campagna);
+    // Il formato si legge dal nome della campagna, quindi si filtra qui e non
+    // nelle query: nessuna delle fonti sa distinguere un live da un evergreen.
+    if (filters.formato) rows = rows.filter((r) => formatoCampagna(r.campagna) === filters.formato);
     return rows;
-  }, [spesaByCampagna, conversioniByCampagna, funnelByCampagna, variante, varianti, filters.campagna, filters.tipologia]);
+  }, [
+    spesaByCampagna,
+    conversioniByCampagna,
+    funnelByCampagna,
+    variante,
+    varianti,
+    filters.campagna,
+    filters.tipologia,
+    filters.formato
+  ]);
 
   const campaignAnomalies = useMemo(() => {
     const toMs = (iso: string) => new Date(iso).getTime();
@@ -671,6 +685,7 @@ export default function CampaignsDashboard({
           campaignLabel="Categoria"
           varianti={VARIANTI}
           varianteLabel="Campagna"
+          formati={FORMATI}
           tipologie={TIPOLOGIE}
           tipologiaLabel="Variabile"
         />
