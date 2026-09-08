@@ -108,7 +108,7 @@ export type Formato = "evergreen" | "live" | "non_marcate";
 export const FORMATI: Array<{ label: string; value: Formato }> = [
   { label: "Evergreen", value: "evergreen" },
   { label: "Live", value: "live" },
-  { label: "Non marcate", value: "non_marcate" }
+  { label: "Altri", value: "non_marcate" }
 ];
 
 /** Le parole che identificano un evento dal vivo. */

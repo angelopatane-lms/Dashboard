@@ -514,7 +514,11 @@ export default function CampaignsDashboard({
     if (filters.campagna) rows = rows.filter((r) => r.categoria === filters.campagna);
     // Il formato si legge dal nome della campagna, quindi si filtra qui e non
     // nelle query: nessuna delle fonti sa distinguere un live da un evergreen.
-    if (filters.formato) rows = rows.filter((r) => formatoCampagna(r.campagna) === filters.formato);
+    // La scelta e' multipla e arriva come elenco separato da virgole.
+    const formatiScelti = (filters.formato ?? "").split(",").filter(Boolean);
+    if (formatiScelti.length) {
+      rows = rows.filter((r) => formatiScelti.includes(formatoCampagna(r.campagna)));
+    }
     return rows;
   }, [
     spesaByCampagna,
