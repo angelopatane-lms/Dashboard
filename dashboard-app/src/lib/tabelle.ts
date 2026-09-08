@@ -115,8 +115,14 @@ export const INTESTAZIONE_ANGOLO = "sticky top-0 z-30";
  * ne andrebbe scorrendo, lasciando i titoli a galleggiare sulle righe. L'ombra
  * invece si disegna con la cella, che resta ferma.
  *
- * Esterna e non interna - al contrario delle linee verticali - perche' cade
- * esattamente dove stava il bordo di prima: l'intestazione e' sopra le righe, e
- * quindi la copre invece di sommarsi a lei e raddoppiare lo spessore.
+ * INTERNA come le linee verticali, e per lo stesso motivo: provata esterna,
+ * spariva appena si scorreva. Su queste celle - dentro una tabella con
+ * border-collapse - le ombre esterne non si vedono, e restava a reggere la
+ * linea solo il bordo della prima riga, che essendo un bordo della tabella se
+ * ne andava scorrendo. Dentro la cella invece l'ombra e' ferma quanto lei.
+ *
+ * Siccome ora la linea la disegna l'intestazione, la prima riga della prima
+ * categoria non ha piu' il suo bordo alto: si sarebbero sommati in una riga
+ * grigia doppia.
  */
-export const LINEA_SOTTO = "shadow-[0_2px_0_0_#e2e8f0]";
+export const LINEA_SOTTO = "shadow-[inset_0_-2px_0_0_#e2e8f0]";

@@ -520,15 +520,21 @@ export default function CampaignAdsTable({
             la linea marcata che apre la successiva, e senza lo stacco ci stanno
             piu' campagne nella stessa schermata. */}
         <tbody>
-          {groups.map((g) => (
+          {groups.map((g, gIdx) => (
             <Fragment key={g.categoria}>
               {g.rows.map((r, idx) => (
                 <tr
                   key={`${g.categoria}-${r.campagna}`}
+                  // La primissima riga non ha bordo alto: li' la linea la
+                  // disegna gia' l'intestazione, e due linee attaccate ne
+                  // farebbero una doppia. Le altre categorie lo tengono, e'
+                  // quello che le separa fra loro.
                   className={`group hover:bg-slate-50/70 transition-colors ${
-                    idx === 0
-                      ? "border-t-2 border-slate-200"
-                      : "border-t border-slate-100"
+                    idx !== 0
+                      ? "border-t border-slate-100"
+                      : gIdx === 0
+                        ? ""
+                        : "border-t-2 border-slate-200"
                   }`}
                 >
                   {mostraCategoria && idx === 0 ? (
