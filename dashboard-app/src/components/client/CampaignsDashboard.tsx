@@ -20,6 +20,7 @@ import {
   type MappaVarianti
 } from "@/lib/campagne";
 import CampaignConversionPeaksChart from "@/components/charts/CampaignConversionPeaksChart";
+import { PERIODO_DEFAULT, periodoScelto } from "@/lib/periodi";
 import { FiltersBar } from "@/components/Filters";
 import Card from "@/components/ui/Card";
 import ChartTitle from "@/components/ui/ChartTitle";
@@ -151,18 +152,16 @@ export default function CampaignsDashboard({
   operatoriRowsOggi: CsvRow[];
   campaigns: string[];
 }) {
-  const defaultFrom = useMemo(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d.toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
-  }, []);
-
-  const defaultTo = useMemo(
-    () => new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Rome" }),
-    []
-  );
+  // Le pagine si aprono sul mese in corso. Le date arrivano dal periodo
+  // predefinito invece di essere ricalcolate qui: erano scritte due volte, in
+  // questa pagina e nell'altra, e sommavano il giorno sull'ora locale del
+  // browser mentre lo leggevano sul fuso di Roma.
+  const periodoIniziale = useMemo(() => periodoScelto(PERIODO_DEFAULT), []);
+  const defaultFrom = periodoIniziale.from;
+  const defaultTo = periodoIniziale.to;
 
   const [filters, setFilters] = useState<Filters>(() => ({
+    periodo: PERIODO_DEFAULT,
     from: defaultFrom,
     to: defaultTo,
     variante: VARIANTE_DEFAULT

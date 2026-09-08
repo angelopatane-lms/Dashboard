@@ -1,12 +1,12 @@
-// I periodi preimpostati dei filtri: un tasto che scrive le due date da solo.
+// I periodi selezionabili nei filtri: la scelta scrive le due date da sola.
 //
 // Nascono da una richiesta precisa - "tasto fisso per evitare di perdere tempo
 // con le date" - e il tempo si perde soprattutto sui periodi ricorrenti, che
-// sono sempre gli stessi otto.
+// sono sempre gli stessi otto. Hanno preso il posto dei due campi Da e A: una
+// scelta sola invece di due date da comporre a mano.
 //
-// L'ORDINE E' QUELLO IN CUI SONO STATI CHIESTI, non quello per durata
-// crescente: mese e settimana prima del giorno perche' sono quelli che si
-// guardano piu' spesso, e chi li ha chiesti li ha elencati cosi'.
+// L'ORDINE VA DAL PIU' RECENTE AL PIU' LONTANO - oggi, ieri, e poi indietro -
+// perche' e' l'ordine in cui si scende cercando il periodo che si vuole.
 
 export type Periodo = {
   value: string;
@@ -71,13 +71,8 @@ export function periodi(): Periodo[] {
   const anno = oggi.getUTCFullYear();
 
   return [
-    { value: "mese_corrente", label: "Mese corrente", from: aIso(primoQuesto), to: aIso(oggi) },
-    {
-      value: "mese_scorso",
-      label: "Scorso mese",
-      from: aIso(primoDelMese(ultimoScorso)),
-      to: aIso(ultimoScorso)
-    },
+    { value: "oggi", label: "Oggi", from: aIso(oggi), to: aIso(oggi) },
+    { value: "ieri", label: "Ieri", from: aIso(ieri), to: aIso(ieri) },
     {
       value: "settimana_corrente",
       label: "Settimana corrente",
@@ -90,9 +85,29 @@ export function periodi(): Periodo[] {
       from: aIso(lunediScorsa),
       to: aIso(piuGiorni(lunediQuesta, -1))
     },
-    { value: "oggi", label: "Oggi", from: aIso(oggi), to: aIso(oggi) },
-    { value: "ieri", label: "Ieri", from: aIso(ieri), to: aIso(ieri) },
+    { value: "mese_corrente", label: "Mese corrente", from: aIso(primoQuesto), to: aIso(oggi) },
+    {
+      value: "mese_scorso",
+      label: "Scorso mese",
+      from: aIso(primoDelMese(ultimoScorso)),
+      to: aIso(ultimoScorso)
+    },
     { value: "anno_corrente", label: "Anno corrente", from: `${anno}-01-01`, to: aIso(oggi) },
     { value: "anno_scorso", label: "Anno scorso", from: `${anno - 1}-01-01`, to: `${anno - 1}-12-31` }
   ];
+}
+
+/** Il periodo con cui si aprono le pagine: il mese in corso. */
+export const PERIODO_DEFAULT = "mese_corrente";
+
+/**
+ * Il periodo scelto, con le sue due date gia' calcolate.
+ *
+ * Un valore che non esiste piu' - un indirizzo salvato fra i preferiti, il
+ * nome di un periodo che un giorno si rinomina - ricade sul predefinito invece
+ * di lasciare la pagina senza date.
+ */
+export function periodoScelto(value: string | undefined): Periodo {
+  const elenco = periodi();
+  return elenco.find((p) => p.value === value) ?? elenco.find((p) => p.value === PERIODO_DEFAULT)!;
 }

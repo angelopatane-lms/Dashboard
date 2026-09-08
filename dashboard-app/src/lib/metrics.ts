@@ -5,6 +5,12 @@ export type DatasetKind = "operatori";
 export type Filters = {
   from?: string;
   to?: string;
+  /** Il periodo scelto nel menu (vedi src/lib/periodi.ts).
+   *
+   *  Le date restano il valore su cui lavorano le query: questo serve solo a
+   *  sapere quale voce del menu mostrare, e non si ricava dalle date perche'
+   *  di lunedi' "Oggi" e "Settimana corrente" danno lo stesso intervallo. */
+  periodo?: string;
   operatore?: string;
   campagna?: string;
   vendita?: string;

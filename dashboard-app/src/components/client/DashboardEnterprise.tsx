@@ -10,6 +10,7 @@ import {
   normalizeOperatori
 } from "@/lib/analytics";
 import { formatFloat, formatInt, formatPct, formatEur } from "@/lib/format";
+import { PERIODO_DEFAULT, periodoScelto } from "@/lib/periodi";
 import { FiltersBar } from "@/components/Filters";
 import SectionTitle from "@/components/ui/SectionTitle";
 import KPICard from "@/components/ui/KPICard";
@@ -53,18 +54,19 @@ export default function DashboardEnterprise({
   useHubspot?: boolean;
   operatorLabel?: string;
 }) {
-  const defaultFrom = useMemo(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d.toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
-  }, []);
+  // Le pagine si aprono sul mese in corso. Le date arrivano dal periodo
+  // predefinito invece di essere ricalcolate qui: erano scritte due volte, in
+  // questa pagina e nell'altra, e sommavano il giorno sull'ora locale del
+  // browser mentre lo leggevano sul fuso di Roma.
+  const periodoIniziale = useMemo(() => periodoScelto(PERIODO_DEFAULT), []);
+  const defaultFrom = periodoIniziale.from;
+  const defaultTo = periodoIniziale.to;
 
-  const defaultTo = useMemo(
-    () => new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Rome" }),
-    []
-  );
-
-  const [filters, setFilters] = useState<Filters>(() => ({ from: defaultFrom, to: defaultTo }));
+  const [filters, setFilters] = useState<Filters>(() => ({
+    periodo: PERIODO_DEFAULT,
+    from: defaultFrom,
+    to: defaultTo
+  }));
 
   const [boomLoading, setBoomLoading] = useState<boolean>(!!useHubspot);
   const [dealsLoading, setDealsLoading] = useState<boolean>(!!useHubspot);

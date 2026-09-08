@@ -1,9 +1,9 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Filters } from "@/lib/metrics";
 import { VARIANTE_DEFAULT } from "@/lib/campagne";
-import { periodi } from "@/lib/periodi";
+import { PERIODO_DEFAULT, periodi, periodoScelto } from "@/lib/periodi";
 
 /**
  * Menu a piu' scelte, con caselle di spunta dentro una tendina.
@@ -157,74 +157,12 @@ export function FiltersBar({
    *  le categorie e serve poterne escludere qualcuna. */
   campagnaMultipla?: boolean;
 }) {
-  // Le classi di Tailwind vanno scritte per intero: costruirle concatenando
-  // ("lg:grid-cols-" + n) le renderebbe invisibili al compilatore, e la barra
-  // resterebbe a una colonna sola sugli schermi larghi.
-  const colonne =
-    (varianti ? 5 : 4 + (vendite !== undefined ? 1 : 0) + (prodotti !== undefined ? 1 : 0)) +
-    (formati ? 1 : 0);
-  const classeColonne =
-    colonne >= 7 ? "lg:grid-cols-7" : colonne === 6 ? "lg:grid-cols-6" : colonne === 5 ? "lg:grid-cols-5" : "lg:grid-cols-4";
-  const fromRef = useRef<HTMLInputElement | null>(null);
-  const toRef = useRef<HTMLInputElement | null>(null);
-
   const controlClassName = (isActive: boolean) =>
     `mt-1 w-full rounded-md border px-3 py-2 text-sm shadow-sm outline-none transition ${
       isActive
         ? "border-slate-700 bg-black text-white focus:border-slate-200 focus:ring-2 focus:ring-slate-200/20"
         : "border-slate-200 bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
     }`;
-
-  const dateControlClassName = (isActive: boolean) =>
-    isActive
-      ? `${controlClassName(true)} pr-9 filter-date-dark hide-native-picker`
-      : controlClassName(false);
-
-  const openDatePicker = (ref: MutableRefObject<HTMLInputElement | null>) => {
-    const el = ref.current;
-    if (!el) return;
-    const anyEl = el as HTMLInputElement & { showPicker?: () => void };
-    if (typeof anyEl.showPicker === "function") anyEl.showPicker();
-    else el.focus();
-  };
-
-  const campoData = (
-    etichetta: string,
-    valore: string,
-    ref: MutableRefObject<HTMLInputElement | null>,
-    onChange: (v: string | undefined) => void
-  ) => (
-    <div>
-      <label className="text-xs font-medium text-slate-600">{etichetta}</label>
-      <div className="relative">
-        <input
-          ref={ref}
-          type="date"
-          className={dateControlClassName(Boolean(valore && valore.trim()))}
-          value={valore}
-          onChange={(e) => onChange(e.target.value || undefined)}
-        />
-        {Boolean(valore && valore.trim()) && (
-          <button
-            type="button"
-            onClick={() => openDatePicker(ref)}
-            className="absolute inset-y-0 right-2 my-auto h-6 w-6 rounded-md text-white/90 hover:text-white"
-            aria-label="Apri calendario"
-          >
-            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-4 w-4">
-              <path
-                d="M7 3v2M17 3v2M4 7h16M6 5h12a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-        )}
-      </div>
-    </div>
-  );
 
   const menu = (
     etichetta: string,
@@ -356,55 +294,59 @@ export function FiltersBar({
         )
       : null;
 
+  // IL PERIODO E' UN MENU COME GLI ALTRI, e ha preso il posto dei campi Da e A.
+  //
+  // Sceglierlo scrive le due date, che restano il valore su cui lavorano le
+  // query: cambia il modo di dirlo, non quello che viene chiesto al database.
+  // Il nome del periodo viaggia insieme alle date perche' da sole non
+  // basterebbero a ritrovarlo: di lunedi' "Oggi" e "Settimana corrente" danno
+  // lo stesso intervallo, e il menu non saprebbe quale delle due mostrare.
+  const periodoAttuale = filters.periodo ?? PERIODO_DEFAULT;
+  const bloccoPeriodo = menu(
+    "Periodo",
+    periodoAttuale !== PERIODO_DEFAULT,
+    periodoAttuale,
+    (v) => {
+      const scelto = periodoScelto(v);
+      setFilters({ ...filters, periodo: scelto.value, from: scelto.from, to: scelto.to });
+    },
+    periodi().map((p) => (
+      <option key={p.value} value={p.value}>
+        {p.label}
+      </option>
+    ))
+  );
+
   // L'ordine cambia con la pagina. Su Campagne si va dal contenitore al
   // dettaglio - Categoria, poi Campagna - e la variabile di taglio resta in
   // fondo; altrove il menu delle persone viene prima di quello delle campagne.
   const blocchi = varianti
-    ? [bloccoCampagna, bloccoFormato, bloccoVarianti, bloccoOperatoreOTipologia]
-    : [bloccoOperatoreOTipologia, bloccoCampagna, bloccoVendite, bloccoProdotti];
+    ? [bloccoPeriodo, bloccoCampagna, bloccoFormato, bloccoVarianti, bloccoOperatoreOTipologia]
+    : [bloccoPeriodo, bloccoOperatoreOTipologia, bloccoCampagna, bloccoVendite, bloccoProdotti];
 
-  // I periodi si ricalcolano a ogni disegno, e devono: tenuti fermi in memoria,
-  // una scheda lasciata aperta la notte offrirebbe ancora l'"Oggi" di ieri.
-  const rapidi = periodi();
+  // Le colonne si contano sui blocchi che ci sono davvero, invece di ricavarle
+  // dalle condizioni che li accendono: quel conto andava rifatto a mano a ogni
+  // filtro nuovo, ed era un'occasione di sbagliare a ogni giro.
+  //
+  // Le classi di Tailwind vanno scritte per intero: costruirle concatenando
+  // ("lg:grid-cols-" + n) le renderebbe invisibili al compilatore, e la barra
+  // resterebbe a una colonna sola sugli schermi larghi.
+  const colonne = blocchi.filter(Boolean).length;
+  const classeColonne =
+    colonne >= 7
+      ? "lg:grid-cols-7"
+      : colonne === 6
+        ? "lg:grid-cols-6"
+        : colonne === 5
+          ? "lg:grid-cols-5"
+          : "lg:grid-cols-4";
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${classeColonne}`}>
-        {campoData("Da", filters.from ?? "", fromRef, (v) => setFilters({ ...filters, from: v }))}
-        {campoData("A", filters.to ?? "", toRef, (v) => setFilters({ ...filters, to: v }))}
         {blocchi.map((b, i) => (
           <Fragment key={i}>{b}</Fragment>
         ))}
-      </div>
-
-      {/* I periodi ricorrenti come tasti: scrivono loro le due date sopra.
-          Restano sotto la griglia e non dentro, come nona colonna, perche' sono
-          otto e schiacciati in una colonna sola non si leggerebbero. */}
-      <div className="mt-3">
-        <div className="text-xs font-medium text-slate-600">Periodo</div>
-        <div className="mt-1 flex flex-wrap gap-2">
-          {rapidi.map((p) => {
-            // Acceso quando le date sono esattamente le sue: cosi' si vede a
-            // colpo d'occhio se quelle in alto sono un periodo intero o un
-            // intervallo scelto a mano.
-            const attivo = filters.from === p.from && filters.to === p.to;
-            return (
-              <button
-                key={p.value}
-                type="button"
-                onClick={() => setFilters({ ...filters, from: p.from, to: p.to })}
-                title={`${p.from} - ${p.to}`}
-                className={`rounded-md border px-3 py-1.5 text-xs font-medium shadow-sm transition ${
-                  attivo
-                    ? "border-slate-700 bg-black text-white"
-                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-400 hover:text-black"
-                }`}
-              >
-                {p.label}
-              </button>
-            );
-          })}
-        </div>
       </div>
     </div>
   );
