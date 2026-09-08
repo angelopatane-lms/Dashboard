@@ -51,6 +51,7 @@ type RawTotals = {
   spesa: number;
   leadGenerati: number;
   leadUnici: number;
+  chiamate: number;
   risposte: number;
   fissati: number;
   processati: number;
@@ -75,6 +76,7 @@ const emptyRaw: RawTotals = {
   spesa: 0,
   leadGenerati: 0,
   leadUnici: 0,
+  chiamate: 0,
   risposte: 0,
   fissati: 0,
   processati: 0,
@@ -110,6 +112,8 @@ function toRaw(ads: CampaignAdsRow, summary?: CampaignSummary, funnel?: FunnelCa
     // Connessioni: telefonate con esito "Connesso" a contatti della campagna,
     // dal sync delle chiamate. Il foglio Operatori non poteva servire allo
     // scopo perche' le tiene solo per CATEGORIA.
+    // Telefonate fatte e, di quelle, quelle a cui la persona ha risposto.
+    chiamate: funnel?.chiamate ?? 0,
     risposte: funnel?.connessioni ?? 0,
     processati: funnel?.consulenze ?? 0,
     noShow: funnel?.noShow ?? 0,
@@ -126,6 +130,7 @@ function addRaw(a: RawTotals, b: RawTotals): RawTotals {
     spesa: a.spesa + b.spesa,
     leadGenerati: a.leadGenerati + b.leadGenerati,
     leadUnici: a.leadUnici + b.leadUnici,
+    chiamate: a.chiamate + b.chiamate,
     risposte: a.risposte + b.risposte,
     fissati: a.fissati + b.fissati,
     processati: a.processati + b.processati,
@@ -206,6 +211,7 @@ type MaxValues = {
   cplGenerati: number;
   leadUnici: number;
   cplUnici: number;
+  chiamate: number;
   risposte: number;
   fissati: number;
   processati: number;
@@ -230,6 +236,7 @@ const HEADERS = [
   "CPL Generati",
   "Lead Unici",
   "CPL Unici",
+  "Chiamate",
   "Connessioni",
   "Appuntamenti",
   "% Appuntamento",
@@ -270,6 +277,9 @@ function MetricCells({ m, max }: { m: DerivedMetrics; max: MaxValues }) {
         style={{ background: m.cplUnici !== null ? heatBg(m.cplUnici, max.cplUnici) : undefined }}
       >
         {fmtEur(m.cplUnici, 2)}
+      </td>
+      <td className="border-r border-white px-2 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.chiamate, max.chiamate) }}>
+        {formatInt(m.chiamate)}
       </td>
       <td className="border-r border-white px-2 py-1.5 text-right tabular-nums" style={{ background: heatBg(m.risposte, max.risposte) }}>
         {formatInt(m.risposte)}
@@ -434,6 +444,7 @@ export default function CampaignAdsTable({
       cplGenerati: maxOf(rowMetrics.map((m) => m.cplGenerati)),
       leadUnici: maxOf(rowMetrics.map((m) => m.leadUnici)),
       cplUnici: maxOf(rowMetrics.map((m) => m.cplUnici)),
+      chiamate: maxOf(rowMetrics.map((m) => m.chiamate)),
       risposte: maxOf(rowMetrics.map((m) => m.risposte)),
       fissati: maxOf(rowMetrics.map((m) => m.fissati)),
       processati: maxOf(rowMetrics.map((m) => m.processati)),
