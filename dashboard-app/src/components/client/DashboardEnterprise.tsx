@@ -6,7 +6,6 @@ import { applyFilters, computeKpis, type Filters } from "@/lib/metrics";
 import {
   aggregateByCampagna,
   aggregateByOperatore,
-  aggregateTimeSeries,
   normalizeOperatori
 } from "@/lib/analytics";
 import { formatFloat, formatInt, formatPct, formatEur } from "@/lib/format";
@@ -30,10 +29,8 @@ import {
   unisciAdvisor
 } from "@/lib/andamento";
 import type { AdvisorAndamentoRow } from "@/app/api/advisor-andamento/route";
-import OperatorPerformanceBar from "@/components/charts/OperatorPerformanceBar";
 import CampaignSummaryBar from "@/components/charts/CampaignSummaryBar";
 import CampaignConversionPeaksChart from "@/components/charts/CampaignConversionPeaksChart";
-import FunnelStraightLinesChart, { type FunnelTrendKey } from "@/components/charts/FunnelStraightLinesChart";
 import OperatorStatsTable from "@/components/charts/OperatorStatsTable";
 import type { RawBoomRecord, RawDealRecord } from "@/app/api/hubspot-data/route";
 import { CHIUSURE_TIPOLOGIE, BOOM_TIPOLOGIE } from "@/lib/hubspotRegole";
@@ -150,22 +147,6 @@ export default function DashboardEnterprise({
     [includeToday, operatoriRows, operatoriRowsOggi]
   );
 
-  const ALL_FUNNEL_TREND_KEYS: FunnelTrendKey[] = [
-    "effContatto",
-    "convApp",
-    "noShowPct",
-    "showUpPct"
-  ];
-
-  const [selectedFunnelTrendKeys, setSelectedFunnelTrendKeys] = useState<Set<FunnelTrendKey>>(
-    () => new Set(ALL_FUNNEL_TREND_KEYS)
-  );
-
-  const isAllFunnelTrendSelected = selectedFunnelTrendKeys.size === ALL_FUNNEL_TREND_KEYS.length;
-  const funnelTrendVisibleKeys = isAllFunnelTrendSelected
-    ? undefined
-    : Array.from(selectedFunnelTrendKeys);
-
   const operatoriFiltered = useMemo(
     () => applyFilters(operatoriRowsWithToday, filters),
     [operatoriRowsWithToday, filters]
@@ -179,11 +160,6 @@ export default function DashboardEnterprise({
   const operatoriNorm = useMemo(
     () => normalizeOperatori(operatoriFiltered),
     [operatoriFiltered]
-  );
-
-  const timeSeries = useMemo(
-    () => aggregateTimeSeries(operatoriNorm, "day"),
-    [operatoriNorm]
   );
 
   const operatorSummaryAll = useMemo(
@@ -329,11 +305,6 @@ export default function DashboardEnterprise({
     }
     return { chiusure, boom };
   }, [useHubspot, hubspotOverrides, operatorSummaryAll]);
-
-  const operatorSummary = useMemo(
-    () => operatorSummaryAll.slice(0, 12),
-    [operatorSummaryAll]
-  );
 
   const campaignSummary = useMemo(
     () => aggregateByCampagna(operatoriNorm).slice(0, 12),
@@ -749,15 +720,6 @@ export default function DashboardEnterprise({
         <SectionTitle className="mt-10">Performance</SectionTitle>
       </div>
       <div className="grid grid-cols-1 gap-6">
-        <Card>
-          <ChartTitle
-            title="KPI Operatore"
-            description="Confronto per operatore su connessioni, appuntamenti e no show per individuare performance e criticità."
-          />
-          <div className="mt-4 h-[340px]">
-            <OperatorPerformanceBar data={operatorSummary} />
-          </div>
-        </Card>
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card>
             <ChartTitle
@@ -795,106 +757,6 @@ export default function DashboardEnterprise({
             </div>
           </Card>
         </div>
-        <Card>
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <ChartTitle
-              title="Trend Periodo"
-              description="Trend lineare medio dei principali parametri Funnel nel periodo selezionato."
-            />
-            <div className="flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedFunnelTrendKeys((prev) =>
-                    prev.size === ALL_FUNNEL_TREND_KEYS.length
-                      ? new Set()
-                      : new Set(ALL_FUNNEL_TREND_KEYS)
-                  )
-                }
-                className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
-                  isAllFunnelTrendSelected ? "bg-slate-900" : "bg-slate-400 hover:bg-slate-500"
-                }`}
-              >
-                Tutti
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedFunnelTrendKeys((prev) => {
-                    const next = new Set(prev);
-                    if (next.has("effContatto")) next.delete("effContatto");
-                    else next.add("effContatto");
-                    return next;
-                  })
-                }
-                className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
-                  selectedFunnelTrendKeys.has("effContatto")
-                    ? "bg-[#0ea5e9]"
-                    : "bg-[#0ea5e9]/40 hover:bg-[#0ea5e9]/60"
-                }`}
-              >
-                Efficienza Contatto
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedFunnelTrendKeys((prev) => {
-                    const next = new Set(prev);
-                    if (next.has("convApp")) next.delete("convApp");
-                    else next.add("convApp");
-                    return next;
-                  })
-                }
-                className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
-                  selectedFunnelTrendKeys.has("convApp")
-                    ? "bg-[#22c55e]"
-                    : "bg-[#22c55e]/40 hover:bg-[#22c55e]/60"
-                }`}
-              >
-                Conversione Appuntamenti
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedFunnelTrendKeys((prev) => {
-                    const next = new Set(prev);
-                    if (next.has("noShowPct")) next.delete("noShowPct");
-                    else next.add("noShowPct");
-                    return next;
-                  })
-                }
-                className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
-                  selectedFunnelTrendKeys.has("noShowPct")
-                    ? "bg-[#f59e0b]"
-                    : "bg-[#f59e0b]/40 hover:bg-[#f59e0b]/60"
-                }`}
-              >
-                Tasso di No Show
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedFunnelTrendKeys((prev) => {
-                    const next = new Set(prev);
-                    if (next.has("showUpPct")) next.delete("showUpPct");
-                    else next.add("showUpPct");
-                    return next;
-                  })
-                }
-                className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
-                  selectedFunnelTrendKeys.has("showUpPct")
-                    ? "bg-[#a855f7]"
-                    : "bg-[#a855f7]/40 hover:bg-[#a855f7]/60"
-                }`}
-              >
-                Tasso di Show Up
-              </button>
-            </div>
-          </div>
-          <div className="mt-4 h-[315px]">
-            <FunnelStraightLinesChart data={timeSeries} visibleKeys={funnelTrendVisibleKeys} />
-          </div>
-        </Card>
 
         {hideCampagne ? null : (
           <>
