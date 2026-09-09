@@ -3,6 +3,7 @@
 
 import type { AndamentoRow } from "@/app/api/campaign-andamento/route";
 import { categoriaResidua } from "@/lib/campaignCategory";
+import type { OperatoriNormalized } from "@/lib/analytics";
 
 /**
  * I formati sono quelli della tabella Campagne, decimali compresi: la spesa a
@@ -11,14 +12,24 @@ import { categoriaResidua } from "@/lib/campaignCategory";
  */
 export type Formato = "intero" | "euro" | "euro_centesimi" | "percento" | "volte";
 
-export type Metrica = {
+/**
+ * Una riga di serie storica: un mese, e il nome della linea a cui appartiene.
+ *
+ * "gruppo" e non "categoria" perche' lo stesso codice disegna due grafici che
+ * raggruppano cose diverse - le campagne per categoria, gli advisor per
+ * persona - e chiamarlo con il nome di uno dei due avrebbe costretto l'altro a
+ * fingere di essere una categoria.
+ */
+export type RigaSerie = { mese: string; gruppo: string };
+
+export type Metrica<T> = {
   value: string;
   label: string;
   formato: Formato;
   /** Piu' alto e' meglio: decide se un'anomalia e' un picco o un tonfo. */
   altoEBene: boolean;
   /** Null quando manca il denominatore: non e' zero, e' non calcolabile. */
-  calcola: (r: AndamentoRow) => number | null;
+  calcola: (r: T) => number | null;
 };
 
 /**
@@ -39,7 +50,7 @@ export type Metrica = {
  * Il ROAS resta la scelta di partenza: e' la domanda vera. Ma da solo non dice
  * mai perche', ed e' per questo che le altre sono a un click.
  */
-export const METRICHE: Metrica[] = [
+export const METRICHE: Metrica<AndamentoRow>[] = [
   { value: "spesa", label: "Spesa", formato: "euro_centesimi", altoEBene: false, calcola: (r) => r.spesa },
   {
     value: "lead_generati",
@@ -109,7 +120,7 @@ export const METRICHE: Metrica[] = [
 
 export const METRICA_DEFAULT = "roas";
 
-export function metrica(value: string): Metrica {
+export function metrica(value: string): Metrica<AndamentoRow> {
   return METRICHE.find((m) => m.value === value) ?? METRICHE[0];
 }
 
@@ -162,7 +173,7 @@ export function normalita(valori: number[], soglia = 2): Normalita | null {
 }
 
 export type Anomalia = {
-  categoria: string;
+  gruppo: string;
   mese: string;
   valore: number;
   normalita: Normalita;
@@ -170,8 +181,8 @@ export type Anomalia = {
   buona: boolean;
 };
 
-export type SerieCategoria = {
-  categoria: string;
+export type SerieAndamento = {
+  gruppo: string;
   /** Un valore per mese, nell'ordine dei mesi. Null dove non calcolabile. */
   valori: Array<number | null>;
   normalita: Normalita | null;
@@ -189,23 +200,23 @@ export type SerieCategoria = {
  * Resta disegnato sul grafico, marcato come parziale: si vede dove sta andando,
  * senza spacciarlo per un fatto compiuto.
  */
-export function costruisciSerie(
-  righe: AndamentoRow[],
+export function costruisciSerie<T extends RigaSerie>(
+  righe: T[],
   mesi: string[],
-  m: Metrica
-): { serie: SerieCategoria[]; anomalie: Anomalia[] } {
-  const perCategoria = new Map<string, Map<string, AndamentoRow>>();
+  m: Metrica<T>
+): { serie: SerieAndamento[]; anomalie: Anomalia[] } {
+  const perGruppo = new Map<string, Map<string, T>>();
   for (const r of righe) {
-    const dentro = perCategoria.get(r.categoria) ?? new Map<string, AndamentoRow>();
+    const dentro = perGruppo.get(r.gruppo) ?? new Map<string, T>();
     dentro.set(r.mese, r);
-    perCategoria.set(r.categoria, dentro);
+    perGruppo.set(r.gruppo, dentro);
   }
 
   const ultimo = mesi[mesi.length - 1];
-  const serie: SerieCategoria[] = [];
+  const serie: SerieAndamento[] = [];
   const anomalie: Anomalia[] = [];
 
-  for (const [categoria, perMese] of perCategoria) {
+  for (const [gruppo, perMese] of perGruppo) {
     const valori = mesi.map((mese) => {
       const r = perMese.get(mese);
       return r ? m.calcola(r) : null;
@@ -217,7 +228,7 @@ export function costruisciSerie(
       .map((x) => x.v as number);
 
     const banda = normalita(perBanda);
-    serie.push({ categoria, valori, normalita: banda });
+    serie.push({ gruppo, valori, normalita: banda });
 
     if (!banda) continue;
     mesi.forEach((mese, i) => {
@@ -226,7 +237,7 @@ export function costruisciSerie(
       if (v === null) return;
       if (v >= banda.basso && v <= banda.alto) return;
       anomalie.push({
-        categoria,
+        gruppo,
         mese,
         valore: v,
         normalita: banda,
@@ -245,17 +256,17 @@ export function costruisciSerie(
   // finisce cio' che la regola non riconosce, e in ordine alfabetico "Altro"
   // aprirebbe la fila sembrando una categoria come le altre.
   serie.sort((a, b) => {
-    const aUltima = categoriaResidua(a.categoria);
-    const bUltima = categoriaResidua(b.categoria);
+    const aUltima = categoriaResidua(a.gruppo);
+    const bUltima = categoriaResidua(b.gruppo);
     if (aUltima !== bUltima) return aUltima ? 1 : -1;
-    return a.categoria.localeCompare(b.categoria, "it");
+    return a.gruppo.localeCompare(b.gruppo, "it");
   });
 
   return { serie, anomalie };
 }
 
 /** I mesi presenti nei dati, dal piu' vecchio al piu' recente. */
-export function mesiDi(righe: AndamentoRow[]): string[] {
+export function mesiDi(righe: RigaSerie[]): string[] {
   return Array.from(new Set(righe.map((r) => r.mese))).sort();
 }
 
@@ -265,3 +276,121 @@ export function etichettaMese(mese: string): string {
   const i = Number(mese.slice(5, 7)) - 1;
   return `${nomi[i] ?? mese.slice(5, 7)} ${mese.slice(2, 4)}`;
 }
+
+// ---------------------------------------------------------------------------
+// L'andamento delle persone: Advisor e Setter.
+//
+// I dati arrivano dal foglio Operatori, che ha una riga per persona, campagna e
+// giorno. Non dal database, che di operatori non sa niente: nessuna delle sue
+// tabelle - trattativa, chiamata, no_show - porta il nome di chi ha lavorato la
+// pratica.
+// ---------------------------------------------------------------------------
+
+export type RigaAdvisor = RigaSerie & {
+  assegnati: number;
+  chiamate: number;
+  connessioni: number;
+  appuntamenti: number;
+  noShow: number;
+};
+
+/**
+ * I mesi di ogni persona, sommando le sue righe giornaliere.
+ *
+ * Le righe senza operatore o senza data non hanno un posto dove andare e si
+ * fermano qui.
+ */
+export function righeAdvisor(norm: OperatoriNormalized[]): RigaAdvisor[] {
+  const per = new Map<string, RigaAdvisor>();
+  for (const r of norm) {
+    if (!r.operatore || !r.data) continue;
+    const mese = r.data.slice(0, 7);
+    const k = `${mese}|${r.operatore}`;
+    const v =
+      per.get(k) ??
+      {
+        mese,
+        gruppo: r.operatore,
+        assegnati: 0,
+        chiamate: 0,
+        connessioni: 0,
+        appuntamenti: 0,
+        noShow: 0
+      };
+    v.assegnati += r.assegnati;
+    v.chiamate += r.chiamate;
+    v.connessioni += r.connessioni;
+    v.appuntamenti += r.appuntamenti;
+    v.noShow += r.noShow;
+    per.set(k, v);
+  }
+  return Array.from(per.values());
+}
+
+/**
+ * Le metriche del grafico delle persone: gli stessi nomi e formati della
+ * tabella qui sopra.
+ *
+ * NE MANCANO QUATTRO delle nove colonne - Consulenze, Chiusure, % Chiusura e
+ * Boom - e non per scelta: nel foglio quelle colonne sono a zero prima di
+ * agosto 2026. Misurato sulle 23.804 righe: Consulenze 0 da marzo a giugno, 5 a
+ * luglio, 301 ad agosto; Boom zero fino a luglio e 260.612 EUR ad agosto.
+ * Disegnarle darebbe una linea piatta a zero e poi un'impennata, cioe' il
+ * racconto di un'azienda che comincia a vendere ad agosto.
+ *
+ * Nella tabella quei numeri ci sono lo stesso perche' per il periodo scelto
+ * arrivano da HubSpot in diretta, non dal foglio. Per averli anche qui
+ * servirebbe rileggere HubSpot mese per mese.
+ *
+ * La sesta voce segue la tabella, che cambia colonna fra le due pagine:
+ * l'Advisor vede le Consulenze - qui assenti - e il Setter i No Show, che
+ * invece la storia ce l'hanno.
+ */
+export function metricheAdvisor(setter: boolean): Metrica<RigaAdvisor>[] {
+  const base: Metrica<RigaAdvisor>[] = [
+    { value: "assegnati", label: "Assegnati", formato: "intero", altoEBene: true, calcola: (r) => r.assegnati },
+    { value: "chiamate", label: "Chiamate", formato: "intero", altoEBene: true, calcola: (r) => r.chiamate },
+    {
+      value: "connessioni",
+      label: "Connessioni",
+      formato: "intero",
+      altoEBene: true,
+      calcola: (r) => r.connessioni
+    },
+    {
+      value: "appuntamenti",
+      label: "Appuntamenti",
+      formato: "intero",
+      altoEBene: true,
+      calcola: (r) => r.appuntamenti
+    },
+    {
+      value: "pct_appuntamento",
+      label: "% Appuntamento",
+      formato: "percento",
+      altoEBene: true,
+      // Stessa formula della tabella: degli assegnati raggiunti al telefono,
+      // quanti hanno fissato.
+      calcola: (r) => (r.connessioni > 0 ? r.appuntamenti / r.connessioni : null)
+    }
+  ];
+
+  if (setter) {
+    base.push({
+      value: "no_show",
+      label: "No Show",
+      formato: "intero",
+      altoEBene: false,
+      calcola: (r) => r.noShow
+    });
+  }
+
+  return base;
+}
+
+export function metricaAdvisor(value: string, setter: boolean): Metrica<RigaAdvisor> {
+  const elenco = metricheAdvisor(setter);
+  return elenco.find((m) => m.value === value) ?? elenco[0];
+}
+
+export const METRICA_ADVISOR_DEFAULT = "appuntamenti";

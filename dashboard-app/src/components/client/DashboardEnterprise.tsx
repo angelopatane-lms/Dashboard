@@ -18,7 +18,16 @@ import Card from "@/components/ui/Card";
 import ChartTitle from "@/components/ui/ChartTitle";
 import FunnelStagesChart from "@/components/charts/FunnelStagesChart";
 import ReactivityGauge from "@/components/charts/ReactivityGauge";
-import TimeSeriesChart, { type TrendSeriesKey } from "@/components/charts/TimeSeriesChart";
+import AndamentoChart, { formattaValore } from "@/components/charts/AndamentoChart";
+import {
+  costruisciSerie,
+  etichettaMese,
+  METRICA_ADVISOR_DEFAULT,
+  mesiDi,
+  metricaAdvisor,
+  metricheAdvisor,
+  righeAdvisor
+} from "@/lib/andamento";
 import OperatorPerformanceBar from "@/components/charts/OperatorPerformanceBar";
 import CampaignSummaryBar from "@/components/charts/CampaignSummaryBar";
 import CampaignConversionPeaksChart from "@/components/charts/CampaignConversionPeaksChart";
@@ -139,16 +148,6 @@ export default function DashboardEnterprise({
     [includeToday, operatoriRows, operatoriRowsOggi]
   );
 
-  const ALL_TREND_KEYS: TrendSeriesKey[] = [
-    "assegnati",
-    "chiamate",
-    "connessioni",
-    "appuntamenti",
-    "consulenze",
-    "chiusure",
-    "boom"
-  ];
-
   const ALL_FUNNEL_TREND_KEYS: FunnelTrendKey[] = [
     "effContatto",
     "convApp",
@@ -156,16 +155,9 @@ export default function DashboardEnterprise({
     "showUpPct"
   ];
 
-  const [selectedTrendKeys, setSelectedTrendKeys] = useState<Set<TrendSeriesKey>>(
-    () => new Set(ALL_TREND_KEYS)
-  );
-
   const [selectedFunnelTrendKeys, setSelectedFunnelTrendKeys] = useState<Set<FunnelTrendKey>>(
     () => new Set(ALL_FUNNEL_TREND_KEYS)
   );
-
-  const isAllTrendSelected = selectedTrendKeys.size === ALL_TREND_KEYS.length;
-  const trendVisibleKeys = isAllTrendSelected ? undefined : Array.from(selectedTrendKeys);
 
   const isAllFunnelTrendSelected = selectedFunnelTrendKeys.size === ALL_FUNNEL_TREND_KEYS.length;
   const funnelTrendVisibleKeys = isAllFunnelTrendSelected
@@ -196,6 +188,32 @@ export default function DashboardEnterprise({
     () => aggregateByOperatore(operatoriNorm),
     [operatoriNorm]
   );
+
+  // L'ANDAMENTO DELLE PERSONE, mese per mese.
+  //
+  // NON SEGUE IL FILTRO PERIODO, ed e' voluto: e' una serie storica, e
+  // guardarla dentro la finestra scelta la ridurrebbe a un punto solo. Gli
+  // altri filtri li segue tutti, perche' agiscono sulle righe del foglio.
+  const setterView = (operatorLabel ?? "Advisor") === "Setter";
+  const [metricaScelta, setMetricaScelta] = useState<string>(METRICA_ADVISOR_DEFAULT);
+
+  const andamentoPersone = useMemo(() => {
+    const { from: _da, to: _a, ...senzaPeriodo } = filters;
+    return righeAdvisor(normalizeOperatori(applyFilters(operatoriRowsWithToday, senzaPeriodo)));
+  }, [operatoriRowsWithToday, filters]);
+
+  const vista = useMemo(() => {
+    const m = metricaAdvisor(metricaScelta, setterView);
+    const mesi = mesiDi(andamentoPersone);
+    const { serie, anomalie } = costruisciSerie(andamentoPersone, mesi, m);
+    return {
+      m,
+      mesi,
+      serie,
+      anomalie,
+      chiavi: new Set(anomalie.map((a) => `${a.gruppo}|${a.mese}`))
+    };
+  }, [andamentoPersone, metricaScelta, setterView]);
 
   const hubspotOverrides = useMemo((): Record<string, { chiusure: number; boom: number }> => {
     if (!useHubspot || rawBoomRecords.length === 0) return {};
@@ -580,162 +598,74 @@ export default function DashboardEnterprise({
         </div>
         <div className="grid grid-cols-1 gap-6">
           <Card>
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <ChartTitle
-                title="Trend Principali"
-                description="Andamento storico dei principali indicatori di performance."
-              />
-              <div className="flex flex-wrap justify-end gap-2">
+            <ChartTitle
+              title={`Andamento ${setterView ? "dei Setter" : "degli Advisor"}`}
+              description="Un punto per mese, per persona. Il mese segnato con l'asterisco e' quello in corso: e' disegnato ma non concorre a definire cosa sia normale, ed e' escluso dalle segnalazioni, se no sarebbe l'unica notizia tutti i mesi. Il filtro Periodo non tocca questo grafico, che guarda tutta la storia del foglio Operatori; gli altri filtri valgono."
+            />
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {metricheAdvisor(setterView).map((m) => (
                 <button
+                  key={m.value}
                   type="button"
-                  onClick={() =>
-                    setSelectedTrendKeys((prev) =>
-                      prev.size === ALL_TREND_KEYS.length ? new Set() : new Set(ALL_TREND_KEYS)
-                    )
-                  }
-                  className={`rounded-md px-3 py-1 text-xs font-semibold text-white transition ${
-                    isAllTrendSelected ? "bg-slate-900" : "bg-slate-400 hover:bg-slate-500"
+                  onClick={() => setMetricaScelta(m.value)}
+                  className={`rounded-md border px-3 py-1.5 text-xs font-medium shadow-sm transition ${
+                    metricaScelta === m.value
+                      ? "border-neutral-700 bg-black text-white"
+                      : "border-slate-200 bg-white text-slate-700 hover:border-neutral-800 hover:text-black"
                   }`}
                 >
-                  Tutti
+                  {m.label}
                 </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSelectedTrendKeys((prev) => {
-                      const next = new Set(prev);
-                      if (next.has("assegnati")) next.delete("assegnati");
-                      else next.add("assegnati");
-                      return next;
-                    })
-                  }
-                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
-                    selectedTrendKeys.has("assegnati")
-                      ? "bg-white border-2 border-black text-black"
-                      : "bg-white border border-black/30 text-black/40 hover:border-black/60 hover:text-black/70"
-                  }`}
-                >
-                  Assegnati
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSelectedTrendKeys((prev) => {
-                      const next = new Set(prev);
-                      if (next.has("chiamate")) next.delete("chiamate");
-                      else next.add("chiamate");
-                      return next;
-                    })
-                  }
-                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
-                    selectedTrendKeys.has("chiamate")
-                      ? "bg-white border-2 border-black text-black"
-                      : "bg-white border border-black/30 text-black/40 hover:border-black/60 hover:text-black/70"
-                  }`}
-                >
-                  Chiamate
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSelectedTrendKeys((prev) => {
-                      const next = new Set(prev);
-                      if (next.has("connessioni")) next.delete("connessioni");
-                      else next.add("connessioni");
-                      return next;
-                    })
-                  }
-                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
-                    selectedTrendKeys.has("connessioni")
-                      ? "bg-white border-2 border-black text-black"
-                      : "bg-white border border-black/30 text-black/40 hover:border-black/60 hover:text-black/70"
-                  }`}
-                >
-                  Connessioni
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSelectedTrendKeys((prev) => {
-                      const next = new Set(prev);
-                      if (next.has("appuntamenti")) next.delete("appuntamenti");
-                      else next.add("appuntamenti");
-                      return next;
-                    })
-                  }
-                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
-                    selectedTrendKeys.has("appuntamenti")
-                      ? "bg-white border-2 border-black text-black"
-                      : "bg-white border border-black/30 text-black/40 hover:border-black/60 hover:text-black/70"
-                  }`}
-                >
-                  Appuntamenti
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSelectedTrendKeys((prev) => {
-                      const next = new Set(prev);
-                      if (next.has("consulenze")) next.delete("consulenze");
-                      else next.add("consulenze");
-                      return next;
-                    })
-                  }
-                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
-                    selectedTrendKeys.has("consulenze")
-                      ? "bg-white border-2 border-black text-black"
-                      : "bg-white border border-black/30 text-black/40 hover:border-black/60 hover:text-black/70"
-                  }`}
-                >
-                  Consulenze
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSelectedTrendKeys((prev) => {
-                      const next = new Set(prev);
-                      if (next.has("chiusure")) next.delete("chiusure");
-                      else next.add("chiusure");
-                      return next;
-                    })
-                  }
-                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
-                    selectedTrendKeys.has("chiusure")
-                      ? "bg-white border-2 border-black text-black"
-                      : "bg-white border border-black/30 text-black/40 hover:border-black/60 hover:text-black/70"
-                  }`}
-                >
-                  Chiusure
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSelectedTrendKeys((prev) => {
-                      const next = new Set(prev);
-                      if (next.has("boom")) next.delete("boom");
-                      else next.add("boom");
-                      return next;
-                    })
-                  }
-                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
-                    selectedTrendKeys.has("boom")
-                      ? "bg-white border-2 border-black text-black"
-                      : "bg-white border border-black/30 text-black/40 hover:border-black/60 hover:text-black/70"
-                  }`}
-                >
-                  Boom
-                </button>
-              </div>
+              ))}
             </div>
-            <div className="mt-4 h-[340px]">
-              <TimeSeriesChart
-                data={timeSeries}
-                visibleKeys={trendVisibleKeys}
+
+            <div className="mt-4 h-[380px]">
+              <AndamentoChart
+                mesi={vista.mesi}
+                serie={vista.serie}
+                metrica={vista.m}
+                anomalie={vista.chiavi}
               />
+            </div>
+
+            <div className="mt-5 border-t border-slate-200 pt-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Picchi e cali fuori dal normale
+              </div>
+              {vista.anomalie.length === 0 ? (
+                <p className="mt-2 text-sm text-slate-500">
+                  Nessun mese fuori dal normale su questa metrica. Servono almeno quattro mesi
+                  completi per dire cosa sia normale: chi ha cominciato da poco non compare.
+                </p>
+              ) : (
+                <ul className="mt-2 space-y-1.5 text-sm text-slate-700">
+                  {vista.anomalie.slice(0, 8).map((a) => (
+                    <li key={`${a.gruppo}|${a.mese}`} className="flex items-start gap-2">
+                      <span
+                        aria-hidden="true"
+                        className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
+                          a.buona ? "bg-emerald-600" : "bg-rose-600"
+                        }`}
+                      />
+                      <span>
+                        <strong className="font-semibold text-slate-900">{a.gruppo}</strong>
+                        {" · "}
+                        {etichettaMese(a.mese)}: {vista.m.label}{" "}
+                        <strong className={a.buona ? "text-emerald-700" : "text-rose-700"}>
+                          {formattaValore(a.valore, vista.m)}
+                        </strong>{" "}
+                        contro una normalita' fra {formattaValore(a.normalita.basso, vista.m)} e{" "}
+                        {formattaValore(a.normalita.alto, vista.m)}.
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </Card>
         </div>
-        
+
       <div id="stati-lead" className="scroll-mt-6">
         <SectionTitle className="mt-10">Stati Lead</SectionTitle>
       </div>

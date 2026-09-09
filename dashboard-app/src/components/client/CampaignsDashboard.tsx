@@ -21,7 +21,7 @@ import {
 import { PERIODO_DEFAULT, periodoScelto } from "@/lib/periodi";
 import { FiltersBar } from "@/components/Filters";
 import ChartTitle from "@/components/ui/ChartTitle";
-import CategorieAndamentoChart, { formattaValore } from "@/components/charts/CategorieAndamentoChart";
+import AndamentoChart, { formattaValore } from "@/components/charts/AndamentoChart";
 import {
   costruisciSerie,
   etichettaMese,
@@ -582,9 +582,14 @@ export default function CampaignsDashboard({
 
   const vista = useMemo(() => {
     const m = metrica(metricaScelta);
-    const righe = categorieScelte.length
-      ? andamento.filter((r) => categorieScelte.includes(r.categoria))
-      : andamento;
+    // "gruppo" e' il nome della linea, e qui e' la categoria: il grafico e il
+    // calcolo delle anomalie sono gli stessi che disegnano gli advisor, dove
+    // invece e' la persona.
+    const righe = (
+      categorieScelte.length
+        ? andamento.filter((r) => categorieScelte.includes(r.categoria))
+        : andamento
+    ).map((r) => ({ ...r, gruppo: r.categoria }));
     const mesi = mesiDi(righe);
     const { serie, anomalie } = costruisciSerie(righe, mesi, m);
     return {
@@ -594,7 +599,7 @@ export default function CampaignsDashboard({
       anomalie,
       // Il grafico ha bisogno di sapere in fretta se un punto e' segnalato,
       // mentre disegna ogni pallino di ogni linea.
-      chiavi: new Set(anomalie.map((a) => `${a.categoria}|${a.mese}`))
+      chiavi: new Set(anomalie.map((a) => `${a.gruppo}|${a.mese}`))
     };
   }, [andamento, categorieScelte, metricaScelta]);
 
@@ -693,7 +698,7 @@ export default function CampaignsDashboard({
 
         <div className="mt-4 h-[380px]">
           {andamentoPronto ? (
-            <CategorieAndamentoChart
+            <AndamentoChart
               mesi={vista.mesi}
               serie={vista.serie}
               metrica={vista.m}
@@ -723,7 +728,7 @@ export default function CampaignsDashboard({
           ) : (
             <ul className="mt-2 space-y-1.5 text-sm text-slate-700">
               {vista.anomalie.slice(0, 8).map((a) => (
-                <li key={`${a.categoria}|${a.mese}`} className="flex items-start gap-2">
+                <li key={`${a.gruppo}|${a.mese}`} className="flex items-start gap-2">
                   <span
                     aria-hidden="true"
                     className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
@@ -731,7 +736,7 @@ export default function CampaignsDashboard({
                     }`}
                   />
                   <span>
-                    <strong className="font-semibold text-slate-900">{a.categoria}</strong>
+                    <strong className="font-semibold text-slate-900">{a.gruppo}</strong>
                     {" · "}
                     {etichettaMese(a.mese)}: {vista.m.label}{" "}
                     <strong className={a.buona ? "text-emerald-700" : "text-rose-700"}>

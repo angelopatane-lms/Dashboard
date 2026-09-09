@@ -2,10 +2,10 @@
 
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { formatEur, formatFloat, formatInt, formatPct } from "@/lib/format";
-import { etichettaMese, type Metrica, type SerieCategoria } from "@/lib/andamento";
+import { etichettaMese, type Formato, type SerieAndamento } from "@/lib/andamento";
 
-// Dieci categorie, dieci tinte distinguibili anche accanto. Non e' la scala
-// azzurra delle tabelle: li' il colore dice "quanto", qui dice "chi".
+// Dieci tinte distinguibili anche accanto. Non e' la scala azzurra delle
+// tabelle: li' il colore dice "quanto", qui dice "chi".
 const COLORI = [
   "#0f172a",
   "#0ea5e9",
@@ -20,7 +20,14 @@ const COLORI = [
 ];
 
 /** Gli stessi formati delle celle della tabella Campagne, decimali compresi. */
-export function formattaValore(v: number, m: Metrica): string {
+/** Serve solo il formato: il grafico non calcola niente, disegna e basta. */
+export type MetricaDisegnabile = { label: string; formato: Formato };
+
+function totale(valori: Array<number | null>): number {
+  return valori.reduce<number>((acc, v) => acc + (v ?? 0), 0);
+}
+
+export function formattaValore(v: number, m: MetricaDisegnabile): string {
   if (m.formato === "euro_centesimi") return formatEur(v, 2);
   if (m.formato === "euro") return formatEur(v);
   if (m.formato === "percento") return formatPct(v, 1);
@@ -29,23 +36,28 @@ export function formattaValore(v: number, m: Metrica): string {
 }
 
 /**
- * L'andamento mensile delle categorie su una metrica sola.
+ * L'andamento mensile su una metrica sola, una linea per gruppo.
  *
- * Una linea per categoria, e i mesi fuori dalla banda di normalita' segnati con
- * un pallino pieno piu' grande: il grafico dice l'andamento, i pallini dicono
- * dove guardare, e l'elenco sotto dice cosa e' successo.
+ * Lo usano due pagine con due gruppi diversi - le campagne per categoria, gli
+ * advisor per persona - e i mesi fuori dalla banda di normalita' sono segnati
+ * con un pallino pieno piu' grande: il grafico dice l'andamento, i pallini
+ * dicono dove guardare, e l'elenco sotto dice cosa e' successo.
  */
-export default function CategorieAndamentoChart({
+export default function AndamentoChart({
   mesi,
   serie,
   metrica,
-  anomalie
+  anomalie,
+  quante = 12
 }: {
   mesi: string[];
-  serie: SerieCategoria[];
-  metrica: Metrica;
-  /** Chiavi "categoria|mese" dei punti da marcare. */
+  serie: SerieAndamento[];
+  metrica: MetricaDisegnabile;
+  /** Chiavi "gruppo|mese" dei punti da marcare. */
   anomalie: Set<string>;
+  /** Quante linee disegnare al massimo: oltre una dozzina non si distinguono
+   *  piu' ne' fra loro ne' nella legenda. Restano tutte nell'elenco sotto. */
+  quante?: number;
 }) {
   if (serie.length === 0 || mesi.length === 0) {
     return (
@@ -63,9 +75,19 @@ export default function CategorieAndamentoChart({
   // al grafico lo spiega.
   const etichette = mesi.map((mese, i) => etichettaMese(mese) + (i === mesi.length - 1 ? " *" : ""));
 
+  // Si tengono le linee piu' alte sulla metrica scelta: con venti advisor il
+  // grafico diventa illeggibile, e chi sta in fondo lo si trova col filtro
+  // Operatore o nell'elenco delle segnalazioni.
+  const disegnate =
+    serie.length <= quante
+      ? serie
+      : [...serie]
+          .sort((a, b) => totale(b.valori) - totale(a.valori))
+          .slice(0, quante);
+
   const dati = mesi.map((mese, i) => {
     const riga: Record<string, string | number | null> = { mese: etichette[i], iso: mese };
-    for (const s of serie) riga[s.categoria] = s.valori[i];
+    for (const s of disegnate) riga[s.gruppo] = s.valori[i];
     return riga;
   });
 
@@ -103,11 +125,11 @@ export default function CategorieAndamentoChart({
           wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
         />
 
-        {serie.map((s, i) => (
+        {disegnate.map((s, i) => (
           <Line
-            key={s.categoria}
+            key={s.gruppo}
             type="monotone"
-            dataKey={s.categoria}
+            dataKey={s.gruppo}
             stroke={COLORI[i % COLORI.length]}
             strokeWidth={2}
             // Senza questo una categoria che salta un mese spezza la linea in
@@ -115,11 +137,11 @@ export default function CategorieAndamentoChart({
             connectNulls
             dot={(props) => {
               const { cx, cy, index } = props as { cx?: number; cy?: number; index: number };
-              if (cx === undefined || cy === undefined) return <g key={`${s.categoria}-${index}`} />;
-              const fuori = anomalie.has(`${s.categoria}|${mesi[index]}`);
+              if (cx === undefined || cy === undefined) return <g key={`${s.gruppo}-${index}`} />;
+              const fuori = anomalie.has(`${s.gruppo}|${mesi[index]}`);
               return (
                 <circle
-                  key={`${s.categoria}-${index}`}
+                  key={`${s.gruppo}-${index}`}
                   cx={cx}
                   cy={cy}
                   r={fuori ? 5 : 2.5}
