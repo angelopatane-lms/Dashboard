@@ -7,8 +7,27 @@ import { chiaveNome } from "@/lib/nomi";
 // Un'ora alta 44 pixel: dalle 8 alle 20 fa 528, che sta in mezza schermata e
 // lascia leggere un appuntamento da mezz'ora senza schiacciarlo.
 const ALTEZZA_ORA = 44;
-const LARGHEZZA_COLONNA = 120;
 const LARGHEZZA_ORE = 64;
+
+/**
+ * Le colonne sono tutte della stessa larghezza, ricavata dal nome piu' lungo
+ * invece che scelta a occhio.
+ *
+ * Il nome sta su UNA RIGA SOLA e non deve essere tagliato: "Roberta
+ * Scicchita..." non e' un nome, e in un'agenda la prima cosa che si cerca e' di
+ * chi e' la colonna. Le intestazioni sono a 12px in semigrassetto, dove un
+ * carattere occupa circa 6,9 pixel; i 18 di margine coprono il padding.
+ *
+ * Oggi il piu' lungo e' "Valentina Mandarino", 19 caratteri: 150 pixel. Se un
+ * giorno entra qualcuno con un nome piu' lungo, la misura lo segue da sola.
+ * Il minimo tiene le colonne leggibili anche in una giornata di soli nomi
+ * corti; il massimo impedisce che un nome fuori scala renda la tabella
+ * impraticabile - li' il nome intero resta nell'etichetta col mouse sopra.
+ */
+function larghezzaColonna(nomi: string[]): number {
+  const piuLungo = nomi.reduce((acc, n) => Math.max(acc, n.length), 0);
+  return Math.min(Math.max(Math.round(piuLungo * 6.9) + 18, 120), 240);
+}
 
 /**
  * IL COLORE DICE IL TIPO, NON LA PERSONA.
@@ -183,6 +202,8 @@ export default function AgendaGiornaliera({
     return { primaOra: prima, ultimaOra: Math.min(ultima, 24) };
   }, [eventi]);
 
+  const larghezzaCol = useMemo(() => larghezzaColonna(colonne.map((c) => c.nome)), [colonne]);
+
   const ore = ultimaOra - primaOra;
   const altezza = ore * ALTEZZA_ORA;
   const y = (minuti: number) => ((minuti - primaOra * 60) / 60) * ALTEZZA_ORA;
@@ -253,7 +274,7 @@ export default function AgendaGiornaliera({
           quei sette bastavano a far comparire una barra verticale lunga quanto
           tutta l'agenda. Lo spazio in cima glieli ridà. */}
       <div className="mt-4 overflow-x-auto rounded-md pt-2">
-        <div style={{ minWidth: LARGHEZZA_ORE + colonne.length * LARGHEZZA_COLONNA }}>
+        <div style={{ minWidth: LARGHEZZA_ORE + colonne.length * larghezzaCol }}>
           {/* intestazione: i nomi restano in alto mentre si scorre, come nelle tabelle */}
           <div className="sticky top-0 z-20 flex bg-white shadow-[inset_0_-2px_0_0_#e2e8f0]">
             <div
@@ -261,13 +282,8 @@ export default function AgendaGiornaliera({
               style={{ width: LARGHEZZA_ORE }}
             />
             {colonne.map((c) => (
-              <div key={c.nome} className="flex-shrink-0 px-2 pb-2.5 pt-2" style={{ width: LARGHEZZA_COLONNA }}>
-                {/* Il nome va a capo invece di essere tagliato: "Roberta
-                    Scicchita..." e "Valentina Manda..." non sono nomi. Andare a
-                    capo costa una riga di intestazione, allargare la colonna
-                    fino al nome piu' lungo costerebbe sedici pixel per tutte e
-                    venti, cioe' altri trecento pixel da scorrere. */}
-                <div className="text-xs font-semibold leading-tight text-slate-800 break-words" title={c.nome}>
+              <div key={c.nome} className="flex-shrink-0 px-2 pb-2.5 pt-2" style={{ width: larghezzaCol }}>
+                <div className="truncate text-xs font-semibold text-slate-800" title={c.nome}>
                   {c.nome}
                 </div>
                 <div className="mt-0.5 text-[11px] text-slate-400">
@@ -305,11 +321,11 @@ export default function AgendaGiornaliera({
                 <div
                   key={c.nome}
                   className="relative flex-shrink-0 shadow-[inset_-1px_0_0_0_#f1f5f9]"
-                  style={{ width: LARGHEZZA_COLONNA }}
+                  style={{ width: larghezzaCol }}
                 >
                   {c.eventi.map((e, i) => {
                     const colore = COLORI[e.tipo];
-                    const largo = (LARGHEZZA_COLONNA - 6) / c.corsie;
+                    const largo = (larghezzaCol - 6) / c.corsie;
                     const alto = Math.max(y(e.fineMin) - y(e.inizioMin) - 2, 14);
                     return (
                       <div
