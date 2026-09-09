@@ -434,32 +434,42 @@ export default function CampaignAdsTable({
   const [ordina, setOrdina] = useState<keyof DerivedMetrics | null>(null);
 
   /**
-   * ORDINANDO, IL RAGGRUPPAMENTO PER CATEGORIA SI SCIOGLIE.
+   * L'ORDINAMENTO RESTA DENTRO LE CATEGORIE, che non si sciolgono mai: la
+   * tabella e' letta per linea di prodotto, e un elenco unico costringerebbe a
+   * ricomporre a mente quali righe appartengono a quale.
    *
-   * Ordinare dentro ogni categoria avrebbe lasciato la campagna piu' grande a
-   * meta' pagina, sotto a un'intera categoria che pesa meno: la domanda che si
-   * fa cliccando "Consulenze" e' quali sono le prime dieci, non quali sono le
-   * prime dieci di ognuna. Diventa un elenco unico, e la categoria si legge
-   * riga per riga nella sua colonna, che per questo non sparisce mai.
+   * Si ordina su due livelli, tutti e due sulla colonna cliccata: le categorie
+   * fra loro per il proprio totale, e le campagne dentro ognuna. Lasciando le
+   * categorie ferme al loro ordine di spesa, cliccando "Consulenze" in cima
+   * sarebbe rimasta la categoria che spende di piu' anche senza una consulenza.
    *
-   * Ogni riga diventa un gruppo da una riga sola: cosi' il disegno della
-   * tabella resta uno, invece di avere due strade da tenere allineate.
+   * "Altro" e "Nessuna" restano in fondo come sempre: non sono linee di
+   * prodotto ma il posto dove finisce cio' che la regola non riconosce, e in
+   * mezzo alle altre sembrerebbero categorie come tutte.
    */
   const gruppiVisibili = useMemo(() => {
     if (!ordina) return groups;
-    const tutte = groups.flatMap((g) =>
-      g.rows.map((r) => ({
-        categoria: g.categoria,
-        rows: [r],
-        totale: r.raw,
-        // Il valore si calcola una volta sola e non a ogni confronto: sono
-        // centinaia di righe, e ordinarle ne fa migliaia.
-        valore: deriveMetrics(r.raw)[ordina]
-      }))
-    );
     // Le celle vuote - un costo per lead dove non c'e' spesa - vanno in fondo:
     // trattarle come zero le metterebbe in mezzo ai valori bassi veri.
-    return tutte.sort((a, b) => (b.valore ?? -Infinity) - (a.valore ?? -Infinity));
+    const valore = (raw: RawTotals) => deriveMetrics(raw)[ordina] ?? -Infinity;
+
+    return groups
+      .map((g) => ({
+        ...g,
+        // Il valore si calcola una volta per riga e non a ogni confronto: sono
+        // centinaia di righe, e ordinarle fa migliaia di confronti. A parita'
+        // si ordina per nome, se no l'ordine cambierebbe da un giro all'altro.
+        rows: g.rows
+          .map((r) => ({ r, v: valore(r.raw) }))
+          .sort((a, b) => b.v - a.v || a.r.campagna.localeCompare(b.r.campagna, "it"))
+          .map((x) => x.r)
+      }))
+      .sort((a, b) => {
+        const aUltima = categoriaResidua(a.categoria);
+        const bUltima = categoriaResidua(b.categoria);
+        if (aUltima !== bUltima) return aUltima ? 1 : -1;
+        return valore(b.totale) - valore(a.totale);
+      });
   }, [groups, ordina]);
 
   const alternaOrdine = (chiave: keyof DerivedMetrics) =>
@@ -628,24 +638,20 @@ export default function CampaignAdsTable({
             piu' campagne nella stessa schermata. */}
         <tbody>
           {gruppiVisibili.map((g, gIdx) => (
-            // La chiave porta anche la posizione: ordinando, la stessa
-            // categoria compare su piu' gruppi e il solo nome non basterebbe a
-            // distinguerli.
-            <Fragment key={`${g.categoria}-${gIdx}`}>
+            <Fragment key={g.categoria}>
               {g.rows.map((r, idx) => (
                 <tr
                   key={`${g.categoria}-${r.campagna}`}
                   // La primissima riga non ha bordo alto: li' la linea la
                   // disegna gia' l'intestazione, e due linee attaccate ne
-                  // farebbero una doppia. La linea marcata apre una categoria
-                  // nuova, quindi ordinando - dove ogni riga fa storia a se' -
-                  // non ha piu' niente da separare e resta quella leggera.
+                  // farebbero una doppia. Le altre categorie lo tengono, e'
+                  // quello che le separa fra loro.
                   className={`group hover:bg-slate-50/70 transition-colors ${
-                    gIdx === 0 && idx === 0
-                      ? ""
-                      : idx === 0 && !ordina
-                        ? "border-t-2 border-slate-200"
-                        : "border-t border-slate-100"
+                    idx !== 0
+                      ? "border-t border-slate-100"
+                      : gIdx === 0
+                        ? ""
+                        : "border-t-2 border-slate-200"
                   }`}
                 >
                   {idx === 0 ? (
