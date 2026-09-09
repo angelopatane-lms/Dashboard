@@ -368,7 +368,7 @@ function MetricCells({ m, max }: { m: DerivedMetrics; max: MaxValues }) {
  * mouse, che e' l'unico modo che non muove niente: aprirlo dentro la cella
  * allungava la riga e faceva ballare la tabella sotto le mani.
  *
- * VALE IN TUTTE E QUATTRO LE VISTE, Singole compresa. Li' il nome e' quello
+ * VALE IN TUTTE E QUATTRO LE VISTE, Separate compresa. Li' il nome e' quello
  * scritto in HubSpot e si potrebbe volerlo cercare per intero, ma quello che
  * distingue una variante - il suffisso - sta in fondo e resta visibile: a
  * cadere e' solo il prefisso, che e' scritto nella colonna accanto.

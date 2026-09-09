@@ -143,11 +143,11 @@ export type Variante = "tutte" | "unificate" | "instant" | "non_instant";
 export const VARIANTE_DEFAULT: Variante = "unificate";
 
 export const VARIANTI: Array<{ label: string; value: Variante }> = [
-  // "Singole" e non "Tutte": la voce non aggiunge campagne, le separa. Mostra
+  // "Separate" e non "Tutte": la voce non aggiunge campagne, le divide. Mostra
   // ogni variante per conto suo invece di sommarla alla base, ed e' l'unica
-  // vista dove il nome e' quello scritto in HubSpot, suffisso compreso. Il
-  // valore resta "tutte", che e' quello che viaggia nelle query.
-  { label: "Singole", value: "tutte" },
+  // vista dove il nome porta ancora il suffisso che la distingue. Il valore
+  // resta "tutte", che e' quello che viaggia nelle query.
+  { label: "Separate", value: "tutte" },
   { label: "Unificate", value: "unificate" },
   { label: "Instant", value: "instant" },
   { label: "Non Instant", value: "non_instant" }
@@ -172,7 +172,7 @@ export function varianteEsegmento(variante: Variante): boolean {
  * cosa che sta gia' scritta nel filtro in alto. Il nome intero resta
  * nell'etichetta che compare col mouse sopra.
  *
- * Non va fatto nella vista Singole, dove il suffisso e' l'unica cosa che
+ * Non va fatto nella vista Separate, dove il suffisso e' l'unica cosa che
  * distingue la variante dalla sua campagna base: li' due righe diverse
  * diventerebbero due righe con lo stesso nome.
  */
