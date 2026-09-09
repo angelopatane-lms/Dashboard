@@ -263,17 +263,14 @@ export default function AgendaGiornaliera({
         <div style={{ minWidth: LARGHEZZA_ORE + colonne.length * larghezzaCol }}>
           {/* intestazione: i nomi restano in alto mentre si scorre, come nelle tabelle */}
           <div className="sticky top-0 z-20 flex bg-white shadow-[inset_0_-2px_0_0_#e2e8f0]">
-            <div
-              className="sticky left-0 z-30 flex-shrink-0 bg-white shadow-[inset_-1px_0_0_0_#cbd5e1]"
-              style={{ width: LARGHEZZA_ORE }}
-            />
+            {/* Senza la linea verticale: si ferma sotto i nomi, come nelle
+                altre tabelle, dove separa le colonne dei dati e non
+                l'intestazione. */}
+            <div className="sticky left-0 z-30 flex-shrink-0 bg-white" style={{ width: LARGHEZZA_ORE }} />
             {colonne.map((c) => (
               <div key={c.nome} className="flex-shrink-0 px-2 pb-2.5 pt-2" style={{ width: larghezzaCol }}>
                 <div className="truncate text-sm font-semibold text-slate-900" title={c.nome}>
                   {c.nome}
-                </div>
-                <div className="mt-0.5 text-xs text-slate-500">
-                  {c.quanti === 1 ? "1 appuntamento" : `${c.quanti} appuntamenti`}
                 </div>
               </div>
             ))}
@@ -371,6 +368,25 @@ export default function AgendaGiornaliera({
                 </>
               ) : null}
             </div>
+          </div>
+
+          {/* IL CONTEGGIO IN FONDO, come la riga del totale delle tabelle.
+              Sotto il nome rubava spazio all'intestazione e allontanava le
+              colonne dalla prima ora; qui chiude la giornata, che e' il punto
+              in cui uno tira le somme. La linea sopra e' quella marcata del
+              totale, e la colonna delle ore resta bianca e senza riga: non e'
+              un dato da sommare. */}
+          <div className="mt-2 flex border-t-2 border-slate-200">
+            <div className="sticky left-0 z-10 flex-shrink-0 bg-white" style={{ width: LARGHEZZA_ORE }} />
+            {colonne.map((c) => (
+              <div
+                key={c.nome}
+                className="flex-shrink-0 truncate px-2 py-2 text-xs font-medium text-slate-600"
+                style={{ width: larghezzaCol }}
+              >
+                {c.quanti === 1 ? "1 appuntamento" : `${c.quanti} appuntamenti`}
+              </div>
+            ))}
           </div>
         </div>
       </div>
