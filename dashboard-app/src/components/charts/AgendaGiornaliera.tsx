@@ -15,10 +15,11 @@ const LARGHEZZA_ORE = 64;
  *
  * Il nome sta su UNA RIGA SOLA e non deve essere tagliato: "Roberta
  * Scicchita..." non e' un nome, e in un'agenda la prima cosa che si cerca e' di
- * chi e' la colonna. Le intestazioni sono a 12px in semigrassetto, dove un
- * carattere occupa circa 6,9 pixel; i 18 di margine coprono il padding.
+ * chi e' la colonna. Le intestazioni sono a 14px in semigrassetto, come i nomi
+ * delle altre tabelle, dove un carattere occupa circa 7,5 pixel; i 20 di
+ * margine coprono il padding.
  *
- * Oggi il piu' lungo e' "Valentina Mandarino", 19 caratteri: 150 pixel. Se un
+ * Oggi il piu' lungo e' "Valentina Mandarino", 19 caratteri: 163 pixel. Se un
  * giorno entra qualcuno con un nome piu' lungo, la misura lo segue da sola.
  * Il minimo tiene le colonne leggibili anche in una giornata di soli nomi
  * corti; il massimo impedisce che un nome fuori scala renda la tabella
@@ -26,7 +27,7 @@ const LARGHEZZA_ORE = 64;
  */
 function larghezzaColonna(nomi: string[]): number {
   const piuLungo = nomi.reduce((acc, n) => Math.max(acc, n.length), 0);
-  return Math.min(Math.max(Math.round(piuLungo * 6.9) + 18, 120), 240);
+  return Math.min(Math.max(Math.round(piuLungo * 7.5) + 20, 130), 260);
 }
 
 /**
@@ -77,17 +78,6 @@ function giornoRoma(scarto = 0): string {
   return d.toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
 }
 
-function etichettaGiorno(giorno: string): string {
-  const d = new Date(`${giorno}T12:00:00Z`);
-  return d.toLocaleDateString("it-IT", {
-    timeZone: "Europe/Rome",
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric"
-  });
-}
-
 type EventoInCorsia = EventoAgenda & { corsia: number };
 
 /**
@@ -124,8 +114,7 @@ export default function AgendaGiornaliera({
   eventi,
   operatori,
   caricamento,
-  errore,
-  aggiornato
+  errore
 }: {
   giorno: string;
   onGiorno: (giorno: string) => void;
@@ -134,8 +123,6 @@ export default function AgendaGiornaliera({
   operatori: string[];
   caricamento: boolean;
   errore: boolean;
-  /** "14:32", l'ora dell'ultima lettura. */
-  aggiornato: string;
 }) {
   // L'ora corrente si aggiorna da sola: una linea ferma a quando si e' aperta
   // la pagina sarebbe peggio che non averla.
@@ -220,13 +207,13 @@ export default function AgendaGiornaliera({
           {LEGENDA.map((v) => (
             <div key={v.tipo} className="flex items-center gap-2">
               <span className="inline-block h-3 w-3 rounded-[3px]" style={{ background: COLORI[v.tipo].fondo }} />
-              <span className="text-xs text-slate-600">{v.label}</span>
+              <span className="text-xs font-medium text-slate-700">{v.label}</span>
             </div>
           ))}
           {lineaOra !== null ? (
             <div className="flex items-center gap-2">
               <span className="inline-block h-0.5 w-[18px]" style={{ background: "#e11d48" }} />
-              <span className="text-xs text-slate-600">ora corrente</span>
+              <span className="text-xs font-medium text-slate-700">ora corrente</span>
             </div>
           ) : null}
         </div>
@@ -251,12 +238,6 @@ export default function AgendaGiornaliera({
                 {v.label}
               </button>
             ))}
-          </div>
-          <div className="text-right">
-            <div className="text-xs font-semibold text-slate-700">{etichettaGiorno(giorno)}</div>
-            <div className="mt-0.5 text-[11px] text-slate-400">
-              {caricamento ? "lettura in corso..." : `aggiornato alle ${aggiornato}`}
-            </div>
           </div>
         </div>
       </div>
@@ -288,17 +269,21 @@ export default function AgendaGiornaliera({
             />
             {colonne.map((c) => (
               <div key={c.nome} className="flex-shrink-0 px-2 pb-2.5 pt-2" style={{ width: larghezzaCol }}>
-                <div className="truncate text-xs font-semibold text-slate-800" title={c.nome}>
+                <div className="truncate text-sm font-semibold text-slate-900" title={c.nome}>
                   {c.nome}
                 </div>
-                <div className="mt-0.5 text-[11px] text-slate-400">
+                <div className="mt-0.5 text-xs text-slate-500">
                   {c.quanti === 1 ? "1 appuntamento" : `${c.quanti} appuntamenti`}
                 </div>
               </div>
             ))}
           </div>
 
-          <div className="relative flex">
+          {/* Lo stacco dalla riga dei nomi non e' estetico: l'etichetta delle
+              8:00 e' centrata sulla sua riga, quindi sporge di otto pixel verso
+              l'alto, e senza questo spazio finiva sotto l'intestazione - che ha
+              il fondo bianco e le sta sopra - e si leggeva a meta'. */}
+          <div className="relative mt-2 flex">
             {/* colonna delle ore, ferma a sinistra */}
             {/* NIENTE position NELLO STILE INLINE. C'era "relative", per fare
                 da riferimento alle etichette delle ore, e sovrascriveva la
@@ -312,8 +297,8 @@ export default function AgendaGiornaliera({
               {Array.from({ length: ore + 1 }, (_, i) => primaOra + i).map((h, i) => (
                 <div
                   key={h}
-                  className="absolute right-2.5 text-[11px] tabular-nums text-slate-400"
-                  style={{ top: i * ALTEZZA_ORA - 7 }}
+                  className="absolute right-2.5 text-xs font-medium tabular-nums text-slate-500"
+                  style={{ top: i * ALTEZZA_ORA - 8 }}
                 >
                   {String(h).padStart(2, "0")}:00
                 </div>
@@ -353,7 +338,7 @@ export default function AgendaGiornaliera({
                         }}
                       >
                         <div
-                          className="truncate text-[11px] font-semibold leading-[13px]"
+                          className="truncate text-xs font-semibold leading-[14px]"
                           style={{
                             color: colore.testo,
                             textDecoration: e.tipo === "annullato" ? "line-through" : undefined
@@ -362,7 +347,7 @@ export default function AgendaGiornaliera({
                           {e.titolo}
                         </div>
                         {alto >= 30 ? (
-                          <div className="text-[10px] leading-[13px]" style={{ color: colore.secondario }}>
+                          <div className="text-[11px] leading-[14px]" style={{ color: colore.secondario }}>
                             {e.inizio}
                             {e.fine ? ` – ${e.fine}` : ""}
                           </div>

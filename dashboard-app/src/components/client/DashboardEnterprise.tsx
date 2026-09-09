@@ -183,7 +183,6 @@ export default function DashboardEnterprise({
   const [eventiAgenda, setEventiAgenda] = useState<EventoAgenda[]>([]);
   const [agendaInCorso, setAgendaInCorso] = useState(true);
   const [agendaFallita, setAgendaFallita] = useState(false);
-  const [agendaLetta, setAgendaLetta] = useState("");
 
   useEffect(() => {
     let annullato = false;
@@ -195,9 +194,6 @@ export default function DashboardEnterprise({
         setEventiAgenda(d.eventi ?? []);
         setAgendaFallita(false);
         setAgendaInCorso(false);
-        setAgendaLetta(
-          new Date().toLocaleTimeString("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" })
-        );
       })
       .catch((err) => {
         console.error("[advisor-agenda]", err);
@@ -704,7 +700,6 @@ export default function DashboardEnterprise({
                 operatori={personeAmmesse}
                 caricamento={agendaInCorso}
                 errore={agendaFallita}
-                aggiornato={agendaLetta}
               />
             </Card>
           </>
