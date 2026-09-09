@@ -268,12 +268,15 @@ export default function AgendaGiornaliera({
         </div>
       ) : null}
 
-      {/* SOLO SCORRIMENTO ORIZZONTALE. Il riquadro e' alto quanto la griglia,
-          quindi in verticale non c'e' niente da scorrere - ma l'etichetta delle
-          8:00 e' centrata sulla riga e sporge di sette pixel sopra il bordo, e
-          quei sette bastavano a far comparire una barra verticale lunga quanto
-          tutta l'agenda. Lo spazio in cima glieli ridà. */}
-      <div className="mt-4 overflow-x-auto rounded-md pt-2">
+      {/* SOLO SCORRIMENTO ORIZZONTALE, e lo spazio sopra e sotto serve a questo.
+          Il riquadro e' alto quanto la griglia, quindi in verticale non c'e'
+          niente da scorrere: la barra verticale la facevano le etichette delle
+          ore, che sono centrate sulla riga e quindi sporgono di sette pixel -
+          quella delle 8:00 sopra il bordo, quella delle 20:00 sotto. Sette
+          pixel bastavano a far comparire una barra lunga quanto tutta l'agenda.
+          Il padding verticale glieli ridà da entrambe le parti: la prima volta
+          l'avevo messo solo in cima, e la barra e' rimasta. */}
+      <div className="mt-4 overflow-x-auto rounded-md py-2">
         <div style={{ minWidth: LARGHEZZA_ORE + colonne.length * larghezzaCol }}>
           {/* intestazione: i nomi restano in alto mentre si scorre, come nelle tabelle */}
           <div className="sticky top-0 z-20 flex bg-white shadow-[inset_0_-2px_0_0_#e2e8f0]">
