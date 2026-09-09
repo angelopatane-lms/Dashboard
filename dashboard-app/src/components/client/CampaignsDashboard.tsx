@@ -745,9 +745,6 @@ export default function CampaignsDashboard({
             adsRows={campaignAdsRows}
             campaignSummary={campaignSummaryFull}
             funnelByCampagna={funnelByCampagna}
-            // In Tutte i nomi restano interi: li' si guardano le singole
-            // varianti, e serve il nome esatto com'e' scritto in HubSpot.
-            abbreviaNomi={variante !== "tutte"}
           />
         ) : (
           <div className="flex h-64 items-center justify-center text-sm text-slate-500">

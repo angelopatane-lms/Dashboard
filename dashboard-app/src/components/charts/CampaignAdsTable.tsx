@@ -350,19 +350,22 @@ function MetricCells({ m, max }: { m: DerivedMetrics; max: MaxValues }) {
 /**
  * La cella con il nome della campagna.
  *
- * Mostra il nome accorciato - quando la vista lo prevede - su una riga sola,
- * tagliandolo con i puntini se non ci sta. Il nome intero si legge fermandoci
- * sopra il mouse, che e' l'unico modo che non muove niente: aprirlo dentro la
- * cella allungava la riga e faceva ballare la tabella sotto le mani.
+ * Mostra il nome senza il prefisso di categoria, su una riga sola, tagliandolo
+ * con i puntini se non ci sta. Il nome intero si legge fermandoci sopra il
+ * mouse, che e' l'unico modo che non muove niente: aprirlo dentro la cella
+ * allungava la riga e faceva ballare la tabella sotto le mani.
+ *
+ * VALE IN TUTTE E QUATTRO LE VISTE, Singole compresa. Li' il nome e' quello
+ * scritto in HubSpot e si potrebbe volerlo cercare per intero, ma quello che
+ * distingue una variante - il suffisso - sta in fondo e resta visibile: a
+ * cadere e' solo il prefisso, che e' scritto nella colonna accanto.
  */
 function CellaNome({
   campagna,
-  sinistra,
-  abbrevia
+  sinistra
 }: {
   campagna: string;
   sinistra: number;
-  abbrevia: boolean;
 }) {
   return (
     <td
@@ -370,7 +373,7 @@ function CellaNome({
       style={{ left: sinistra }}
       title={campagna}
     >
-      {abbrevia ? nomeSenzaCategoria(campagna) : campagna}
+      {nomeSenzaCategoria(campagna)}
     </td>
   );
 }
@@ -378,18 +381,11 @@ function CellaNome({
 export default function CampaignAdsTable({
   adsRows,
   campaignSummary,
-  funnelByCampagna,
-  abbreviaNomi = false
+  funnelByCampagna
 }: {
   adsRows: CampaignAdsRow[];
   campaignSummary: CampaignSummary[];
   funnelByCampagna?: Map<string, FunnelCampagna>;
-  /** Mostra i nomi senza il prefisso di categoria (vedi nomeSenzaCategoria).
-   *
-   *  Vale in Unificate, Instant e Non Instant, non in Tutte: li' si guardano le
-   *  singole varianti, e conviene avere il nome esattamente com'e' scritto in
-   *  HubSpot per poterlo cercare. */
-  abbreviaNomi?: boolean;
 }) {
   const summaryByCampagna = useMemo(() => {
     const map = new Map<string, CampaignSummary>();
@@ -493,30 +489,19 @@ export default function CampaignAdsTable({
       // piu' lungo che esiste oggi: serve solo a impedire che un nome fuori
       // scala renda la tabella inutilizzabile. Oltre quella soglia il nome
       // uscirebbe dalla colonna, e si vedrebbe.
-    // La misura si prende sui nomi COME SI VEDONO: accorciati dove la vista li
-    // accorcia, altrimenti interi. Misurarla sempre sugli interi terrebbe
-    // occupata una colonna larga il doppio del suo contenuto.
-    const campagnaPiena = larghezzaColonnaTesto(
-      groups.flatMap((g) =>
-        g.rows.map((r) => (abbreviaNomi ? nomeSenzaCategoria(r.campagna) : r.campagna))
-      ),
+    // La misura si prende sui nomi COME SI VEDONO, cioe' senza il prefisso di
+    // categoria. Misurarla sugli interi terrebbe occupata una colonna larga il
+    // doppio del suo contenuto - e da quando e' bloccata, quei pixel sono
+    // sempre occupati e non si possono scorrere via.
+    //
+    // Non c'e' piu' la moderazione che mediava con la vecchia larghezza fissa
+    // di 340 pixel: serviva ai nomi interi, che arrivavano a 94 caratteri.
+    // Accorciati sono gia' corti, e prenderli per intero non taglia niente.
+    const campagna = larghezzaColonnaTesto(
+      groups.flatMap((g) => g.rows.map((r) => nomeSenzaCategoria(r.campagna))),
       200,
       900
     );
-    // MODERAZIONE, solo sui nomi interi: media fra la larghezza fissa che
-    // c'era prima (340) e quella che basterebbe al nome piu' lungo.
-    // Dimensionare sul massimo assoluto costava fino a 742 pixel - e da quando
-    // la colonna e' bloccata, quei pixel sono sempre occupati e non si possono
-    // scorrere via.
-    //
-    // Misurato sulle 1.870 campagne conformi: a 541 pixel restano tagliati 7
-    // nomi, lo 0,4%. A 340, cioe' la larghezza di prima, ne restavano tagliati
-    // 335, il 18%. Per quei 7 il nome intero si legge col mouse sopra, o
-    // aprendo la cella con un click.
-    //
-    // Accorciati la moderazione non serve: sono gia' corti, e prenderli per
-    // intero non taglia niente e non costa spazio.
-    const campagna = abbreviaNomi ? campagnaPiena : Math.round((340 + campagnaPiena) / 2);
     // La tabella riceve una larghezza ESPLICITA, somma delle sue colonne.
     //
     // Con table-layout: fixed e larghezza automatica il browser ha margine di
@@ -534,7 +519,7 @@ export default function CampaignAdsTable({
       campagna,
       totale: categoria + campagna + HEADERS.length * LARGHEZZA_NUMERI
     };
-  }, [groups, abbreviaNomi]);
+  }, [groups]);
 
   const grandTotal = useMemo(
     () => groups.reduce((acc, g) => addRaw(acc, g.totale), emptyRaw),
@@ -663,11 +648,7 @@ export default function CampaignAdsTable({
                       {g.categoria}
                     </td>
                   ) : null}
-                  <CellaNome
-                    campagna={r.campagna}
-                    sinistra={larghezze.categoria}
-                    abbrevia={abbreviaNomi}
-                  />
+                  <CellaNome campagna={r.campagna} sinistra={larghezze.categoria} />
                   <MetricCells m={deriveMetrics(r.raw)} max={maxValues} />
                 </tr>
               ))}
