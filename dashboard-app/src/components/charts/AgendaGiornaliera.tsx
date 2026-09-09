@@ -17,12 +17,26 @@ const LARGHEZZA_ORE = 64;
  * significa niente: qui invece dice a che punto e' l'appuntamento, e lo
  * decidono i dati - e' l'esito che HubSpot tiene sul meeting.
  */
-const COLORI: Record<TipoEvento, { fondo: string; bordo: string; testo: string; chiaro: string }> = {
-  appuntamento: { fondo: "#e0f2fe", bordo: "#bae6fd", testo: "#075985", chiaro: "#0369a1" },
-  svolta: { fondo: "#d1fae5", bordo: "#a7f3d0", testo: "#065f46", chiaro: "#047857" },
-  interno: { fondo: "#fef3c7", bordo: "#fde68a", testo: "#92400e", chiaro: "#b45309" },
-  annullato: { fondo: "#f8fafc", bordo: "#e2e8f0", testo: "#94a3b8", chiaro: "#94a3b8" }
+/**
+ * Tinte piene e testo bianco, senza bordo.
+ *
+ * SONO TUTTE ALLO STESSO LIVELLO DI LUMINOSITA', scelto perche' il bianco sopra
+ * si legga davvero: a 10 pixel un contrasto sotto il 4,5 a 1 si perde, e i toni
+ * piu' chiari di questi - il ciano a meta' scala, il verde smeraldo - stanno
+ * fra il 3,8 e il 4,1. Questi quattro stanno fra 4,7 e 5,9.
+ *
+ * Il secondario e' bianco trasparente e non un grigio: cambiando fondo, un
+ * grigio fisso funzionerebbe su una tinta e sparirebbe sulle altre.
+ */
+const COLORI: Record<TipoEvento, { fondo: string }> = {
+  appuntamento: { fondo: "#0369a1" },
+  svolta: { fondo: "#047857" },
+  interno: { fondo: "#b45309" },
+  annullato: { fondo: "#64748b" }
 };
+
+const TESTO = "#ffffff";
+const TESTO_SECONDARIO = "rgba(255,255,255,0.78)";
 
 const LEGENDA: Array<{ tipo: TipoEvento; label: string }> = [
   { tipo: "appuntamento", label: "Fissato" },
@@ -225,10 +239,7 @@ export default function AgendaGiornaliera({
       <div className="mt-4 flex flex-wrap items-center gap-5">
         {LEGENDA.map((v) => (
           <div key={v.tipo} className="flex items-center gap-2">
-            <span
-              className="inline-block h-3 w-3 rounded-[3px]"
-              style={{ background: COLORI[v.tipo].fondo, border: `1px solid ${COLORI[v.tipo].bordo}` }}
-            />
+            <span className="inline-block h-3 w-3 rounded-[3px]" style={{ background: COLORI[v.tipo].fondo }} />
             <span className="text-xs text-slate-600">{v.label}</span>
           </div>
         ))}
@@ -312,22 +323,21 @@ export default function AgendaGiornaliera({
                           width: largo - 1,
                           height: alto,
                           background: colore.fondo,
-                          border: `1px solid ${colore.bordo}`,
-                          padding: "2px 5px",
+                          padding: "2px 6px",
                           boxSizing: "border-box"
                         }}
                       >
                         <div
                           className="truncate text-[11px] font-semibold leading-[13px]"
                           style={{
-                            color: colore.testo,
+                            color: TESTO,
                             textDecoration: e.tipo === "annullato" ? "line-through" : undefined
                           }}
                         >
                           {e.titolo}
                         </div>
                         {alto >= 30 ? (
-                          <div className="text-[10px] leading-[13px]" style={{ color: colore.chiaro }}>
+                          <div className="text-[10px] leading-[13px]" style={{ color: TESTO_SECONDARIO }}>
                             {e.inizio}
                             {e.fine ? ` – ${e.fine}` : ""}
                           </div>
