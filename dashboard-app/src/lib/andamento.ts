@@ -3,7 +3,12 @@
 
 import type { AndamentoRow } from "@/app/api/campaign-andamento/route";
 
-export type Formato = "numero" | "euro" | "volte";
+/**
+ * I formati sono quelli della tabella Campagne, decimali compresi: la spesa a
+ * due cifre perche' il foglio Ads la riporta al centesimo, l'importo a zero
+ * perche' sono migliaia di euro e i centesimi sarebbero rumore.
+ */
+export type Formato = "intero" | "euro" | "euro_centesimi" | "percento" | "volte";
 
 export type Metrica = {
   value: string;
@@ -16,64 +21,88 @@ export type Metrica = {
 };
 
 /**
- * L'ordine e' quello del funnel, da quanto si spende a quanto si incassa.
+ * LE METRICHE HANNO GLI STESSI NOMI DELLE COLONNE DELLA TABELLA, e lo stesso
+ * ordine: sono la stessa cosa guardata nel tempo invece che nel periodo, e due
+ * vocabolari sulla stessa pagina costringerebbero a tradurre a mente.
  *
- * Il ROAS e' il primo perche' e' la domanda vera - stiamo guadagnando - ma da
- * solo non dice mai perche'. Le altre servono a rispondere subito dopo: se il
- * ROAS scende, e' salita la spesa, sono calati i lead, o e' peggiorata la
- * conversione? Sono un click l'una dall'altra proprio per questo.
+ * "CPAS" e "CPA" sono i due costi che usa la tabella - per consulenza svolta e
+ * per vendita chiusa - e hanno preso il posto del "costo per appuntamento" che
+ * mi ero inventato, che nella tabella non esiste.
+ *
+ * NE MANCANO SETTE delle diciotto colonne, e non per dimenticanza: Lead Unici e
+ * CPL Unici vogliono la prima conversione di ogni persona, Chiamate e
+ * Connessioni la tabella delle telefonate, le tre percentuali di funnel i loro
+ * denominatori. Si possono aggiungere, ma ognuna e' una query in piu' su ogni
+ * apertura della pagina.
+ *
+ * Il ROAS resta la scelta di partenza: e' la domanda vera. Ma da solo non dice
+ * mai perche', ed e' per questo che le altre sono a un click.
  */
 export const METRICHE: Metrica[] = [
+  { value: "spesa", label: "Spesa", formato: "euro_centesimi", altoEBene: false, calcola: (r) => r.spesa },
   {
-    value: "roas",
-    label: "ROAS",
-    formato: "volte",
+    value: "lead_generati",
+    label: "Lead Generati",
+    formato: "intero",
     altoEBene: true,
-    calcola: (r) => (r.spesa > 0 ? r.incasso / r.spesa : null)
+    calcola: (r) => r.lead
   },
   {
-    value: "incasso",
-    label: "Incasso",
-    formato: "euro",
-    altoEBene: true,
-    calcola: (r) => r.incasso
-  },
-  { value: "spesa", label: "Spesa", formato: "euro", altoEBene: false, calcola: (r) => r.spesa },
-  { value: "lead", label: "Lead", formato: "numero", altoEBene: true, calcola: (r) => r.lead },
-  {
-    value: "cpl",
-    label: "CPL",
-    formato: "euro",
+    value: "cpl_generati",
+    label: "CPL Generati",
+    formato: "euro_centesimi",
     altoEBene: false,
     calcola: (r) => (r.spesa > 0 && r.lead > 0 ? r.spesa / r.lead : null)
   },
   {
     value: "appuntamenti",
     label: "Appuntamenti",
-    formato: "numero",
+    formato: "intero",
     altoEBene: true,
     calcola: (r) => r.appuntamenti
   },
   {
-    value: "costo_appuntamento",
-    label: "Costo per Appuntamento",
-    formato: "euro",
-    altoEBene: false,
-    calcola: (r) => (r.spesa > 0 && r.appuntamenti > 0 ? r.spesa / r.appuntamenti : null)
-  },
-  {
     value: "consulenze",
     label: "Consulenze",
-    formato: "numero",
+    formato: "intero",
     altoEBene: true,
     calcola: (r) => r.consulenze
   },
   {
+    value: "cpas",
+    label: "CPAS",
+    formato: "euro_centesimi",
+    altoEBene: false,
+    calcola: (r) => (r.spesa > 0 && r.consulenze > 0 ? r.spesa / r.consulenze : null)
+  },
+  {
     value: "chiusure",
     label: "Chiusure",
-    formato: "numero",
+    formato: "intero",
     altoEBene: true,
     calcola: (r) => r.chiusure
+  },
+  { value: "importo", label: "Importo", formato: "euro", altoEBene: true, calcola: (r) => r.incasso },
+  {
+    value: "cr_sales",
+    label: "CR Sales",
+    formato: "percento",
+    altoEBene: true,
+    calcola: (r) => (r.consulenze > 0 ? r.chiusure / r.consulenze : null)
+  },
+  {
+    value: "cpa",
+    label: "CPA",
+    formato: "euro_centesimi",
+    altoEBene: false,
+    calcola: (r) => (r.spesa > 0 && r.chiusure > 0 ? r.spesa / r.chiusure : null)
+  },
+  {
+    value: "roas",
+    label: "ROAS",
+    formato: "volte",
+    altoEBene: true,
+    calcola: (r) => (r.spesa > 0 ? r.incasso / r.spesa : null)
   }
 ];
 

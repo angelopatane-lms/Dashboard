@@ -1,7 +1,7 @@
 "use client";
 
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { formatEur, formatFloat, formatInt } from "@/lib/format";
+import { formatEur, formatFloat, formatInt, formatPct } from "@/lib/format";
 import { etichettaMese, type Metrica, type SerieCategoria } from "@/lib/andamento";
 
 // Dieci categorie, dieci tinte distinguibili anche accanto. Non e' la scala
@@ -19,8 +19,11 @@ const COLORI = [
   "#c2410c"
 ];
 
+/** Gli stessi formati delle celle della tabella Campagne, decimali compresi. */
 export function formattaValore(v: number, m: Metrica): string {
+  if (m.formato === "euro_centesimi") return formatEur(v, 2);
   if (m.formato === "euro") return formatEur(v);
+  if (m.formato === "percento") return formatPct(v, 1);
   if (m.formato === "volte") return `${formatFloat(v, 2)}x`;
   return formatInt(v);
 }
@@ -77,7 +80,9 @@ export default function CategorieAndamentoChart({
           tick={{ fontSize: 12, fill: "#64748b" }}
           axisLine={false}
           tickLine={false}
-          width={70}
+          // Larga abbastanza per "1.241.586 EUR" e per la spesa a due
+          // decimali: piu' stretta, i valori piu' grandi verrebbero tagliati.
+          width={95}
           tickFormatter={(v: number) => formattaValore(v, metrica)}
         />
 
