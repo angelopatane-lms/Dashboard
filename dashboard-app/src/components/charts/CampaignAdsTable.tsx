@@ -4,6 +4,7 @@ import { Fragment, useMemo, useState, type ReactNode } from "react";
 import type { CampaignSummary } from "@/lib/analytics";
 import { formatInt, formatEur, formatPct, formatFloat } from "@/lib/format";
 import { categoriaResidua, nomeSenzaCategoria } from "@/lib/campaignCategory";
+import { nomeSenzaMarcatore } from "@/lib/campagne";
 import {
   BLOCCATA,
   INTESTAZIONE_ANGOLO,
@@ -86,6 +87,18 @@ const emptyRaw: RawTotals = {
   chiusure: 0,
   importo: 0
 };
+
+/**
+ * Il nome come si legge in tabella: senza il prefisso di categoria, e nella
+ * vista Instant senza nemmeno il marcatore finale.
+ *
+ * Sta qui e non dentro la cella perche' lo usa anche il calcolo della larghezza
+ * della colonna: se i due non fossero d'accordo, la colonna sarebbe misurata su
+ * un nome diverso da quello che ci finisce dentro.
+ */
+function nomeVisibile(campagna: string, senzaMarcatore: boolean): string {
+  return nomeSenzaCategoria(senzaMarcatore ? nomeSenzaMarcatore(campagna) : campagna);
+}
 
 function normKey(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, " ");
@@ -359,13 +372,18 @@ function MetricCells({ m, max }: { m: DerivedMetrics; max: MaxValues }) {
  * scritto in HubSpot e si potrebbe volerlo cercare per intero, ma quello che
  * distingue una variante - il suffisso - sta in fondo e resta visibile: a
  * cadere e' solo il prefisso, che e' scritto nella colonna accanto.
+ *
+ * Nella vista Instant cade anche il suffisso "_test_instant", che li' ce
+ * l'hanno tutte le righe. Vedi nomeVisibile.
  */
 function CellaNome({
   campagna,
-  sinistra
+  sinistra,
+  senzaMarcatore
 }: {
   campagna: string;
   sinistra: number;
+  senzaMarcatore: boolean;
 }) {
   return (
     <td
@@ -373,7 +391,7 @@ function CellaNome({
       style={{ left: sinistra }}
       title={campagna}
     >
-      {nomeSenzaCategoria(campagna)}
+      {nomeVisibile(campagna, senzaMarcatore)}
     </td>
   );
 }
@@ -381,11 +399,15 @@ function CellaNome({
 export default function CampaignAdsTable({
   adsRows,
   campaignSummary,
-  funnelByCampagna
+  funnelByCampagna,
+  senzaMarcatore = false
 }: {
   adsRows: CampaignAdsRow[];
   campaignSummary: CampaignSummary[];
   funnelByCampagna?: Map<string, FunnelCampagna>;
+  /** Vero nella vista Instant, dove il suffisso "_test_instant" ce l'hanno
+   *  tutte le righe e quindi non distingue niente. */
+  senzaMarcatore?: boolean;
 }) {
   const summaryByCampagna = useMemo(() => {
     const map = new Map<string, CampaignSummary>();
@@ -498,7 +520,7 @@ export default function CampaignAdsTable({
     // di 340 pixel: serviva ai nomi interi, che arrivavano a 94 caratteri.
     // Accorciati sono gia' corti, e prenderli per intero non taglia niente.
     const campagna = larghezzaColonnaTesto(
-      groups.flatMap((g) => g.rows.map((r) => nomeSenzaCategoria(r.campagna))),
+      groups.flatMap((g) => g.rows.map((r) => nomeVisibile(r.campagna, senzaMarcatore))),
       200,
       900
     );
@@ -519,7 +541,7 @@ export default function CampaignAdsTable({
       campagna,
       totale: categoria + campagna + HEADERS.length * LARGHEZZA_NUMERI
     };
-  }, [groups]);
+  }, [groups, senzaMarcatore]);
 
   const grandTotal = useMemo(
     () => groups.reduce((acc, g) => addRaw(acc, g.totale), emptyRaw),
@@ -648,7 +670,11 @@ export default function CampaignAdsTable({
                       {g.categoria}
                     </td>
                   ) : null}
-                  <CellaNome campagna={r.campagna} sinistra={larghezze.categoria} />
+                  <CellaNome
+                    campagna={r.campagna}
+                    sinistra={larghezze.categoria}
+                    senzaMarcatore={senzaMarcatore}
+                  />
                   <MetricCells m={deriveMetrics(r.raw)} max={maxValues} />
                 </tr>
               ))}

@@ -657,6 +657,9 @@ export default function CampaignsDashboard({
               adsRows={campaignAdsRows}
               campaignSummary={campaignSummaryFull}
               funnelByCampagna={funnelByCampagna}
+            // Nella vista Instant il suffisso ce l'hanno tutte le righe: si
+            // toglie dal nome scritto, e resta nell'etichetta col mouse sopra.
+            senzaMarcatore={variante === "instant"}
             />
           ) : (
             <div className="flex h-64 items-center justify-center text-sm text-slate-500">

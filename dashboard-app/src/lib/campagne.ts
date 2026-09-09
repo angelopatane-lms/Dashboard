@@ -164,6 +164,23 @@ export function varianteEsegmento(variante: Variante): boolean {
   return variante === "instant" || variante === "non_instant";
 }
 
+/**
+ * Il nome senza il marcatore finale, se ce l'ha.
+ *
+ * Serve a scriverlo in tabella nella vista Instant, dove il suffisso ce
+ * l'hanno TUTTE le righe: ripeterlo quaranta volte occupa spazio per dire una
+ * cosa che sta gia' scritta nel filtro in alto. Il nome intero resta
+ * nell'etichetta che compare col mouse sopra.
+ *
+ * Non va fatto nella vista Singole, dove il suffisso e' l'unica cosa che
+ * distingue la variante dalla sua campagna base: li' due righe diverse
+ * diventerebbero due righe con lo stesso nome.
+ */
+export function nomeSenzaMarcatore(nome: string): string {
+  const pulito = nome.trim();
+  return haMarcatoreInstant(pulito) ? pulito.slice(0, -SUFFISSO_INSTANT.length) : pulito;
+}
+
 export function haMarcatoreInstant(nome: string): boolean {
   const k = nome.trim().toLowerCase();
   return k.endsWith(SUFFISSO_INSTANT) && k.length > SUFFISSO_INSTANT.length;
