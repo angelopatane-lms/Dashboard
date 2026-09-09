@@ -143,7 +143,11 @@ export type Variante = "tutte" | "unificate" | "instant" | "non_instant";
 export const VARIANTE_DEFAULT: Variante = "unificate";
 
 export const VARIANTI: Array<{ label: string; value: Variante }> = [
-  { label: "Tutte", value: "tutte" },
+  // "Singole" e non "Tutte": la voce non aggiunge campagne, le separa. Mostra
+  // ogni variante per conto suo invece di sommarla alla base, ed e' l'unica
+  // vista dove il nome e' quello scritto in HubSpot, suffisso compreso. Il
+  // valore resta "tutte", che e' quello che viaggia nelle query.
+  { label: "Singole", value: "tutte" },
   { label: "Unificate", value: "unificate" },
   { label: "Instant", value: "instant" },
   { label: "Non Instant", value: "non_instant" }
