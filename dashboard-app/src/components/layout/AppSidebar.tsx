@@ -46,7 +46,7 @@ const ADVISOR_SECTIONS: Array<{ label: string; id: string }> = [
   { label: "Filtri", id: "filtri" },
   { label: "KPI Advisor", id: "tabella-operatori" },
   { label: "Agenda Advisor", id: "agenda" },
-  { label: "Trend Principali", id: "trend-funnel" },
+  { label: "Andamento Advisor", id: "trend-funnel" },
   { label: "Stati Lead", id: "stati-lead" },
   { label: "Performance", id: "performance" }
 ];
@@ -54,7 +54,7 @@ const ADVISOR_SECTIONS: Array<{ label: string; id: string }> = [
 const SETTER_SECTIONS: Array<{ label: string; id: string }> = [
   { label: "Filtri", id: "filtri" },
   { label: "KPI Setter", id: "tabella-operatori" },
-  { label: "Trend Principali", id: "trend-funnel" },
+  { label: "Andamento Setter", id: "trend-funnel" },
   { label: "Stati Lead", id: "stati-lead" },
   { label: "Performance", id: "performance" }
 ];

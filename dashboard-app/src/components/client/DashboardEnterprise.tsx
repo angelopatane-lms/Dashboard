@@ -706,16 +706,17 @@ export default function DashboardEnterprise({
         )}
 
         <div id="trend-funnel" className="scroll-mt-6">
-          <SectionTitle className="mt-10">Trend Principali</SectionTitle>
+          <SectionTitle className="mt-10">{setterView ? "Andamento Setter" : "Andamento Advisor"}</SectionTitle>
         </div>
         <div className="grid grid-cols-1 gap-6">
           <Card>
-            <ChartTitle
-              title={`Andamento ${setterView ? "dei Setter" : "degli Advisor"}`}
-              description="Un punto per mese, per persona. Il mese segnato con l'asterisco e' quello in corso: e' disegnato ma non concorre a definire cosa sia normale, ed e' escluso dalle segnalazioni, se no sarebbe l'unica notizia tutti i mesi. Il filtro Periodo non tocca questo grafico, che guarda tutta la storia del foglio Operatori; gli altri filtri valgono."
-            />
-
-            <div className="mt-3 flex flex-wrap gap-2">
+            {/* Niente titolo dentro il riquadro: lo dice gia' quello della
+                sezione, e ripeterlo a due righe di distanza non aggiungeva
+                niente. Con lui se ne va la spiegazione che compariva col mouse
+                sopra - il mese in corso escluso dalle segnalazioni, il filtro
+                Periodo che non tocca questo grafico - che ora sta solo nel
+                codice, in cima a src/lib/andamento.ts. */}
+            <div className="flex flex-wrap gap-2">
               {metricheAdvisor(setterView, conHubspot).map((m) => (
                 <button
                   key={m.value}
