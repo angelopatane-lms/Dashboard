@@ -33,8 +33,16 @@ export default async function Page() {
 
   let allowedOperatorSet: Set<string> | null = null;
   try {
+    // SENZA CACHE, di proposito.
+    //
+    // E' l'elenco delle persone: chi lo modifica si aspetta di vedere l'effetto
+    // subito, ed e' gia' la seconda volta che una cache ci fa perdere tempo -
+    // prima teneva la lista ferma fino alle 19:30, poi cinque minuti, e in
+    // entrambi i casi la conclusione e' stata "il filtro non funziona" mentre
+    // funzionava benissimo su dati vecchi. Sono 6 KB per apertura di pagina.
     const hubspotUsersRows = await fetchCsv(
-      `https://docs.google.com/spreadsheets/d/${HUBSPOT_USERS_SHEET_ID}/export?format=csv&gid=${GID_HUBSPOT_USERS}`
+      `https://docs.google.com/spreadsheets/d/${HUBSPOT_USERS_SHEET_ID}/export?format=csv&gid=${GID_HUBSPOT_USERS}`,
+      { next: { revalidate: 0 } }
     );
 
     const allowedTeams = new Set(["advisor", "setter"]);
