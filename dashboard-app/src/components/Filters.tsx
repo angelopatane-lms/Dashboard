@@ -160,16 +160,18 @@ function MenuMultiplo({
   opzioni,
   scelti,
   onChange,
-  // Il genere segue il nome del filtro: le categorie sono "Tutte", i formati
-  // sono "Tutti". Scritto una volta sola dentro il componente, uno dei due
-  // sarebbe rimasto sbagliato.
-  tuttiLabel = "Tutti"
+  tuttiLabel
 }: {
   etichetta: string;
   opzioni: Array<{ label: string; value: string }>;
   scelti: string[];
   onChange: (scelti: string[]) => void;
-  tuttiLabel?: string;
+  /** Come si legge "nessun filtro": "Tutte" le categorie, "Tutte" le tipologie.
+   *
+   *  Obbligatoria di proposito, senza un valore di ripiego: il genere dipende
+   *  da cosa elenca il menu, non dal menu, e un ripiego finirebbe per restare
+   *  addosso al primo filtro che se ne dimentica. */
+  tuttiLabel: string;
 }) {
   const { aperto, setAperto, contenitore } = useTendina();
 
@@ -323,6 +325,7 @@ export function FiltersBar({
   const bloccoFormato = formati ? (
     <MenuMultiplo
       etichetta={formatoLabel}
+      tuttiLabel="Tutte"
       opzioni={formati}
       scelti={(filters.formato ?? "").split(",").filter(Boolean)}
       onChange={(scelti) => setFilters({ ...filters, formato: scelti.length ? scelti.join(",") : undefined })}
