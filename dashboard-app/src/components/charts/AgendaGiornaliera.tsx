@@ -127,7 +127,7 @@ export default function AgendaGiornaliera({
     return () => clearInterval(t);
   }, []);
 
-  const { colonne, senzaNulla } = useMemo(() => {
+  const colonne = useMemo(() => {
     // GLI EVENTI SI RAGGRUPPANO PER CHIAVE DEL NOME, non per il nome scritto.
     //
     // La stessa persona arriva scritta in due modi: il foglio degli utenti dice
@@ -159,21 +159,16 @@ export default function AgendaGiornaliera({
       return {
         nome,
         ...inCorsie(suoi),
-        totale: suoi.length,
         // Si contano gli appuntamenti con un cliente: le riunioni interne e gli
         // annullati non sono lavoro fatto ne' da fare.
         quanti: suoi.filter((e) => e.tipo === "appuntamento" || e.tipo === "svolta").length
       };
     });
 
-    // Chi oggi non ha niente non prende una colonna: sono centoventi pixel a
-    // testa che spingono fuori schermo chi invece lavora. Il loro nome resta
-    // scritto sotto la griglia, che e' l'informazione vera - "oggi questi non
-    // hanno appuntamenti" - senza costare mezza tabella.
-    return {
-      colonne: tutte.filter((c) => c.totale > 0),
-      senzaNulla: tutte.filter((c) => c.totale === 0).map((c) => c.nome)
-    };
+    // Ci sono tutti, anche chi oggi non ha niente: una colonna vuota dice "e'
+    // libero", che e' la meta' della domanda a cui serve rispondere. Costa
+    // larghezza, e per quello la tabella scorre di lato.
+    return tutte;
   }, [eventi, operatori]);
 
   // La griglia si adatta a quello che c'e': parte dalle 8 e finisce alle 20, ma
@@ -252,7 +247,12 @@ export default function AgendaGiornaliera({
         </div>
       ) : null}
 
-      <div className="mt-4 overflow-auto rounded-md">
+      {/* SOLO SCORRIMENTO ORIZZONTALE. Il riquadro e' alto quanto la griglia,
+          quindi in verticale non c'e' niente da scorrere - ma l'etichetta delle
+          8:00 e' centrata sulla riga e sporge di sette pixel sopra il bordo, e
+          quei sette bastavano a far comparire una barra verticale lunga quanto
+          tutta l'agenda. Lo spazio in cima glieli ridà. */}
+      <div className="mt-4 overflow-x-auto rounded-md pt-2">
         <div style={{ minWidth: LARGHEZZA_ORE + colonne.length * LARGHEZZA_COLONNA }}>
           {/* intestazione: i nomi restano in alto mentre si scorre, come nelle tabelle */}
           <div className="sticky top-0 z-20 flex bg-white shadow-[inset_0_-2px_0_0_#e2e8f0]">
@@ -361,15 +361,6 @@ export default function AgendaGiornaliera({
 
       {!caricamento && !errore && eventi.length === 0 ? (
         <div className="mt-3 text-sm text-slate-500">Nessun appuntamento in agenda per questo giorno.</div>
-      ) : null}
-
-      {senzaNulla.length > 0 ? (
-        <div className="mt-3 text-xs text-slate-500">
-          <span className="font-medium text-slate-600">
-            {senzaNulla.length === 1 ? "Senza appuntamenti oggi:" : `Senza appuntamenti oggi (${senzaNulla.length}):`}
-          </span>{" "}
-          {senzaNulla.join(", ")}.
-        </div>
       ) : null}
     </div>
   );

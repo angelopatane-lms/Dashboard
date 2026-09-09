@@ -211,23 +211,16 @@ export default function DashboardEnterprise({
     };
   }, [giornoAgenda]);
 
-  // Le colonne sono le persone della tabella, in ordine alfabetico. Non
-  // nell'ordine della tabella, che si puo' riordinare con un click e quindi non
-  // sta ferma: qui l'ordine deve essere quello in cui si cerca un nome.
-  const personeAgenda = useMemo(
-    () =>
-      Array.from(new Set(operatorSummaryAll.map((r) => r.operatore).filter(Boolean))).sort((a, b) =>
-        a.localeCompare(b, "it")
-      ),
-    [operatorSummaryAll]
-  );
-
-  // SOLO CHI E' ADVISOR SU HUBSPOT.
+  // LE COLONNE SONO TUTTI GLI ADVISOR, sempre le stesse.
   //
-  // L'agenda legge i meeting di tutto il portale, e fra i proprietari ci sono
-  // anche persone che advisor non sono: senza questo filtro comparivano loro
-  // colonne, con dentro le riunioni interne. L'elenco e' quello del foglio
-  // degli utenti, la stessa fonte che decide chi entra nella tabella qui sopra.
+  // Non le persone della tabella, che dipendono dal periodo scelto: l'agenda di
+  // oggi non deve cambiare elenco perche' si e' guardato un altro mese. E in
+  // ordine alfabetico, non nell'ordine della tabella, che si puo' riordinare
+  // con un click e quindi non sta fermo: qui l'ordine deve essere quello in cui
+  // si cerca un nome.
+  //
+  // Lo stesso elenco fa da filtro: l'agenda legge i meeting di tutto il
+  // portale, e fra i proprietari c'e' anche chi advisor non e'.
   const ammessi = useMemo(
     () => (operatoriAmmessi ? new Set(operatoriAmmessi.map(chiaveNome)) : null),
     [operatoriAmmessi]
@@ -237,8 +230,13 @@ export default function DashboardEnterprise({
     [eventiAgenda, ammessi]
   );
   const personeAmmesse = useMemo(
-    () => (ammessi ? personeAgenda.filter((nome) => ammessi.has(chiaveNome(nome))) : personeAgenda),
-    [personeAgenda, ammessi]
+    () =>
+      operatoriAmmessi
+        ? [...operatoriAmmessi].sort((a, b) => a.localeCompare(b, "it"))
+        : Array.from(new Set(operatorSummaryAll.map((r) => r.operatore).filter(Boolean))).sort((a, b) =>
+            a.localeCompare(b, "it")
+          ),
+    [operatoriAmmessi, operatorSummaryAll]
   );
 
   // L'ANDAMENTO DELLE PERSONE, mese per mese.

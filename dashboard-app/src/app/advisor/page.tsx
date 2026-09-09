@@ -32,20 +32,27 @@ export default async function Page() {
   ]);
 
   let allowedOperatorSet: Set<string> | null = null;
+  // Gli stessi nomi, ma come sono scritti nel foglio: servono all'agenda, che
+  // li mostra in testa alle colonne.
+  let advisorNomi: string[] | null = null;
   try {
     const hubspotUsersRows = await fetchCsv(
       `https://docs.google.com/spreadsheets/d/${HUBSPOT_USERS_SHEET_ID}/export?format=csv&gid=${GID_HUBSPOT_USERS}`
     );
 
     const allowedTeams = new Set(["advisor"]);
-    allowedOperatorSet = new Set(
-      hubspotUsersRows
-        .filter((r) => allowedTeams.has(chiaveNome((r["Team Principale"] ?? "").toString())))
-        .map((r) => chiaveNome((r["User"] ?? "").toString()))
-        .filter((name) => name)
+    const soloAdvisor = hubspotUsersRows.filter((r) =>
+      allowedTeams.has(chiaveNome((r["Team Principale"] ?? "").toString()))
     );
+    allowedOperatorSet = new Set(
+      soloAdvisor.map((r) => chiaveNome((r["User"] ?? "").toString())).filter((name) => name)
+    );
+    advisorNomi = Array.from(
+      new Set(soloAdvisor.map((r) => (r["User"] ?? "").toString().trim()).filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b, "it"));
   } catch {
     allowedOperatorSet = null;
+    advisorNomi = null;
   }
 
   const operatoriRowsFiltered = allowedOperatorSet
@@ -60,17 +67,20 @@ export default async function Page() {
 
   return (
     <Container>
+      {/* operatoriAmmessi: gli utenti HubSpot con Team Principale "Advisor".
+          Sono le colonne dell'agenda, tutte - anche chi oggi non ha niente,
+          perche' "questo advisor e' libero" e' un'informazione quanto il
+          contrario - e insieme il filtro: l'agenda legge i meeting di TUTTO il
+          portale e senza questo elenco mostrerebbe anche chi advisor non e'.
+          Null quando il foglio degli utenti non risponde: meglio l'agenda
+          intera che nessuna agenda. */}
       <AdvisorSetterDashboardClient
         operatoriRows={operatoriRowsFiltered}
         operatoriRowsOggi={operatoriRowsOggiFiltered}
         operators={operators}
         campaigns={campaigns}
         operatorLabel="Advisor"
-        // Le chiavi degli utenti HubSpot con Team Principale "Advisor". Servono
-        // all'agenda, che legge i meeting di TUTTO il portale e senza questo
-        // elenco mostrerebbe anche chi advisor non e'. Null quando il foglio
-        // degli utenti non risponde: meglio l'agenda intera che nessuna agenda.
-        operatoriAmmessi={allowedOperatorSet ? Array.from(allowedOperatorSet) : null}
+        operatoriAmmessi={advisorNomi}
       />
     </Container>
   );
