@@ -694,7 +694,10 @@ export default function DashboardEnterprise({
             e i setter li prenotano ma non ci vanno. Sulla loro pagina l'agenda
             sarebbe l'agenda di qualcun altro. */}
         {!hideOperatorTable && !setterView && (
-          <div id="agenda" className="mt-6 scroll-mt-6">
+          <>
+            <div id="agenda" className="scroll-mt-6">
+              <SectionTitle className="mt-10">Agenda</SectionTitle>
+            </div>
             <Card>
               <AgendaGiornaliera
                 giorno={giornoAgenda}
@@ -706,7 +709,7 @@ export default function DashboardEnterprise({
                 aggiornato={agendaLetta}
               />
             </Card>
-          </div>
+          </>
         )}
 
         <div id="trend-funnel" className="scroll-mt-6">

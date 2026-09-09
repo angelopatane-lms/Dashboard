@@ -18,25 +18,25 @@ const LARGHEZZA_ORE = 64;
  * decidono i dati - e' l'esito che HubSpot tiene sul meeting.
  */
 /**
- * Tinte piene e testo bianco, senza bordo.
+ * Tinte piene a meta' strada, senza bordo, con il testo scuro dello stesso
+ * colore.
  *
- * SONO TUTTE ALLO STESSO LIVELLO DI LUMINOSITA', scelto perche' il bianco sopra
- * si legga davvero: a 10 pixel un contrasto sotto il 4,5 a 1 si perde, e i toni
- * piu' chiari di questi - il ciano a meta' scala, il verde smeraldo - stanno
- * fra il 3,8 e il 4,1. Questi quattro stanno fra 4,7 e 5,9.
+ * IL TESTO E' SCURO PERCHE' IL TONO E' MEDIO, e le due cose non si possono
+ * separare. Il bianco su questi fondi sta fra l'1,8 e il 2,4 a 1 di contrasto:
+ * a dieci pixel il nome del contatto sparirebbe. Il bianco regge solo sui toni
+ * scuri, dal settimo gradino in giu', che erano quelli di prima; il testo scuro
+ * regge su tutto il resto. Qui il contrasto sta fra 7 e 10 a 1.
  *
- * Il secondario e' bianco trasparente e non un grigio: cambiando fondo, un
- * grigio fisso funzionerebbe su una tinta e sparirebbe sulle altre.
+ * Il secondario e' lo stesso colore un gradino piu' chiaro, non un grigio: con
+ * quattro fondi diversi un grigio fisso funzionerebbe su una tinta e
+ * sfarfallerebbe sulle altre.
  */
-const COLORI: Record<TipoEvento, { fondo: string }> = {
-  appuntamento: { fondo: "#0369a1" },
-  svolta: { fondo: "#047857" },
-  interno: { fondo: "#b45309" },
-  annullato: { fondo: "#64748b" }
+const COLORI: Record<TipoEvento, { fondo: string; testo: string; secondario: string }> = {
+  appuntamento: { fondo: "#7dd3fc", testo: "#0c4a6e", secondario: "#075985" },
+  svolta: { fondo: "#6ee7b7", testo: "#064e3b", secondario: "#065f46" },
+  interno: { fondo: "#fcd34d", testo: "#78350f", secondario: "#92400e" },
+  annullato: { fondo: "#cbd5e1", testo: "#475569", secondario: "#64748b" }
 };
-
-const TESTO = "#ffffff";
-const TESTO_SECONDARIO = "rgba(255,255,255,0.78)";
 
 const LEGENDA: Array<{ tipo: TipoEvento; label: string }> = [
   { tipo: "appuntamento", label: "Fissato" },
@@ -197,13 +197,22 @@ export default function AgendaGiornaliera({
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 24 }}>
-        <div>
-          <div className="text-sm font-semibold text-gray-900">Agenda del giorno</div>
-          <div className="mt-1 text-xs text-slate-500">
-            Gli appuntamenti presi su HubSpot. Gli impegni che ognuno si segna sul proprio calendario -
-            pranzi, blocchi, formazione - non passano di qui e non compaiono.
-          </div>
+      {/* Legenda e comandi sulla stessa riga: il titolo della sezione dice gia'
+          cos'e', e una riga in meno e' una riga di agenda in piu'. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        <div className="flex flex-wrap items-center gap-4">
+          {LEGENDA.map((v) => (
+            <div key={v.tipo} className="flex items-center gap-2">
+              <span className="inline-block h-3 w-3 rounded-[3px]" style={{ background: COLORI[v.tipo].fondo }} />
+              <span className="text-xs text-slate-600">{v.label}</span>
+            </div>
+          ))}
+          {lineaOra !== null ? (
+            <div className="flex items-center gap-2">
+              <span className="inline-block h-0.5 w-[18px]" style={{ background: "#e11d48" }} />
+              <span className="text-xs text-slate-600">ora corrente</span>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-3">
@@ -234,21 +243,6 @@ export default function AgendaGiornaliera({
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-5">
-        {LEGENDA.map((v) => (
-          <div key={v.tipo} className="flex items-center gap-2">
-            <span className="inline-block h-3 w-3 rounded-[3px]" style={{ background: COLORI[v.tipo].fondo }} />
-            <span className="text-xs text-slate-600">{v.label}</span>
-          </div>
-        ))}
-        {lineaOra !== null ? (
-          <div className="ml-auto flex items-center gap-2">
-            <span className="inline-block h-0.5 w-[18px]" style={{ background: "#e11d48" }} />
-            <span className="text-xs text-slate-600">ora corrente</span>
-          </div>
-        ) : null}
       </div>
 
       {errore ? (
@@ -330,14 +324,14 @@ export default function AgendaGiornaliera({
                         <div
                           className="truncate text-[11px] font-semibold leading-[13px]"
                           style={{
-                            color: TESTO,
+                            color: colore.testo,
                             textDecoration: e.tipo === "annullato" ? "line-through" : undefined
                           }}
                         >
                           {e.titolo}
                         </div>
                         {alto >= 30 ? (
-                          <div className="text-[10px] leading-[13px]" style={{ color: TESTO_SECONDARIO }}>
+                          <div className="text-[10px] leading-[13px]" style={{ color: colore.secondario }}>
                             {e.inizio}
                             {e.fine ? ` – ${e.fine}` : ""}
                           </div>
