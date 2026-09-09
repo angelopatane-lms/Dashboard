@@ -268,15 +268,17 @@ export default function AgendaGiornaliera({
         </div>
       ) : null}
 
-      {/* SOLO SCORRIMENTO ORIZZONTALE, e lo spazio sopra e sotto serve a questo.
-          Il riquadro e' alto quanto la griglia, quindi in verticale non c'e'
-          niente da scorrere: la barra verticale la facevano le etichette delle
-          ore, che sono centrate sulla riga e quindi sporgono di sette pixel -
-          quella delle 8:00 sopra il bordo, quella delle 20:00 sotto. Sette
-          pixel bastavano a far comparire una barra lunga quanto tutta l'agenda.
-          Il padding verticale glieli ridà da entrambe le parti: la prima volta
-          l'avevo messo solo in cima, e la barra e' rimasta. */}
-      <div className="mt-4 overflow-x-auto rounded-md py-2">
+      {/* SOLO SCORRIMENTO ORIZZONTALE, dichiarato su tutti e due gli assi.
+          Chiedendo soltanto overflow-x, il CSS mette l'altro asse ad "auto" per
+          conto suo, e li' nasce la barra verticale: il riquadro e' alto quanto
+          il suo contenuto, la barra orizzontale gli ruba quindici pixel
+          d'altezza dall'interno, e quei quindici pixel diventano overflow
+          verticale. Non era un problema di altezza, ed e' per questo che
+          allargare il riquadro non l'avrebbe tolta.
+          Lo spazio sopra e sotto resta perche' le etichette delle ore sono
+          centrate sulla riga e sporgono di sette pixel da entrambe le parti:
+          senza, ora che l'asse verticale e' nascosto, verrebbero tagliate. */}
+      <div className="mt-4 overflow-x-auto overflow-y-hidden rounded-md py-2">
         <div style={{ minWidth: LARGHEZZA_ORE + colonne.length * larghezzaCol }}>
           {/* intestazione: i nomi restano in alto mentre si scorre, come nelle tabelle */}
           <div className="sticky top-0 z-20 flex bg-white shadow-[inset_0_-2px_0_0_#e2e8f0]">
@@ -298,9 +300,14 @@ export default function AgendaGiornaliera({
 
           <div className="relative flex">
             {/* colonna delle ore, ferma a sinistra */}
+            {/* NIENTE position NELLO STILE INLINE. C'era "relative", per fare
+                da riferimento alle etichette delle ore, e sovrascriveva la
+                classe sticky: la colonna scorreva insieme al resto invece di
+                restare ferma a sinistra. Sticky fa gia' da riferimento agli
+                elementi in posizione assoluta, quindi relative non serviva. */}
             <div
               className="sticky left-0 z-10 flex-shrink-0 bg-white shadow-[inset_-1px_0_0_0_#cbd5e1]"
-              style={{ width: LARGHEZZA_ORE, height: altezza, position: "relative" }}
+              style={{ width: LARGHEZZA_ORE, height: altezza }}
             >
               {Array.from({ length: ore + 1 }, (_, i) => primaOra + i).map((h, i) => (
                 <div
