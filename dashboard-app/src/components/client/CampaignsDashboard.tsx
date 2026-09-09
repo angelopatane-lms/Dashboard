@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CsvRow } from "@/lib/csv";
 import { applyFilters, getString, type Filters } from "@/lib/metrics";
 import { aggregateByCampagna, normalizeOperatori } from "@/lib/analytics";
-import { formatPct } from "@/lib/format";
 import { categoriaResidua, guessCategoria } from "@/lib/campaignCategory";
 import type { Variante } from "@/lib/campagne";
 import {
@@ -19,9 +18,19 @@ import {
   varianteEsegmento,
   type MappaVarianti
 } from "@/lib/campagne";
-import CampaignConversionPeaksChart from "@/components/charts/CampaignConversionPeaksChart";
 import { PERIODO_DEFAULT, periodoScelto } from "@/lib/periodi";
 import { FiltersBar } from "@/components/Filters";
+import ChartTitle from "@/components/ui/ChartTitle";
+import CategorieAndamentoChart, { formattaValore } from "@/components/charts/CategorieAndamentoChart";
+import {
+  costruisciSerie,
+  etichettaMese,
+  METRICA_DEFAULT,
+  METRICHE,
+  mesiDi,
+  metrica
+} from "@/lib/andamento";
+import type { AndamentoRow } from "@/app/api/campaign-andamento/route";
 import Card from "@/components/ui/Card";
 import SectionTitle from "@/components/ui/SectionTitle";
 import CampaignAdsTable, { type CampaignAdsRow, type FunnelCampagna } from "@/components/charts/CampaignAdsTable";
@@ -32,11 +41,6 @@ import type { CampaignTrattativeRow } from "@/app/api/campaign-trattative/route"
 import type { CampaignChiamateRow } from "@/app/api/campaign-chiamate/route";
 import { CHIUSURE_TIPOLOGIE, BOOM_TIPOLOGIE } from "@/lib/hubspotRegole";
 
-
-type CampaignPeaksDatum = {
-  date: string;
-  [campaign: string]: string | number | null;
-};
 
 // Opzioni del filtro che su questa pagina prende il posto di "Operatore" e si
 // chiama "Variabile": le righe sono campagne, non persone.
@@ -543,153 +547,56 @@ export default function CampaignsDashboard({
     filters.formato
   ]);
 
-  const campaignAnomalies = useMemo(() => {
-    const toMs = (iso: string) => new Date(iso).getTime();
-    const maxDateIso = operatoriNorm.reduce<string | null>(
-      (acc, r) => (!acc || r.data > acc ? r.data : acc),
-      null
-    );
-    if (!maxDateIso) return [];
-
-    const endMs = toMs(maxDateIso);
-    const dayMs = 24 * 60 * 60 * 1000;
-    const recentDays = 7;
-    const baselineDays = 90;
-    const recentStartMs = endMs - (recentDays - 1) * dayMs;
-    const baselineEndMs = recentStartMs - dayMs;
-    const baselineStartMs = baselineEndMs - (baselineDays - 1) * dayMs;
-
-    type Agg = { ass: number; app: number };
-    const recentByCamp = new Map<string, Agg>();
-    const baselineByCamp = new Map<string, Agg>();
-
-    for (const r of operatoriNorm) {
-      if (!r.campagna || !r.data) continue;
-      const t = toMs(r.data);
-      if (Number.isNaN(t)) continue;
-      if (t >= recentStartMs && t <= endMs) {
-        const cur = recentByCamp.get(r.campagna) ?? { ass: 0, app: 0 };
-        cur.ass += r.assegnati; cur.app += r.appuntamenti;
-        recentByCamp.set(r.campagna, cur);
-      } else if (t >= baselineStartMs && t <= baselineEndMs) {
-        const cur = baselineByCamp.get(r.campagna) ?? { ass: 0, app: 0 };
-        cur.ass += r.assegnati; cur.app += r.appuntamenti;
-        baselineByCamp.set(r.campagna, cur);
-      }
-    }
-
-    const campaignSet = new Set(
-      (campaigns ?? []).map((c) => c.trim()).filter((c) => c && c.toLowerCase() !== "nessuna")
-    );
-    const campaignKeys = campaignSet.size > 0
-      ? Array.from(campaignSet)
-      : Array.from(new Set<string>([...Array.from(recentByCamp.keys()), ...Array.from(baselineByCamp.keys())]));
-
-    return campaignKeys
-      .map((campagna) => {
-        const recent = recentByCamp.get(campagna) ?? { ass: 0, app: 0 };
-        const baseline = baselineByCamp.get(campagna) ?? { ass: 0, app: 0 };
-        const recentRate = recent.ass > 0 ? recent.app / recent.ass : 0;
-        const baselineRate = baseline.ass > 0 ? baseline.app / baseline.ass : 0;
-        return { campagna, recentRate, baselineRate, delta: recentRate - baselineRate };
-      })
-      .sort((a, b) => {
-        const aAltro = a.campagna.trim().toLowerCase() === "altro";
-        const bAltro = b.campagna.trim().toLowerCase() === "altro";
-        if (aAltro && !bAltro) return 1;
-        if (!aAltro && bAltro) return -1;
-        return a.delta - b.delta;
-      });
-  }, [operatoriNorm, campaigns]);
-
-  const campaignPeaks = useMemo(() => {
-    const toMs = (iso: string) => new Date(iso).getTime();
-    const maxDateIso = operatoriNorm.reduce<string | null>(
-      (acc, r) => (!acc || r.data > acc ? r.data : acc),
-      null
-    );
-    if (!maxDateIso) return { campaigns: [] as string[], data: [] as CampaignPeaksDatum[] };
-
-    const endMs = toMs(maxDateIso);
-    const dayMs = 24 * 60 * 60 * 1000;
-    const startMs = endMs - 59 * dayMs;
-
-    const assByCamp = new Map<string, number>();
-    for (const r of operatoriNorm) {
-      if (!r.campagna || !r.data) continue;
-      const t = toMs(r.data);
-      if (Number.isNaN(t) || t < startMs || t > endMs) continue;
-      assByCamp.set(r.campagna, (assByCamp.get(r.campagna) ?? 0) + r.assegnati);
-    }
-
-    const peakCampaigns = campaignAnomalies
-      .map((r) => r.campagna)
-      .filter((c) => (assByCamp.get(c) ?? 0) > 0);
-    if (peakCampaigns.length === 0) return { campaigns: [] as string[], data: [] as CampaignPeaksDatum[] };
-
-    type Agg = { ass: number; app: number };
-    const byDay = new Map<string, Map<string, Agg>>();
-    for (const r of operatoriNorm) {
-      if (!r.campagna || !r.data || !peakCampaigns.includes(r.campagna)) continue;
-      const t = toMs(r.data);
-      if (Number.isNaN(t) || t < startMs || t > endMs) continue;
-      const dayMap = byDay.get(r.data) ?? new Map<string, Agg>();
-      const cur = dayMap.get(r.campagna) ?? { ass: 0, app: 0 };
-      cur.ass += r.assegnati; cur.app += r.appuntamenti;
-      dayMap.set(r.campagna, cur);
-      byDay.set(r.data, dayMap);
-    }
-
-    const data: CampaignPeaksDatum[] = Array.from(byDay.keys())
-      .sort((a, b) => toMs(a) - toMs(b))
-      .map((date) => {
-        const dayMap = byDay.get(date) ?? new Map<string, Agg>();
-        const row: CampaignPeaksDatum = { date };
-        for (const c of peakCampaigns) {
-          const agg = dayMap.get(c);
-          row[c] = agg && agg.ass > 0 ? agg.app / agg.ass : null;
-        }
-        return row;
-      });
-
-    return { campaigns: peakCampaigns, data };
-  }, [operatoriNorm, campaignAnomalies]);
-
-  const [focusedPeaksCampaign, setFocusedPeaksCampaign] = useState<string | null>(null);
-
-  const lowestDeltaCampaign = useMemo(() => {
-    if (campaignAnomalies.length === 0) return null;
-    return campaignAnomalies.reduce<string | null>((acc, r) => {
-      if (!acc) return r.campagna;
-      const prev = campaignAnomalies.find((x) => x.campagna === acc);
-      if (!prev) return r.campagna;
-      return r.delta < prev.delta ? r.campagna : acc;
-    }, null);
-  }, [campaignAnomalies]);
-
-  const peaksVisibleCampaigns = useMemo(() => {
-    if (focusedPeaksCampaign) return [focusedPeaksCampaign];
-    if (lowestDeltaCampaign) return [lowestDeltaCampaign];
-    return [] as string[];
-  }, [focusedPeaksCampaign, lowestDeltaCampaign]);
+  // L'ANDAMENTO DELLE CATEGORIE, mese per mese.
+  //
+  // NON SEGUE IL FILTRO PERIODO, ed e' voluto: e' una serie storica, e
+  // guardarla dentro la finestra scelta la ridurrebbe a un punto solo. Segue
+  // invece il filtro Categoria, che decide quali linee disegnare.
+  //
+  // Prima questa sezione leggeva il foglio Operatori, che di campagne non ne
+  // conosce - la sua colonna "Campagna" contiene le nove categorie - e
+  // confrontava 7 giorni contro 90 sulle righe gia' filtrate per periodo:
+  // scegliendo il mese in corso, i 90 giorni di riferimento erano quasi vuoti e
+  // il valore "storico" tendeva a zero da solo.
+  const [andamento, setAndamento] = useState<AndamentoRow[]>([]);
+  const [andamentoPronto, setAndamentoPronto] = useState(false);
+  const [metricaScelta, setMetricaScelta] = useState<string>(METRICA_DEFAULT);
 
   useEffect(() => {
-    if (!lowestDeltaCampaign) return;
-    if (!focusedPeaksCampaign) { setFocusedPeaksCampaign(lowestDeltaCampaign); return; }
-    const stillExists = campaignAnomalies.some((r) => r.campagna === focusedPeaksCampaign);
-    if (!stillExists) setFocusedPeaksCampaign(lowestDeltaCampaign);
-  }, [campaignAnomalies, focusedPeaksCampaign, lowestDeltaCampaign]);
+    let annullato = false;
+    fetch("/api/campaign-andamento?mesi=12")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d: { righe?: AndamentoRow[] }) => {
+        if (annullato) return;
+        setAndamento(d.righe ?? []);
+        setAndamentoPronto(true);
+      })
+      .catch((err) => {
+        console.error("[campaign-andamento]", err);
+        if (!annullato) setAndamentoPronto(true);
+      });
+    return () => {
+      annullato = true;
+    };
+  }, []);
 
-  const insightsTableHeightPx = useMemo(() => {
-    const rows = Math.max(1, campaignAnomalies.length);
-    return Math.max(260, 32 + rows * 40);
-  }, [campaignAnomalies.length]);
-
-  const baselineRateByCampaign = useMemo(() => {
-    const out: Record<string, number> = {};
-    for (const r of campaignAnomalies) out[r.campagna] = r.baselineRate;
-    return out;
-  }, [campaignAnomalies]);
+  const vista = useMemo(() => {
+    const m = metrica(metricaScelta);
+    const righe = categorieScelte.length
+      ? andamento.filter((r) => categorieScelte.includes(r.categoria))
+      : andamento;
+    const mesi = mesiDi(righe);
+    const { serie, anomalie } = costruisciSerie(righe, mesi, m);
+    return {
+      m,
+      mesi,
+      serie,
+      anomalie,
+      // Il grafico ha bisogno di sapere in fretta se un punto e' segnalato,
+      // mentre disegna ogni pallino di ogni linea.
+      chiavi: new Set(anomalie.map((a) => `${a.categoria}|${a.mese}`))
+    };
+  }, [andamento, categorieScelte, metricaScelta]);
 
   return (
     <div>
@@ -757,58 +664,86 @@ export default function CampaignsDashboard({
       <div id="insights" className="scroll-mt-6">
         <SectionTitle className="mt-10">Insights</SectionTitle>
       </div>
-      <div
-        className="mt-6 overflow-hidden rounded-md bg-white ring-1 ring-slate-200"
-        style={{ height: insightsTableHeightPx }}
-      >
-        <div className="grid grid-cols-12 gap-x-4 border-b border-slate-700 bg-[#64748b] px-4 py-2 text-[13px] font-semibold text-white">
-          <div className="col-span-4 whitespace-nowrap">Campagna</div>
-          <div className="col-span-3 whitespace-nowrap text-center">Conversione 7g</div>
-          <div className="col-span-3 whitespace-nowrap text-center">Conversione 90g</div>
-          <div className="col-span-2 whitespace-nowrap text-center text-[17px]">Δ</div>
-        </div>
-        <div className="divide-y divide-slate-200">
-          {campaignAnomalies.length === 0 ? (
-            <div className="px-4 py-6 text-sm text-slate-500">Nessuna anomalia disponibile.</div>
-          ) : (
-            campaignAnomalies.map((row) => {
-              const delta = row.delta;
-              const sign = delta >= 0 ? "+" : "";
-              const deltaColor = delta < 0 ? "text-rose-700" : "text-emerald-700";
-              const isFocused = focusedPeaksCampaign === row.campagna;
-              return (
-                <div
-                  key={row.campagna}
-                  className={`grid grid-cols-12 gap-x-4 px-4 py-2 text-sm ${isFocused ? "bg-slate-50" : "bg-white"}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setFocusedPeaksCampaign(row.campagna)}
-                    className="col-span-4 truncate text-left font-medium text-slate-900 hover:underline"
-                    title={row.campagna}
-                  >
-                    {row.campagna}
-                  </button>
-                  <div className="col-span-3 text-center text-slate-700">{formatPct(row.recentRate, 1)}</div>
-                  <div className="col-span-3 text-center text-slate-700">{formatPct(row.baselineRate, 1)}</div>
-                  <div className={`col-span-2 text-center font-semibold ${deltaColor}`}>
-                    {sign}{formatPct(delta, 1)}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
 
       <Card className="mt-6">
-        <div className="h-[360px]">
-          <CampaignConversionPeaksChart
-            data={campaignPeaks.data}
-            campaigns={campaignPeaks.campaigns}
-            baselineByCampaign={baselineRateByCampaign}
-            visibleCampaigns={peaksVisibleCampaigns}
-          />
+        <ChartTitle
+          title="Andamento delle categorie"
+          description="Un punto per mese, per categoria. Il mese segnato con l'asterisco e' quello in corso: e' disegnato ma non concorre a definire cosa sia normale, ed e' escluso dalle segnalazioni, se no sarebbe l'unica notizia tutti i mesi. Il filtro Categoria decide quali linee vedere; il filtro Periodo non tocca questo grafico, che guarda tutta la storia disponibile."
+        />
+
+        {/* Il ROAS dice se stiamo guadagnando, le altre dicono perche': se
+            scende, con un click si vede se e' salita la spesa, se sono calati i
+            lead o se e' peggiorata la conversione. */}
+        <div className="mt-3 flex flex-wrap gap-2">
+          {METRICHE.map((m) => (
+            <button
+              key={m.value}
+              type="button"
+              onClick={() => setMetricaScelta(m.value)}
+              className={`rounded-md border px-3 py-1.5 text-xs font-medium shadow-sm transition ${
+                metricaScelta === m.value
+                  ? "border-neutral-700 bg-black text-white"
+                  : "border-slate-200 bg-white text-slate-700 hover:border-neutral-800 hover:text-black"
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4 h-[380px]">
+          {andamentoPronto ? (
+            <CategorieAndamentoChart
+              mesi={vista.mesi}
+              serie={vista.serie}
+              metrica={vista.m}
+              anomalie={vista.chiavi}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-slate-500">
+              Caricamento dei dati in corso...
+            </div>
+          )}
+        </div>
+
+        {/* I pallini pieni sul grafico dicono dove guardare, queste righe dicono
+            cosa e' successo. Un mese e' segnalato quando esce dalla fascia in
+            cui quella categoria si e' sempre mossa, misurata con la mediana e
+            lo scarto mediano: con nove mesi, un solo mese eccezionale sposta la
+            media abbastanza da nascondere l'anomalia successiva. */}
+        <div className="mt-5 border-t border-slate-200 pt-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Picchi e cali fuori dal normale
+          </div>
+          {vista.anomalie.length === 0 ? (
+            <p className="mt-2 text-sm text-slate-500">
+              Nessun mese fuori dal normale su questa metrica. Serve almeno mezzo anno di storia per
+              dire cosa sia normale: le categorie piu' recenti non compaiono.
+            </p>
+          ) : (
+            <ul className="mt-2 space-y-1.5 text-sm text-slate-700">
+              {vista.anomalie.slice(0, 8).map((a) => (
+                <li key={`${a.categoria}|${a.mese}`} className="flex items-start gap-2">
+                  <span
+                    aria-hidden="true"
+                    className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
+                      a.buona ? "bg-emerald-600" : "bg-rose-600"
+                    }`}
+                  />
+                  <span>
+                    <strong className="font-semibold text-slate-900">{a.categoria}</strong>
+                    {" · "}
+                    {etichettaMese(a.mese)}: {vista.m.label}{" "}
+                    <strong className={a.buona ? "text-emerald-700" : "text-rose-700"}>
+                      {formattaValore(a.valore, vista.m)}
+                    </strong>{" "}
+                    contro una normalita' fra {formattaValore(a.normalita.basso, vista.m)} e{" "}
+                    {formattaValore(a.normalita.alto, vista.m)}.
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </Card>
     </div>
