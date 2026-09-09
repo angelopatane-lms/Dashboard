@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { EventoAgenda, TipoEvento } from "@/app/api/advisor-agenda/route";
+import { chiaveNome } from "@/lib/nomi";
 
 // Un'ora alta 44 pixel: dalle 8 alle 20 fa 528, che sta in mezza schermata e
 // lascia leggere un appuntamento da mezz'ora senza schiacciarlo.
@@ -112,32 +113,53 @@ export default function AgendaGiornaliera({
     return () => clearInterval(t);
   }, []);
 
-  const colonne = useMemo(() => {
-    const perOperatore = new Map<string, EventoAgenda[]>();
+  const { colonne, senzaNulla } = useMemo(() => {
+    // GLI EVENTI SI RAGGRUPPANO PER CHIAVE DEL NOME, non per il nome scritto.
+    //
+    // La stessa persona arriva scritta in due modi: il foglio degli utenti dice
+    // "Sabina Noia", l'anagrafica HubSpot "sabina noia". Confrontando i nomi
+    // com'erano, compariva due volte - una colonna vuota e una con i suoi
+    // appuntamenti - e sembrava che fossero due advisor diversi.
+    const perChiave = new Map<string, EventoAgenda[]>();
+    const scrittoCome = new Map<string, string>();
     for (const e of eventi) {
-      const lista = perOperatore.get(e.operatore) ?? [];
+      const k = chiaveNome(e.operatore);
+      const lista = perChiave.get(k) ?? [];
       lista.push(e);
-      perOperatore.set(e.operatore, lista);
+      perChiave.set(k, lista);
+      if (!scrittoCome.has(k)) scrittoCome.set(k, e.operatore);
     }
 
-    // Le colonne seguono la tabella qui sopra. Chi ha appuntamenti oggi ma non
-    // compare nella tabella - perche' il periodo scelto non lo include - viene
-    // in fondo: toglierlo mostrerebbe una giornata che non e' quella vera.
+    // Le colonne partono dalle persone della tabella - il loro nome e' quello
+    // scritto meglio - e si aggiunge chi ha appuntamenti oggi senza comparirci.
     const nomi = [...operatori];
-    for (const nome of Array.from(perOperatore.keys()).sort((a, b) => a.localeCompare(b, "it"))) {
-      if (!nomi.includes(nome)) nomi.push(nome);
+    const viste = new Set(nomi.map(chiaveNome));
+    for (const k of Array.from(perChiave.keys()).sort()) {
+      if (viste.has(k)) continue;
+      viste.add(k);
+      nomi.push(scrittoCome.get(k) ?? k);
     }
 
-    return nomi.map((nome) => {
-      const suoi = perOperatore.get(nome) ?? [];
+    const tutte = nomi.map((nome) => {
+      const suoi = perChiave.get(chiaveNome(nome)) ?? [];
       return {
         nome,
         ...inCorsie(suoi),
+        totale: suoi.length,
         // Si contano gli appuntamenti con un cliente: le riunioni interne e gli
         // annullati non sono lavoro fatto ne' da fare.
         quanti: suoi.filter((e) => e.tipo === "appuntamento" || e.tipo === "svolta").length
       };
     });
+
+    // Chi oggi non ha niente non prende una colonna: sono centoventi pixel a
+    // testa che spingono fuori schermo chi invece lavora. Il loro nome resta
+    // scritto sotto la griglia, che e' l'informazione vera - "oggi questi non
+    // hanno appuntamenti" - senza costare mezza tabella.
+    return {
+      colonne: tutte.filter((c) => c.totale > 0),
+      senzaNulla: tutte.filter((c) => c.totale === 0).map((c) => c.nome)
+    };
   }, [eventi, operatori]);
 
   // La griglia si adatta a quello che c'e': parte dalle 8 e finisce alle 20, ma
@@ -335,6 +357,15 @@ export default function AgendaGiornaliera({
 
       {!caricamento && !errore && eventi.length === 0 ? (
         <div className="mt-3 text-sm text-slate-500">Nessun appuntamento in agenda per questo giorno.</div>
+      ) : null}
+
+      {senzaNulla.length > 0 ? (
+        <div className="mt-3 text-xs text-slate-500">
+          <span className="font-medium text-slate-600">
+            {senzaNulla.length === 1 ? "Senza appuntamenti oggi:" : `Senza appuntamenti oggi (${senzaNulla.length}):`}
+          </span>{" "}
+          {senzaNulla.join(", ")}.
+        </div>
       ) : null}
     </div>
   );

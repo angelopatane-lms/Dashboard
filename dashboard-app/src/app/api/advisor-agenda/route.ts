@@ -133,16 +133,32 @@ async function contattiConConsulenza(dalle: number, alle: number): Promise<Set<n
   return new Set(r.rows.map((x: { id: number }) => Number(x.id)).filter(Number.isFinite));
 }
 
+/**
+ * Chi sono i proprietari, per numero.
+ *
+ * Si sfoglia fino in fondo invece di chiedere i primi cento: gli utenti attivi
+ * oggi sono 76, e il giorno che diventano 101 i meeting del centunesimo
+ * resterebbero senza nome e sparirebbero dall'agenda in silenzio. Gli
+ * archiviati non si chiedono: chi non lavora piu' qui non ha una colonna.
+ */
 async function leggiProprietari(token: string): Promise<Record<string, string>> {
-  const res = await fetch(`${HUBSPOT_API}/crm/v3/owners?limit=100`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  if (!res.ok) return {};
-  const data = await res.json();
   const map: Record<string, string> = {};
-  for (const o of data.results ?? []) {
-    map[String(o.id)] = `${o.firstName ?? ""} ${o.lastName ?? ""}`.trim();
-  }
+  let after: string | undefined;
+
+  do {
+    const url = new URL(`${HUBSPOT_API}/crm/v3/owners`);
+    url.searchParams.set("limit", "100");
+    if (after) url.searchParams.set("after", after);
+
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return map;
+    const data = await res.json();
+    for (const o of data.results ?? []) {
+      map[String(o.id)] = `${o.firstName ?? ""} ${o.lastName ?? ""}`.trim();
+    }
+    after = data.paging?.next?.after;
+  } while (after);
+
   return map;
 }
 
