@@ -292,6 +292,8 @@ export type RigaAdvisor = RigaSerie & {
   connessioni: number;
   appuntamenti: number;
   noShow: number;
+  chiusure: number;
+  boom: number;
 };
 
 /**
@@ -315,7 +317,9 @@ export function righeAdvisor(norm: OperatoriNormalized[]): RigaAdvisor[] {
         chiamate: 0,
         connessioni: 0,
         appuntamenti: 0,
-        noShow: 0
+        noShow: 0,
+        chiusure: 0,
+        boom: 0
       };
     v.assegnati += r.assegnati;
     v.chiamate += r.chiamate;
@@ -328,25 +332,61 @@ export function righeAdvisor(norm: OperatoriNormalized[]): RigaAdvisor[] {
 }
 
 /**
+ * Unisce le righe del foglio con quelle lette da HubSpot.
+ *
+ * APPUNTAMENTI, CHIUSURE E BOOM ARRIVANO DA HUBSPOT, esattamente come nella
+ * tabella qui sopra: li' sono "override" che coprono il foglio, e sul grafico
+ * devono esserlo altrettanto, se no la stessa persona avrebbe due numeri
+ * diversi a mezzo schermo di distanza.
+ *
+ * Gli appuntamenti del foglio vengono azzerati prima di applicare quelli veri:
+ * anche la tabella fa cosi', e chi non ha trattative in un mese deve leggere
+ * zero, non il numero che il foglio si porta dietro.
+ *
+ * Chi compare solo in HubSpot non viene aggiunto: la tabella elenca le persone
+ * del foglio, e un elenco piu' lungo del suo confonderebbe invece di aiutare.
+ */
+export function unisciAdvisor(
+  daFoglio: RigaAdvisor[],
+  daHubspot: Array<{ mese: string; operatore: string; appuntamenti: number; chiusure: number; boom: number }>
+): RigaAdvisor[] {
+  const chiave = (mese: string, nome: string) =>
+    `${mese}|${nome.trim().toLowerCase().replace(/\s+/g, " ")}`;
+
+  const per = new Map<string, RigaAdvisor>();
+  for (const r of daFoglio) per.set(chiave(r.mese, r.gruppo), { ...r, appuntamenti: 0 });
+
+  for (const h of daHubspot) {
+    const r = per.get(chiave(h.mese, h.operatore));
+    if (!r) continue;
+    r.appuntamenti += h.appuntamenti;
+    r.chiusure += h.chiusure;
+    r.boom += h.boom;
+  }
+
+  return Array.from(per.values());
+}
+
+/**
  * Le metriche del grafico delle persone: gli stessi nomi e formati della
  * tabella qui sopra.
  *
- * NE MANCANO QUATTRO delle nove colonne - Consulenze, Chiusure, % Chiusura e
- * Boom - e non per scelta: nel foglio quelle colonne sono a zero prima di
+ * MANCANO CONSULENZE E % CHIUSURA, e non e' una scelta: la tabella le prende
+ * dal foglio Operatori, non da HubSpot, e nel foglio sono a zero prima di
  * agosto 2026. Misurato sulle 23.804 righe: Consulenze 0 da marzo a giugno, 5 a
- * luglio, 301 ad agosto; Boom zero fino a luglio e 260.612 EUR ad agosto.
- * Disegnarle darebbe una linea piatta a zero e poi un'impennata, cioe' il
- * racconto di un'azienda che comincia a vendere ad agosto.
- *
- * Nella tabella quei numeri ci sono lo stesso perche' per il periodo scelto
- * arrivano da HubSpot in diretta, non dal foglio. Per averli anche qui
- * servirebbe rileggere HubSpot mese per mese.
+ * luglio, 301 ad agosto. Disegnarle darebbe una linea piatta a zero e poi
+ * un'impennata, cioe' il racconto di un'azienda che comincia a fare consulenze
+ * ad agosto. Prenderle "dalla tabella" non aiuterebbe: e' li' che manca il
+ * dato, e la tabella mostra zero anche lei per i mesi vecchi.
  *
  * La sesta voce segue la tabella, che cambia colonna fra le due pagine:
  * l'Advisor vede le Consulenze - qui assenti - e il Setter i No Show, che
  * invece la storia ce l'hanno.
+ *
+ * Chiusure e Boom compaiono solo quando HubSpot ha risposto: senza, sarebbero
+ * due linee a zero che sembrano un crollo.
  */
-export function metricheAdvisor(setter: boolean): Metrica<RigaAdvisor>[] {
+export function metricheAdvisor(setter: boolean, conHubspot = false): Metrica<RigaAdvisor>[] {
   const base: Metrica<RigaAdvisor>[] = [
     { value: "assegnati", label: "Assegnati", formato: "intero", altoEBene: true, calcola: (r) => r.assegnati },
     { value: "chiamate", label: "Chiamate", formato: "intero", altoEBene: true, calcola: (r) => r.chiamate },
@@ -385,11 +425,22 @@ export function metricheAdvisor(setter: boolean): Metrica<RigaAdvisor>[] {
     });
   }
 
+  if (conHubspot) {
+    base.push(
+      { value: "chiusure", label: "Chiusure", formato: "intero", altoEBene: true, calcola: (r) => r.chiusure },
+      { value: "boom", label: "Boom", formato: "euro", altoEBene: true, calcola: (r) => r.boom }
+    );
+  }
+
   return base;
 }
 
-export function metricaAdvisor(value: string, setter: boolean): Metrica<RigaAdvisor> {
-  const elenco = metricheAdvisor(setter);
+export function metricaAdvisor(
+  value: string,
+  setter: boolean,
+  conHubspot = false
+): Metrica<RigaAdvisor> {
+  const elenco = metricheAdvisor(setter, conHubspot);
   return elenco.find((m) => m.value === value) ?? elenco[0];
 }
 

@@ -26,8 +26,10 @@ import {
   mesiDi,
   metricaAdvisor,
   metricheAdvisor,
-  righeAdvisor
+  righeAdvisor,
+  unisciAdvisor
 } from "@/lib/andamento";
+import type { AdvisorAndamentoRow } from "@/app/api/advisor-andamento/route";
 import OperatorPerformanceBar from "@/components/charts/OperatorPerformanceBar";
 import CampaignSummaryBar from "@/components/charts/CampaignSummaryBar";
 import CampaignConversionPeaksChart from "@/components/charts/CampaignConversionPeaksChart";
@@ -197,13 +199,63 @@ export default function DashboardEnterprise({
   const setterView = (operatorLabel ?? "Advisor") === "Setter";
   const [metricaScelta, setMetricaScelta] = useState<string>(METRICA_ADVISOR_DEFAULT);
 
-  const andamentoPersone = useMemo(() => {
+  const daFoglio = useMemo(() => {
     const { from: _da, to: _a, ...senzaPeriodo } = filters;
     return righeAdvisor(normalizeOperatori(applyFilters(operatoriRowsWithToday, senzaPeriodo)));
   }, [operatoriRowsWithToday, filters]);
 
+  // La finestra da chiedere a HubSpot e' quella del foglio, non una lunghezza
+  // decisa a caso: le due fonti devono coprire gli stessi mesi, o il grafico
+  // avrebbe colonne dove meta' delle linee non esistono. Si calcola sulle righe
+  // NON filtrate, se no cambierebbe a ogni tocco dei filtri e rifarebbe la
+  // lettura di HubSpot da capo.
+  const finestraStorica = useMemo(() => {
+    const mesi = mesiDi(righeAdvisor(normalizeOperatori(operatoriRowsWithToday)));
+    if (!mesi.length) return null;
+    return {
+      from: `${mesi[0]}-01`,
+      to: new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Rome" })
+    };
+  }, [operatoriRowsWithToday]);
+
+  // null = ancora in corso. Appuntamenti, chiusure e incassi arrivano da qui e
+  // non dal foglio, per le stesse ragioni per cui li' sopra la tabella li
+  // sostituisce: vedi unisciAdvisor.
+  const [daHubspot, setDaHubspot] = useState<AdvisorAndamentoRow[] | null>(null);
+  const [hubspotFallito, setHubspotFallito] = useState(false);
+
+  useEffect(() => {
+    if (!finestraStorica) return;
+    let annullato = false;
+    fetch(`/api/advisor-andamento?from=${finestraStorica.from}&to=${finestraStorica.to}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d: { righe?: AdvisorAndamentoRow[] }) => {
+        if (annullato) return;
+        setDaHubspot(d.righe ?? []);
+      })
+      .catch((err) => {
+        console.error("[advisor-andamento]", err);
+        if (annullato) return;
+        setDaHubspot([]);
+        setHubspotFallito(true);
+      });
+    return () => {
+      annullato = true;
+    };
+  }, [finestraStorica]);
+
+  const conHubspot = daHubspot !== null && !hubspotFallito;
+
+  // Se HubSpot non ha risposto si resta sulle righe del foglio: unire un elenco
+  // vuoto azzererebbe gli appuntamenti di tutti, che e' peggio di un numero che
+  // non coincide con la tabella.
+  const andamentoPersone = useMemo(
+    () => (conHubspot && daHubspot ? unisciAdvisor(daFoglio, daHubspot) : daFoglio),
+    [daFoglio, daHubspot, conHubspot]
+  );
+
   const vista = useMemo(() => {
-    const m = metricaAdvisor(metricaScelta, setterView);
+    const m = metricaAdvisor(metricaScelta, setterView, conHubspot);
     const mesi = mesiDi(andamentoPersone);
     const { serie, anomalie } = costruisciSerie(andamentoPersone, mesi, m);
     return {
@@ -213,7 +265,7 @@ export default function DashboardEnterprise({
       anomalie,
       chiavi: new Set(anomalie.map((a) => `${a.gruppo}|${a.mese}`))
     };
-  }, [andamentoPersone, metricaScelta, setterView]);
+  }, [andamentoPersone, metricaScelta, setterView, conHubspot]);
 
   const hubspotOverrides = useMemo((): Record<string, { chiusure: number; boom: number }> => {
     if (!useHubspot || rawBoomRecords.length === 0) return {};
@@ -604,7 +656,7 @@ export default function DashboardEnterprise({
             />
 
             <div className="mt-3 flex flex-wrap gap-2">
-              {metricheAdvisor(setterView).map((m) => (
+              {metricheAdvisor(setterView, conHubspot).map((m) => (
                 <button
                   key={m.value}
                   type="button"
@@ -621,13 +673,27 @@ export default function DashboardEnterprise({
             </div>
 
             <div className="mt-4 h-[380px]">
-              <AndamentoChart
-                mesi={vista.mesi}
-                serie={vista.serie}
-                metrica={vista.m}
-                anomalie={vista.chiavi}
-              />
+              {daHubspot === null ? (
+                <div className="flex h-full items-center justify-center text-sm text-slate-500">
+                  Caricamento dei dati in corso...
+                </div>
+              ) : (
+                <AndamentoChart
+                  mesi={vista.mesi}
+                  serie={vista.serie}
+                  metrica={vista.m}
+                  anomalie={vista.chiavi}
+                />
+              )}
             </div>
+
+            {hubspotFallito ? (
+              <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <strong>Appuntamenti, Chiusure e Boom non disponibili.</strong> HubSpot non ha
+                risposto: gli Appuntamenti qui sotto sono quelli del foglio Operatori, che possono
+                non coincidere con la tabella, e le altre due non compaiono.
+              </div>
+            ) : null}
 
             <div className="mt-5 border-t border-slate-200 pt-4">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
