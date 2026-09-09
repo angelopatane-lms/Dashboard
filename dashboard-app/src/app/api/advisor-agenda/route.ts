@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getDb } from "@/lib/db";
 
 // L'agenda di una giornata: i meeting di HubSpot, per persona e per orario.
 //
@@ -64,6 +65,24 @@ function oraRoma(iso: string): { testo: string; minuti: number } | null {
   return { testo: `${due(h)}:${due(m)}`, minuti: h * 60 + m };
 }
 
+/**
+ * IL "SVOLTO" NON PUO' VENIRE DALL'ESITO DEL MEETING.
+ *
+ * HubSpot ce l'ha, ma nessuno lo compila: misurato su 2.235 meeting fra luglio
+ * e settembre 2026, 2.153 sono rimasti "SCHEDULED" per sempre e solo 17 - lo
+ * 0,8% - risultano COMPLETED. Colorare di verde quei diciassette avrebbe fatto
+ * comparire una tinta una volta ogni cento appuntamenti, con il significato di
+ * "qualcuno ha spuntato una casella".
+ *
+ * La consulenza svolta, in questa dashboard, e' un'altra cosa e sta altrove:
+ * e' la trattativa la cui prima transizione di fase soddisfa il workflow
+ * "Performance Tracker - Trattative Svolte", precalcolata in trattativa.svolta_ts
+ * dal sync. E' lo stesso numero della colonna Consulenze della tabella, quindi
+ * le due parti della pagina non possono raccontare due giornate diverse.
+ *
+ * Il collegamento passa dal CONTATTO: il meeting dice con chi, la trattativa
+ * dice se quella persona ha fatto la consulenza quel giorno.
+ */
 function tipoDa(esito: string | null | undefined): TipoEvento {
   const e = (esito ?? "").trim().toUpperCase();
   if (e === "COMPLETED") return "svolta";
@@ -72,6 +91,46 @@ function tipoDa(esito: string | null | undefined): TipoEvento {
   // misurato sul 2 settembre, l'unica era "Riunione Mattutina".
   if (!e) return "interno";
   return "appuntamento";
+}
+
+/** I contatti di ogni meeting, un'unica chiamata ogni duecento. */
+async function contattiDeiMeeting(token: string, ids: string[]): Promise<Map<string, number[]>> {
+  const out = new Map<string, number[]>();
+  for (let i = 0; i < ids.length; i += 200) {
+    const res = await fetch(`${HUBSPOT_API}/crm/v4/associations/meetings/contacts/batch/read`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ inputs: ids.slice(i, i + 200).map((id) => ({ id })) })
+    });
+    if (!res.ok) throw new Error(`associazioni ${res.status}`);
+    const data = await res.json();
+    for (const r of data.results ?? []) {
+      const da = String(r.from?.id ?? "");
+      const a = (r.to ?? []).map((t: { toObjectId?: string | number }) => Number(t.toObjectId)).filter(Number.isFinite);
+      if (da) out.set(da, a);
+    }
+  }
+  return out;
+}
+
+/**
+ * I contatti che quel giorno hanno fatto una consulenza.
+ *
+ * L'alias serve alle persone che sono state unite in HubSpot: la trattativa
+ * puo' portare il vecchio identificativo, mentre il meeting porta sempre quello
+ * buono, e senza risolverlo la consulenza non si aggancerebbe.
+ */
+async function contattiConConsulenza(dalle: number, alle: number): Promise<Set<number>> {
+  const r = await getDb().query(
+    `SELECT DISTINCT COALESCE(a.nuovo_id, t.contact_id) AS id
+       FROM trattativa t
+       LEFT JOIN alias_contatto a ON a.vecchio_id = t.contact_id
+      WHERE t.contact_id IS NOT NULL
+        AND t.svolta_ts >= $1::timestamptz
+        AND t.svolta_ts <  $2::timestamptz`,
+    [new Date(dalle).toISOString(), new Date(alle).toISOString()]
+  );
+  return new Set(r.rows.map((x: { id: number }) => Number(x.id)).filter(Number.isFinite));
 }
 
 async function leggiProprietari(token: string): Promise<Record<string, string>> {
@@ -113,7 +172,7 @@ export async function GET(req: NextRequest) {
     const dalle = istanteRoma(giorno, 0, 0);
     const alle = dalle + 24 * 60 * 60 * 1000;
 
-    const grezzi: Array<{ properties: Record<string, string | null> }> = [];
+    const grezzi: Array<{ id: string; properties: Record<string, string | null> }> = [];
     let after: string | undefined;
     do {
       const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/meetings/search`, {
@@ -145,7 +204,22 @@ export async function GET(req: NextRequest) {
       after = data.paging?.next?.after;
     } while (after);
 
+    // Le due letture che dicono quali appuntamenti si sono davvero svolti.
+    // Se una delle due non risponde, gli appuntamenti restano "fissati": e'
+    // meno informazione, non informazione sbagliata.
+    const [contatti, svolte] = await Promise.all([
+      contattiDeiMeeting(token, grezzi.map((r) => r.id)).catch((err) => {
+        console.error("[advisor-agenda] associazioni", err instanceof Error ? err.message : err);
+        return new Map<string, number[]>();
+      }),
+      contattiConConsulenza(dalle, alle).catch((err) => {
+        console.error("[advisor-agenda] consulenze", err instanceof Error ? err.message : err);
+        return new Set<number>();
+      })
+    ]);
+
     let senzaPersona = 0;
+    let svolteTrovate = 0;
     const eventi: EventoAgenda[] = [];
 
     for (const r of grezzi) {
@@ -170,6 +244,15 @@ export async function GET(req: NextRequest) {
         .replace(new RegExp(`\\s+and\\s+${operatore.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}\\s*$`, "i"), "")
         .trim();
 
+      let tipo = tipoDa(p.hs_meeting_outcome);
+      // La consulenza svolta vince sul "fissato": e' un fatto avvenuto, mentre
+      // "fissato" e' solo lo stato in cui il meeting e' rimasto. Non tocca gli
+      // annullati ne' le riunioni interne.
+      if (tipo === "appuntamento" && (contatti.get(r.id) ?? []).some((c) => svolte.has(c))) {
+        tipo = "svolta";
+        svolteTrovate += 1;
+      }
+
       eventi.push({
         operatore,
         titolo: senzaAdvisor || titolo || "Senza titolo",
@@ -177,13 +260,14 @@ export async function GET(req: NextRequest) {
         fineMin,
         inizio: da.testo,
         fine: a ? a.testo : "",
-        tipo: tipoDa(p.hs_meeting_outcome)
+        tipo
       });
     }
 
     eventi.sort((x, y) => x.inizioMin - y.inizioMin);
     console.log(
-      `[advisor-agenda] ${giorno}: ${eventi.length} eventi, ${new Set(eventi.map((e) => e.operatore)).size} persone` +
+      `[advisor-agenda] ${giorno}: ${eventi.length} eventi, ${new Set(eventi.map((e) => e.operatore)).size} persone, ` +
+        `${eventi.filter((e) => e.tipo === "svolta").length} svolte (${svolteTrovate} dalle trattative)` +
         (senzaPersona ? `, ${senzaPersona} senza proprietario` : "")
     );
 

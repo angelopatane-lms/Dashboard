@@ -20,6 +20,7 @@ import ReactivityGauge from "@/components/charts/ReactivityGauge";
 import AndamentoChart, { formattaValore } from "@/components/charts/AndamentoChart";
 import AgendaGiornaliera from "@/components/charts/AgendaGiornaliera";
 import type { EventoAgenda } from "@/app/api/advisor-agenda/route";
+import { chiaveNome } from "@/lib/nomi";
 import {
   costruisciSerie,
   etichettaMese,
@@ -53,6 +54,7 @@ export default function DashboardEnterprise({
   hideOperatorTable,
   useHubspot,
   operatorLabel,
+  operatoriAmmessi,
 }: {
   operatoriRows: CsvRow[];
   operatoriRowsOggi: CsvRow[];
@@ -63,6 +65,9 @@ export default function DashboardEnterprise({
   hideOperatorTable?: boolean;
   useHubspot?: boolean;
   operatorLabel?: string;
+  /** Chi ha Team Principale "Advisor" fra gli utenti HubSpot, come chiave di
+   *  nome. Null = elenco non disponibile, e allora non si filtra niente. */
+  operatoriAmmessi?: string[] | null;
 }) {
   // Le pagine si aprono sul mese in corso. Le date arrivano dal periodo
   // predefinito invece di essere ricalcolate qui: erano scritte due volte, in
@@ -215,6 +220,25 @@ export default function DashboardEnterprise({
         a.localeCompare(b, "it")
       ),
     [operatorSummaryAll]
+  );
+
+  // SOLO CHI E' ADVISOR SU HUBSPOT.
+  //
+  // L'agenda legge i meeting di tutto il portale, e fra i proprietari ci sono
+  // anche persone che advisor non sono: senza questo filtro comparivano loro
+  // colonne, con dentro le riunioni interne. L'elenco e' quello del foglio
+  // degli utenti, la stessa fonte che decide chi entra nella tabella qui sopra.
+  const ammessi = useMemo(
+    () => (operatoriAmmessi ? new Set(operatoriAmmessi.map(chiaveNome)) : null),
+    [operatoriAmmessi]
+  );
+  const eventiAmmessi = useMemo(
+    () => (ammessi ? eventiAgenda.filter((e) => ammessi.has(chiaveNome(e.operatore))) : eventiAgenda),
+    [eventiAgenda, ammessi]
+  );
+  const personeAmmesse = useMemo(
+    () => (ammessi ? personeAgenda.filter((nome) => ammessi.has(chiaveNome(nome))) : personeAgenda),
+    [personeAgenda, ammessi]
   );
 
   // L'ANDAMENTO DELLE PERSONE, mese per mese.
@@ -675,8 +699,8 @@ export default function DashboardEnterprise({
               <AgendaGiornaliera
                 giorno={giornoAgenda}
                 onGiorno={setGiornoAgenda}
-                eventi={eventiAgenda}
-                operatori={personeAgenda}
+                eventi={eventiAmmessi}
+                operatori={personeAmmesse}
                 caricamento={agendaInCorso}
                 errore={agendaFallita}
                 aggiornato={agendaLetta}

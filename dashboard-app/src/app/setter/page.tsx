@@ -2,6 +2,7 @@ import { fetchCsv } from "@/lib/csv";
 import { uniqueValues } from "@/lib/metrics";
 import AdvisorSetterDashboardClient from "@/components/client/AdvisorSetterDashboardClient";
 import Container from "@/components/ui/Container";
+import { chiaveNome } from "@/lib/nomi";
 
 export const dynamic = "force-dynamic";
 
@@ -24,15 +25,6 @@ function sheetCsvUrl(gid: string) {
   return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${gid}`;
 }
 
-function normalizeName(value: string): string {
-  return value
-    .toLowerCase()
-    .replaceAll("'", "'")
-    .replaceAll("’", "'")
-    .replaceAll(/\s+/g, " ")
-    .trim();
-}
-
 export default async function Page() {
   const [operatoriRows, operatoriRowsOggi] = await Promise.all([
     fetchCsv(sheetCsvUrl(GID_OPERATORI)),
@@ -48,8 +40,8 @@ export default async function Page() {
     const allowedTeams = new Set(["setter"]);
     allowedOperatorSet = new Set(
       hubspotUsersRows
-        .filter((r) => allowedTeams.has(normalizeName((r["Team Principale"] ?? "").toString())))
-        .map((r) => normalizeName((r["User"] ?? "").toString()))
+        .filter((r) => allowedTeams.has(chiaveNome((r["Team Principale"] ?? "").toString())))
+        .map((r) => chiaveNome((r["User"] ?? "").toString()))
         .filter((name) => name)
     );
   } catch {
@@ -57,10 +49,10 @@ export default async function Page() {
   }
 
   const operatoriRowsFiltered = allowedOperatorSet
-    ? operatoriRows.filter((r) => allowedOperatorSet!.has(normalizeName((r["Operatore"] ?? "").toString())))
+    ? operatoriRows.filter((r) => allowedOperatorSet!.has(chiaveNome((r["Operatore"] ?? "").toString())))
     : operatoriRows;
   const operatoriRowsOggiFiltered = allowedOperatorSet
-    ? operatoriRowsOggi.filter((r) => allowedOperatorSet!.has(normalizeName((r["Operatore"] ?? "").toString())))
+    ? operatoriRowsOggi.filter((r) => allowedOperatorSet!.has(chiaveNome((r["Operatore"] ?? "").toString())))
     : operatoriRowsOggi;
 
   const operators = uniqueValues(operatoriRowsFiltered, "Operatore");
