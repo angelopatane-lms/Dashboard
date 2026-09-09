@@ -667,7 +667,7 @@ export default function CampaignsDashboard({
 
       <Card className="mt-6">
         <ChartTitle
-          title="Andamento delle categorie"
+          title="Andamento delle Campagne"
           description="Un punto per mese, per categoria. Il mese segnato con l'asterisco e' quello in corso: e' disegnato ma non concorre a definire cosa sia normale, ed e' escluso dalle segnalazioni, se no sarebbe l'unica notizia tutti i mesi. Il filtro Categoria decide quali linee vedere; il filtro Periodo non tocca questo grafico, che guarda tutta la storia disponibile."
         />
 

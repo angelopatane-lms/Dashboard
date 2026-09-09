@@ -2,6 +2,7 @@
 // fuori dal normale.
 
 import type { AndamentoRow } from "@/app/api/campaign-andamento/route";
+import { categoriaResidua } from "@/lib/campaignCategory";
 
 /**
  * I formati sono quelli della tabella Campagne, decimali compresi: la spesa a
@@ -239,7 +240,16 @@ export function costruisciSerie(
   anomalie.sort(
     (a, b) => Number(a.buona) - Number(b.buona) || b.mese.localeCompare(a.mese)
   );
-  serie.sort((a, b) => a.categoria.localeCompare(b.categoria, "it"));
+  // "Altro" e "Nessuna" chiudono la legenda, come chiudono l'elenco del filtro
+  // e le righe della tabella: non sono linee di prodotto ma il posto dove
+  // finisce cio' che la regola non riconosce, e in ordine alfabetico "Altro"
+  // aprirebbe la fila sembrando una categoria come le altre.
+  serie.sort((a, b) => {
+    const aUltima = categoriaResidua(a.categoria);
+    const bUltima = categoriaResidua(b.categoria);
+    if (aUltima !== bUltima) return aUltima ? 1 : -1;
+    return a.categoria.localeCompare(b.categoria, "it");
+  });
 
   return { serie, anomalie };
 }
