@@ -18,6 +18,8 @@ import ChartTitle from "@/components/ui/ChartTitle";
 import FunnelStagesChart from "@/components/charts/FunnelStagesChart";
 import ReactivityGauge from "@/components/charts/ReactivityGauge";
 import AndamentoChart, { formattaValore } from "@/components/charts/AndamentoChart";
+import AgendaGiornaliera from "@/components/charts/AgendaGiornaliera";
+import type { EventoAgenda } from "@/app/api/advisor-agenda/route";
 import {
   costruisciSerie,
   etichettaMese,
@@ -165,6 +167,54 @@ export default function DashboardEnterprise({
   const operatorSummaryAll = useMemo(
     () => aggregateByOperatore(operatoriNorm),
     [operatoriNorm]
+  );
+
+  // L'AGENDA DEL GIORNO.
+  //
+  // Non segue il filtro Periodo, che e' un intervallo mentre un'agenda mostra un
+  // giorno: ha un suo selettore, e parte da oggi.
+  const oggiRoma = () => new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
+  const [giornoAgenda, setGiornoAgenda] = useState<string>(oggiRoma);
+  const [eventiAgenda, setEventiAgenda] = useState<EventoAgenda[]>([]);
+  const [agendaInCorso, setAgendaInCorso] = useState(true);
+  const [agendaFallita, setAgendaFallita] = useState(false);
+  const [agendaLetta, setAgendaLetta] = useState("");
+
+  useEffect(() => {
+    let annullato = false;
+    setAgendaInCorso(true);
+    fetch(`/api/advisor-agenda?giorno=${giornoAgenda}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d: { eventi?: EventoAgenda[] }) => {
+        if (annullato) return;
+        setEventiAgenda(d.eventi ?? []);
+        setAgendaFallita(false);
+        setAgendaInCorso(false);
+        setAgendaLetta(
+          new Date().toLocaleTimeString("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" })
+        );
+      })
+      .catch((err) => {
+        console.error("[advisor-agenda]", err);
+        if (annullato) return;
+        setEventiAgenda([]);
+        setAgendaFallita(true);
+        setAgendaInCorso(false);
+      });
+    return () => {
+      annullato = true;
+    };
+  }, [giornoAgenda]);
+
+  // Le colonne sono le persone della tabella, in ordine alfabetico. Non
+  // nell'ordine della tabella, che si puo' riordinare con un click e quindi non
+  // sta ferma: qui l'ordine deve essere quello in cui si cerca un nome.
+  const personeAgenda = useMemo(
+    () =>
+      Array.from(new Set(operatorSummaryAll.map((r) => r.operatore).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, "it")
+      ),
+    [operatorSummaryAll]
   );
 
   // L'ANDAMENTO DELLE PERSONE, mese per mese.
@@ -612,6 +662,25 @@ export default function DashboardEnterprise({
               ) : (
               <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} />
               )}
+            </Card>
+          </div>
+        )}
+
+        {/* Solo sugli Advisor: il proprietario di un meeting e' chi lo tiene,
+            e i setter li prenotano ma non ci vanno. Sulla loro pagina l'agenda
+            sarebbe l'agenda di qualcun altro. */}
+        {!hideOperatorTable && !setterView && (
+          <div id="agenda" className="mt-6 scroll-mt-6">
+            <Card>
+              <AgendaGiornaliera
+                giorno={giornoAgenda}
+                onGiorno={setGiornoAgenda}
+                eventi={eventiAgenda}
+                operatori={personeAgenda}
+                caricamento={agendaInCorso}
+                errore={agendaFallita}
+                aggiornato={agendaLetta}
+              />
             </Card>
           </div>
         )}
