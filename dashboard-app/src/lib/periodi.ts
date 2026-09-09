@@ -51,6 +51,20 @@ const lunedi = (d: Date) => piuGiorni(d, -((d.getUTCDay() + 6) % 7));
 const primoDelMese = (d: Date) => daIso(`${aIso(d).slice(0, 7)}-01`);
 
 /**
+ * Il primo giorno del periodo di piu' mesi che contiene questa data.
+ *
+ * Trimestri e semestri sono quelli del calendario, non contati all'indietro da
+ * oggi: gennaio-marzo, aprile-giugno, e cosi' via. "Trimestre scorso" deve dare
+ * lo stesso intervallo a chiunque lo apra e in qualunque giorno, altrimenti due
+ * persone che confrontano lo stesso numero guarderebbero due periodi diversi.
+ */
+const primoDelPeriodo = (d: Date, mesi: number) => {
+  const mese = d.getUTCMonth();
+  const inizio = mese - (mese % mesi);
+  return daIso(`${d.getUTCFullYear()}-${String(inizio + 1).padStart(2, "0")}-01`);
+};
+
+/**
  * Gli otto periodi, calcolati sulla data di oggi.
  *
  * I periodi in corso finiscono OGGI, non alla fine del periodo: "Mese corrente"
@@ -67,6 +81,15 @@ export function periodi(): Periodo[] {
 
   const primoQuesto = primoDelMese(oggi);
   const ultimoScorso = piuGiorni(primoQuesto, -1);
+
+  // L'ultimo giorno del periodo precedente e' sempre quello prima dell'inizio
+  // di questo, e da li' si risale al suo primo giorno. Cosi' il passaggio
+  // d'anno - da gennaio si torna al trimestre ottobre-dicembre - viene da se',
+  // senza doverlo trattare a parte.
+  const primoTrimestre = primoDelPeriodo(oggi, 3);
+  const ultimoTrimestreScorso = piuGiorni(primoTrimestre, -1);
+  const primoSemestre = primoDelPeriodo(oggi, 6);
+  const ultimoSemestreScorso = piuGiorni(primoSemestre, -1);
 
   const anno = oggi.getUTCFullYear();
 
@@ -91,6 +114,30 @@ export function periodi(): Periodo[] {
       label: "Mese Scorso",
       from: aIso(primoDelMese(ultimoScorso)),
       to: aIso(ultimoScorso)
+    },
+    {
+      value: "trimestre_corrente",
+      label: "Trimestre Corrente",
+      from: aIso(primoTrimestre),
+      to: aIso(oggi)
+    },
+    {
+      value: "trimestre_scorso",
+      label: "Trimestre Scorso",
+      from: aIso(primoDelPeriodo(ultimoTrimestreScorso, 3)),
+      to: aIso(ultimoTrimestreScorso)
+    },
+    {
+      value: "semestre_corrente",
+      label: "Semestre Corrente",
+      from: aIso(primoSemestre),
+      to: aIso(oggi)
+    },
+    {
+      value: "semestre_scorso",
+      label: "Semestre Scorso",
+      from: aIso(primoDelPeriodo(ultimoSemestreScorso, 6)),
+      to: aIso(ultimoSemestreScorso)
     },
     { value: "anno_corrente", label: "Anno Corrente", from: `${anno}-01-01`, to: aIso(oggi) },
     { value: "anno_scorso", label: "Anno Scorso", from: `${anno - 1}-01-01`, to: `${anno - 1}-12-31` }

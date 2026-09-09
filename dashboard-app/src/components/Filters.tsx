@@ -72,10 +72,12 @@ function Freccia() {
  * il velo sarebbe l'unica cosa a fuoco di una pagina spenta.
  *
  * L'altezza massima serve agli elenchi lunghi - gli operatori, le campagne -
- * che altrimenti uscirebbero dal fondo della pagina.
+ * che altrimenti uscirebbero dal fondo della pagina. E' tarata sulle dodici
+ * voci del periodo, che ci stanno tutte senza scorrere: sono un elenco chiuso
+ * che si legge per intero, mentre fra centinaia di campagne si scorre comunque.
  */
 const TENDINA =
-  "absolute z-40 mt-1 max-h-72 w-full overflow-auto rounded-md border border-slate-200 bg-white p-1 shadow-lg";
+  "absolute z-40 mt-1 max-h-96 w-full overflow-auto rounded-md border border-slate-200 bg-white p-1 shadow-lg";
 
 /**
  * Menu a scelta singola, scritto da noi al posto del <select> del browser.
