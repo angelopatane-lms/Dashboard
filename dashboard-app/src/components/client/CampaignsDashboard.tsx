@@ -23,9 +23,7 @@ import CampaignConversionPeaksChart from "@/components/charts/CampaignConversion
 import { PERIODO_DEFAULT, periodoScelto } from "@/lib/periodi";
 import { FiltersBar } from "@/components/Filters";
 import Card from "@/components/ui/Card";
-import ChartTitle from "@/components/ui/ChartTitle";
 import SectionTitle from "@/components/ui/SectionTitle";
-import CampaignSummaryBar from "@/components/charts/CampaignSummaryBar";
 import CampaignAdsTable, { type CampaignAdsRow, type FunnelCampagna } from "@/components/charts/CampaignAdsTable";
 import type { CampaignAdsSpendRow } from "@/app/api/campaign-ads/route";
 import type { CampaignConversionRow } from "@/app/api/campaign-conversions/route";
@@ -489,7 +487,6 @@ export default function CampaignsDashboard({
 
   const campaignSummaryFull = useMemo(() => aggregateByCampagna(operatoriNorm), [operatoriNorm]);
 
-  const campaignSummary = useMemo(() => campaignSummaryFull.slice(0, 12), [campaignSummaryFull]);
 
   // LA TABELLA SI MOSTRA SOLO QUANDO CI SONO TUTTE E QUATTRO LE FONTI.
   //
@@ -739,32 +736,23 @@ export default function CampaignsDashboard({
         </div>
       ) : null}
 
-      <Card className="mt-6">
-        {pronto ? (
-          <CampaignAdsTable
-            adsRows={campaignAdsRows}
-            campaignSummary={campaignSummaryFull}
-            funnelByCampagna={funnelByCampagna}
-          />
-        ) : (
-          <div className="flex h-64 items-center justify-center text-sm text-slate-500">
-            Caricamento dei dati in corso...
-          </div>
-        )}
-      </Card>
-
+      {/* L'ancora "Campagne" del menu laterale porta qui: ora che il grafico
+          KPI non c'e' piu', la tabella e' cio' che quel nome indica. */}
       <div id="campagne" className="scroll-mt-6">
-        <SectionTitle className="mt-10">KPI Campagne</SectionTitle>
+        <Card className="mt-6">
+          {pronto ? (
+            <CampaignAdsTable
+              adsRows={campaignAdsRows}
+              campaignSummary={campaignSummaryFull}
+              funnelByCampagna={funnelByCampagna}
+            />
+          ) : (
+            <div className="flex h-64 items-center justify-center text-sm text-slate-500">
+              Caricamento dei dati in corso...
+            </div>
+          )}
+        </Card>
       </div>
-      <Card>
-        <ChartTitle
-          title="KPI Campagne"
-          description="Confronto per campagna su assegnati, connessioni, appuntamenti, no show e show up."
-        />
-        <div className="mt-4 h-[340px]">
-          <CampaignSummaryBar data={campaignSummary} />
-        </div>
-      </Card>
 
       <div id="insights" className="scroll-mt-6">
         <SectionTitle className="mt-10">Insights</SectionTitle>
