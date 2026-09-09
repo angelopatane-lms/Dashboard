@@ -262,7 +262,12 @@ export default function AgendaGiornaliera({
             />
             {colonne.map((c) => (
               <div key={c.nome} className="flex-shrink-0 px-2 pb-2.5 pt-2" style={{ width: LARGHEZZA_COLONNA }}>
-                <div className="truncate text-xs font-semibold text-slate-800" title={c.nome}>
+                {/* Il nome va a capo invece di essere tagliato: "Roberta
+                    Scicchita..." e "Valentina Manda..." non sono nomi. Andare a
+                    capo costa una riga di intestazione, allargare la colonna
+                    fino al nome piu' lungo costerebbe sedici pixel per tutte e
+                    venti, cioe' altri trecento pixel da scorrere. */}
+                <div className="text-xs font-semibold leading-tight text-slate-800 break-words" title={c.nome}>
                   {c.nome}
                 </div>
                 <div className="mt-0.5 text-[11px] text-slate-400">
