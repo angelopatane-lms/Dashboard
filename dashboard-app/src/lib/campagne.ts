@@ -52,7 +52,102 @@ export function nomeConforme(nome: string): boolean {
  * "_yt" - che invece vanno tenute separate. Con l'elenco esplicito le fusioni
  * sono 78 per 17.065 eventi.
  */
-export const RE_SUFFISSO_VARIANTE = /_(test(_.+)?|[0-9]+|new|lal|int|interessi)$/;
+/**
+ * I SUFFISSI CHE UN WORKFLOW AGGIUNGE A UNA CAMPAGNA GIA' ESISTENTE.
+ *
+ * Una campagna che si chiama come un'altra piu' uno di questi non e' una
+ * campagna nuova: e' la stessa persona riscritta quando le succede qualcosa -
+ * le viene fissata una consulenza, si presenta a un evento, la prende in carico
+ * un advisor. Contarla come conversione significa contare due volte la stessa
+ * persona.
+ *
+ * L'ELENCO E' ESPLICITO PERCHE' LA REGOLA STRUTTURALE NON BASTA. "Nome di
+ * un'altra campagna piu' un suffisso" descrive 534 campagne e 199.124 eventi,
+ * il 28% del totale, e dentro ci finiscono campagne vere:
+ * "lms_mep_ew_ikigai_vivere_felici" e' una campagna, non una variante di
+ * "ikigai", e i test A/B "_a" e "_b" portano 56.514 persone che non stanno da
+ * nessun'altra parte.
+ *
+ * A separare le due famiglie e' una misura, non un'impressione: quanta della
+ * gente sulla variante e' GIA' sulla campagna base. Questi suffissi stanno fra
+ * il 76% e il 100%; quelli lasciati fuori stanno sotto il 25%, cioe' portano
+ * gente nuova e sono campagne a tutti gli effetti.
+ *
+ * NON C'E' "_rilancio", che sta a meta' strada: il 60% della sua gente e' gia'
+ * sulla base, ma il restante 40% - circa 4.000 persone - non sta da nessun'altra
+ * parte. Escluderlo si puo', ed e' una decisione da prendere sapendo che quelle
+ * 4.000 spariscono dai lead.
+ *
+ * Quando ne compare uno nuovo si aggiunge qui: e' l'unico posto.
+ */
+export const SUFFISSI_TECNICI = [
+  "test_instant",
+  "presenti",
+  "in_db",
+  "consulenza",
+  "colloquio",
+  "survey",
+  "candidature_postevento",
+  "richiesta_informazioni",
+  "richieste_info",
+  "richiesta_info",
+  // Cognomi di chi prende in carico il contatto: marcatori di assegnazione,
+  // esattamente come "_test_instant". Tutti fra il 96% e il 100%.
+  "santori",
+  "asiacuccu",
+  "dascanio",
+  "patane",
+  "hassan"
+];
+
+/**
+ * I suffissi che la piattaforma pubblicitaria aggiunge spezzando una campagna:
+ * creativita' diverse, lotti di annunci, pubblici, versioni, rilanci.
+ *
+ * NON SONO CAMPAGNE, sono pezzi della stessa. I lead tornano indietro col nome
+ * base - per questo le loro righe mostrano spesa e zero lead - mentre il budget
+ * resta scritto sul nome spezzato: misurato sul foglio spesa da maggio a
+ * settembre, 112.460 EUR stanno su una variante invece che sulla sua base, e
+ * quei soldi mancanti fanno leggere alle campagne base un costo per lead meta'
+ * di quello vero.
+ *
+ * "test(_.+)?" copre da solo tutta la famiglia delle creativita'
+ * ("_test_creative", "_test_creative_20mag") e il marcatore "_test_instant".
+ */
+const SUFFISSI_SPEZZONI = [
+  "test(_.+)?",
+  "[0-9]+",
+  "new",
+  "lal",
+  "int",
+  "interessi",
+  "batch(_.+)?",
+  "best_creative(_.+)?",
+  "scale",
+  "warm",
+  "retargeting",
+  "ll",
+  "v[0-9]+",
+  "refresh(_.+)?"
+];
+
+/**
+ * TUTTO QUELLO CHE, IN UNIFICATE, SI SCRIVE COL NOME DELLA BASE.
+ *
+ * Due famiglie che arrivano da mondi diversi ma vanno trattate uguale: gli
+ * spezzoni pubblicitari qui sopra, e le varianti tecniche di SUFFISSI_TECNICI -
+ * quelle che un workflow scrive quando alla persona succede qualcosa.
+ *
+ * Delle seconde i lead non si contano nemmeno, perche' sono la stessa persona
+ * gia' contata sulla base; ma telefonate, appuntamenti, consulenze, chiusure e
+ * incassi sono fatti veri, avvenuti su quella campagna, e vanno sulla riga
+ * base. Prima restavano su righe a se' con zero lead: la riga
+ * "coaching_part_time_webinar_richiesta_informazioni" teneva 21 appuntamenti
+ * che sono di "coaching_part_time_webinar".
+ */
+const PATTERN_VARIANTE = `(${[...SUFFISSI_SPEZZONI, ...SUFFISSI_TECNICI].join("|")})`;
+
+export const RE_SUFFISSO_VARIANTE = new RegExp(`_${PATTERN_VARIANTE}$`);
 
 /** La base e' accettabile solo se le resta almeno un secondo segmento. */
 export function baseAccettabile(base: string): boolean {
@@ -232,53 +327,6 @@ export function sqlEMarcatoreInstant(alias = "c"): string {
 
 export const SQL_E_MARCATORE_INSTANT = sqlEMarcatoreInstant();
 
-/**
- * I SUFFISSI CHE UN WORKFLOW AGGIUNGE A UNA CAMPAGNA GIA' ESISTENTE.
- *
- * Una campagna che si chiama come un'altra piu' uno di questi non e' una
- * campagna nuova: e' la stessa persona riscritta quando le succede qualcosa -
- * le viene fissata una consulenza, si presenta a un evento, la prende in carico
- * un advisor. Contarla come conversione significa contare due volte la stessa
- * persona.
- *
- * L'ELENCO E' ESPLICITO PERCHE' LA REGOLA STRUTTURALE NON BASTA. "Nome di
- * un'altra campagna piu' un suffisso" descrive 534 campagne e 199.124 eventi,
- * il 28% del totale, e dentro ci finiscono campagne vere:
- * "lms_mep_ew_ikigai_vivere_felici" e' una campagna, non una variante di
- * "ikigai", e i test A/B "_a" e "_b" portano 56.514 persone che non stanno da
- * nessun'altra parte.
- *
- * A separare le due famiglie e' una misura, non un'impressione: quanta della
- * gente sulla variante e' GIA' sulla campagna base. Questi suffissi stanno fra
- * il 76% e il 100%; quelli lasciati fuori stanno sotto il 25%, cioe' portano
- * gente nuova e sono campagne a tutti gli effetti.
- *
- * NON C'E' "_rilancio", che sta a meta' strada: il 60% della sua gente e' gia'
- * sulla base, ma il restante 40% - circa 4.000 persone - non sta da nessun'altra
- * parte. Escluderlo si puo', ed e' una decisione da prendere sapendo che quelle
- * 4.000 spariscono dai lead.
- *
- * Quando ne compare uno nuovo si aggiunge qui: e' l'unico posto.
- */
-export const SUFFISSI_TECNICI = [
-  "test_instant",
-  "presenti",
-  "in_db",
-  "consulenza",
-  "colloquio",
-  "survey",
-  "candidature_postevento",
-  "richiesta_informazioni",
-  "richieste_info",
-  "richiesta_info",
-  // Cognomi di chi prende in carico il contatto: marcatori di assegnazione,
-  // esattamente come "_test_instant". Tutti fra il 96% e il 100%.
-  "santori",
-  "asiacuccu",
-  "dascanio",
-  "patane",
-  "hassan"
-];
 
 /** I soli suffissi che, per le campagne ICMD, sono conversioni vere. */
 const SUFFISSI_ICMD_VERI = ["richiesta_informazioni", "richieste_info", "richiesta_info"];
@@ -319,9 +367,15 @@ export function sqlEVarianteTecnica(alias = "c"): string {
 
 export const SQL_E_VARIANTE_TECNICA = sqlEVarianteTecnica();
 
-/** Il nome base di una campagna, suffisso di variante rimosso. */
+/**
+ * Il nome base di una campagna, suffisso di variante rimosso.
+ *
+ * Usa lo stesso elenco della versione JavaScript: se i due divergessero, la
+ * spesa - che si unisce lato client - finirebbe su una riga e i lead, che si
+ * uniscono nella query, su un'altra.
+ */
 export function sqlNomeBase(alias = "c"): string {
-  return `regexp_replace(lower(trim(${alias}.nome)), '_(test(_.+)?|[0-9]+|new|lal|int|interessi)$', '')`;
+  return `regexp_replace(lower(trim(${alias}.nome)), '_${PATTERN_VARIANTE}$', '')`;
 }
 
 /**
