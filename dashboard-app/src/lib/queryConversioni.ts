@@ -1,7 +1,7 @@
 import {
-  SQL_E_MARCATORE,
+  SQL_E_VARIANTE_TECNICA,
   SQL_JOIN_BASE,
-  sqlEMarcatore,
+  sqlEMarcatoreInstant,
   sqlFiltroCampagna,
   sqlNomeBase,
   sqlNomeCampagna,
@@ -49,7 +49,7 @@ export function costruisciQuery(variante: Variante): string {
   const senzaMarcatori =
     variante === "tutte"
       ? ""
-      : `WHERE e.campagna_id NOT IN (SELECT id FROM campagna c WHERE ${SQL_E_MARCATORE})`;
+      : `WHERE e.campagna_id NOT IN (SELECT id FROM campagna c WHERE ${SQL_E_VARIANTE_TECNICA})`;
 
   // Solo per le viste per segmento: chi porta il marcatore, e su quale campagna
   // vera.
@@ -62,8 +62,8 @@ export function costruisciQuery(variante: Variante): string {
     : `  basi AS (
     SELECT m.id AS id_marcatore, b.id AS id_base
     FROM campagna m
-    JOIN campagna b ON lower(trim(b.nome)) = ${sqlNomeBase("m")} AND NOT (${sqlEMarcatore("b")})
-    WHERE ${sqlEMarcatore("m")} AND m.nome = lower(m.nome) AND b.nome = lower(b.nome)
+    JOIN campagna b ON lower(trim(b.nome)) = ${sqlNomeBase("m")} AND NOT (${sqlEMarcatoreInstant("b")})
+    WHERE ${sqlEMarcatoreInstant("m")} AND m.nome = lower(m.nome) AND b.nome = lower(b.nome)
   ),
   marcati AS (
     SELECT DISTINCT COALESCE(a.nuovo_id, e.contact_id) AS persona_id, b.id_base AS campagna_id

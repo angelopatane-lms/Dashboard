@@ -226,11 +226,98 @@ export function chiaveCampagna(nome: string, variante: Variante, basi: MappaVari
 
 // In LIKE l'underscore e' un carattere jolly: va protetto, altrimenti
 // "_test_instant" accetterebbe anche "xtestyinstant".
-export function sqlEMarcatore(alias = "c"): string {
+export function sqlEMarcatoreInstant(alias = "c"): string {
   return `lower(trim(${alias}.nome)) LIKE '%\\_test\\_instant'`;
 }
 
-export const SQL_E_MARCATORE = sqlEMarcatore();
+export const SQL_E_MARCATORE_INSTANT = sqlEMarcatoreInstant();
+
+/**
+ * I SUFFISSI CHE UN WORKFLOW AGGIUNGE A UNA CAMPAGNA GIA' ESISTENTE.
+ *
+ * Una campagna che si chiama come un'altra piu' uno di questi non e' una
+ * campagna nuova: e' la stessa persona riscritta quando le succede qualcosa -
+ * le viene fissata una consulenza, si presenta a un evento, la prende in carico
+ * un advisor. Contarla come conversione significa contare due volte la stessa
+ * persona.
+ *
+ * L'ELENCO E' ESPLICITO PERCHE' LA REGOLA STRUTTURALE NON BASTA. "Nome di
+ * un'altra campagna piu' un suffisso" descrive 534 campagne e 199.124 eventi,
+ * il 28% del totale, e dentro ci finiscono campagne vere:
+ * "lms_mep_ew_ikigai_vivere_felici" e' una campagna, non una variante di
+ * "ikigai", e i test A/B "_a" e "_b" portano 56.514 persone che non stanno da
+ * nessun'altra parte.
+ *
+ * A separare le due famiglie e' una misura, non un'impressione: quanta della
+ * gente sulla variante e' GIA' sulla campagna base. Questi suffissi stanno fra
+ * il 76% e il 100%; quelli lasciati fuori stanno sotto il 25%, cioe' portano
+ * gente nuova e sono campagne a tutti gli effetti.
+ *
+ * NON C'E' "_rilancio", che sta a meta' strada: il 60% della sua gente e' gia'
+ * sulla base, ma il restante 40% - circa 4.000 persone - non sta da nessun'altra
+ * parte. Escluderlo si puo', ed e' una decisione da prendere sapendo che quelle
+ * 4.000 spariscono dai lead.
+ *
+ * Quando ne compare uno nuovo si aggiunge qui: e' l'unico posto.
+ */
+export const SUFFISSI_TECNICI = [
+  "test_instant",
+  "presenti",
+  "in_db",
+  "consulenza",
+  "colloquio",
+  "survey",
+  "candidature_postevento",
+  "richiesta_informazioni",
+  "richieste_info",
+  "richiesta_info",
+  // Cognomi di chi prende in carico il contatto: marcatori di assegnazione,
+  // esattamente come "_test_instant". Tutti fra il 96% e il 100%.
+  "santori",
+  "asiacuccu",
+  "dascanio",
+  "patane",
+  "hassan"
+];
+
+/** I soli suffissi che, per le campagne ICMD, sono conversioni vere. */
+const SUFFISSI_ICMD_VERI = ["richiesta_informazioni", "richieste_info", "richiesta_info"];
+
+const sqlSenzaSuffissoTecnico = (alias: string) =>
+  `regexp_replace(lower(trim(${alias}.nome)), '_(${SUFFISSI_TECNICI.join("|")})$', '')`;
+
+/**
+ * Vero quando la campagna e' una variante tecnica, cioe' non una conversione.
+ *
+ * Tre condizioni, e servono tutte e tre:
+ *
+ * 1. il nome finisce con uno dei suffissi tecnici;
+ * 2. LA CAMPAGNA BASE ESISTE DAVVERO. E' questa che tiene fuori le campagne che
+ *    il suffisso ce l'hanno nel nome ma non sono varianti di niente: delle 29
+ *    campagne che finiscono in "richiesta_informazioni", 16 non hanno una base -
+ *    "icmd13_richiesta_informazioni" esiste, "icmd13" no - e restano conversioni
+ *    a pieno titolo;
+ * 3. non e' una ICMD con la richiesta informazioni, che per quella categoria e'
+ *    una conversione vera. Oggi non esiste nessuna ICMD in questo caso, perche'
+ *    la condizione 2 le esclude gia' tutte; l'eccezione e' scritta per il giorno
+ *    in cui ne nascera' una con la base.
+ */
+export function sqlEVarianteTecnica(alias = "c"): string {
+  const senza = sqlSenzaSuffissoTecnico(alias);
+  return `(
+    ${senza} <> lower(trim(${alias}.nome))
+    AND NOT (
+      lower(trim(${alias}.nome)) LIKE '%icmd%'
+      AND lower(trim(${alias}.nome)) ~ '_(${SUFFISSI_ICMD_VERI.join("|")})$'
+    )
+    AND EXISTS (
+      SELECT 1 FROM campagna vb
+      WHERE vb.nome = ${senza} AND position('_' in vb.nome) > 0
+    )
+  )`;
+}
+
+export const SQL_E_VARIANTE_TECNICA = sqlEVarianteTecnica();
 
 /** Il nome base di una campagna, suffisso di variante rimosso. */
 export function sqlNomeBase(alias = "c"): string {
@@ -258,7 +345,7 @@ export const SQL_CTE_MARCATI = `marcati AS (
     FROM eventi_conversione e
     LEFT JOIN alias_contatto a ON a.vecchio_id = e.contact_id
     JOIN campagna cm ON cm.id = e.campagna_id
-    WHERE ${sqlEMarcatore("cm")}
+    WHERE ${sqlEMarcatoreInstant("cm")}
   )`;
 
 /**
@@ -288,7 +375,7 @@ export function sqlNomeCampagna(variante: Variante): string {
 export function sqlFiltroCampagna(variante: Variante): string {
   if (variante === "tutte") return "TRUE";
   const conforme = "c.nome = lower(c.nome)";
-  if (variante === "instant") return `${conforme} AND ${SQL_E_MARCATORE}`;
-  if (variante === "non_instant") return `${conforme} AND NOT (${SQL_E_MARCATORE})`;
+  if (variante === "instant") return `${conforme} AND ${SQL_E_MARCATORE_INSTANT}`;
+  if (variante === "non_instant") return `${conforme} AND NOT (${SQL_E_MARCATORE_INSTANT})`;
   return conforme;
 }

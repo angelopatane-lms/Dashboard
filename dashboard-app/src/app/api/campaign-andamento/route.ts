@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { guessCategoria } from "@/lib/campaignCategory";
 import { leggiSpesaAds } from "@/lib/spesaAds";
-import { SQL_E_MARCATORE, SQL_JOIN_BASE } from "@/lib/campagne";
+import { SQL_E_VARIANTE_TECNICA, SQL_JOIN_BASE } from "@/lib/campagne";
 
 export const dynamic = "force-dynamic";
 
@@ -94,7 +94,7 @@ function queryLead(): string {
     LEFT JOIN alias_contatto a ON a.vecchio_id = e.contact_id
     WHERE e.ts >= $1::date AND e.ts < ($2::date + INTERVAL '1 day')
       AND c.nome = lower(c.nome)
-      AND NOT (${SQL_E_MARCATORE})
+      AND NOT (${SQL_E_VARIANTE_TECNICA})
     GROUP BY 1, 2
   `;
 }

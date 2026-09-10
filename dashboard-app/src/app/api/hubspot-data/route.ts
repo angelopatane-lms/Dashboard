@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { sqlEMarcatore, sqlNomeBase } from "@/lib/campagne";
+import { sqlEMarcatoreInstant, sqlNomeBase } from "@/lib/campagne";
 
 const BOOM_OBJECT_ID = "2-130365112";
 const HUBSPOT_API = "https://api.hubapi.com";
@@ -150,7 +150,7 @@ async function calcolaInstant(records: RawBoomRecord[]): Promise<void> {
          FROM eventi_conversione e
          LEFT JOIN alias_contatto a ON a.vecchio_id = e.contact_id
          JOIN campagna c ON c.id = e.campagna_id
-        WHERE ${sqlEMarcatore("c")}
+        WHERE ${sqlEMarcatoreInstant("c")}
           AND COALESCE(a.nuovo_id, e.contact_id) = ANY($1::bigint[])`,
       [ids]
     );
