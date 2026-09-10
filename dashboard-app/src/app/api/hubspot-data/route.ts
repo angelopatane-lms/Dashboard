@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { sqlEMarcatoreInstant, sqlNomeBase } from "@/lib/campagne";
+import { RE_SUFFISSO_VARIANTE, sqlEMarcatoreInstant, sqlNomeBase } from "@/lib/campagne";
 
 const BOOM_OBJECT_ID = "2-130365112";
 const HUBSPOT_API = "https://api.hubapi.com";
@@ -157,7 +157,7 @@ async function calcolaInstant(records: RawBoomRecord[]): Promise<void> {
     const marcati = new Set(rows.map((r) => `${r.persona}|${r.campagna}`));
     for (const r of records) {
       if (!r.contact_id) continue;
-      const base = r.id_campagna_track.trim().toLowerCase().replace(/_(test(_.+)?|[0-9]+|new|lal|int|interessi)$/, "");
+      const base = r.id_campagna_track.trim().toLowerCase().replace(RE_SUFFISSO_VARIANTE, "");
       if (base && marcati.has(`${r.contact_id}|${base}`)) r.instant = true;
     }
   } catch (err) {

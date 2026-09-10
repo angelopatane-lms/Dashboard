@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { baseAccettabile, RE_SUFFISSO_VARIANTE, type MappaVarianti } from "@/lib/campagne";
+import { baseAccettabile, RE_SUFFISSO_VARIANTE, sqlNomeBase, type MappaVarianti } from "@/lib/campagne";
 import { leggiSpesaAds } from "@/lib/spesaAds";
 
 // Il tipo resta esportato da qui perche' il client lo importa da questo
@@ -37,7 +37,7 @@ async function mappaVarianti(nomiFoglio: Iterable<string>): Promise<MappaVariant
     const { rows } = await db.query<{ variante: string; base: string }>(
       `SELECT lower(trim(v.nome)) AS variante, b.nome AS base
          FROM campagna v
-         JOIN campagna b ON b.nome = regexp_replace(lower(trim(v.nome)), '_(test(_.+)?|[0-9]+|new|lal|int|interessi)$', '')
+         JOIN campagna b ON b.nome = ${sqlNomeBase("v")}
         WHERE v.nome = lower(v.nome)
           AND b.nome <> lower(trim(v.nome))
           AND position('_' in b.nome) > 0`
