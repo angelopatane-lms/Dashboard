@@ -211,30 +211,6 @@ export default function CampaignsDashboard({
   // spacciare per "zero lead" un errore di rete o un database irraggiungibile.
   const [conversioniErrore, setConversioniErrore] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    const from = filters.from ?? defaultFrom;
-    const to = filters.to ?? defaultTo;
-    let annullato = false;
-
-    fetch(`/api/campaign-conversions?from=${from}&to=${to}&variante=${variante}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((data: { righe?: CampaignConversionRow[] }) => {
-        if (annullato) return;
-        setConversioni(data.righe ?? []);
-        setConversioniErrore(false);
-      })
-      .catch((err) => {
-        if (annullato) return;
-        console.error("[campaign-conversions]", err);
-        setConversioni([]);
-        setConversioniErrore(true);
-      });
-
-    return () => {
-      annullato = true;
-    };
-  }, [filters.from, filters.to, variante, defaultFrom, defaultTo]);
-
   const conversioniByCampagna = useMemo(() => {
     const map = new Map<string, CampaignConversionRow>();
     for (const r of conversioni) {
@@ -268,84 +244,101 @@ export default function CampaignsDashboard({
   const [chiamate, setChiamate] = useState<CampaignChiamateRow[]>([]);
   const [chiamateErrore, setChiamateErrore] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    const from = filters.from ?? defaultFrom;
-    const to = filters.to ?? defaultTo;
-    let annullato = false;
+  // LA TABELLA SI MOSTRA SOLO QUANDO CI SONO TUTTE E QUATTRO LE FONTI, e questo
+  // vale a ogni cambio di filtro, non solo alla prima apertura.
+  //
+  // "Arrivata" comprende anche "fallita": se una fonte non risponde la tabella
+  // deve comunque comparire, con l'avviso che spiega quali colonne sono a zero.
+  const [pronto, setPronto] = useState(false);
 
-    fetch(`/api/campaign-chiamate?from=${from}&to=${to}&variante=${variante}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((data: { righe?: CampaignChiamateRow[] }) => {
-        if (annullato) return;
-        setChiamate(data.righe ?? []);
-        setChiamateErrore(false);
-      })
-      .catch((err) => {
-        if (annullato) return;
-        console.error("[campaign-chiamate]", err);
-        setChiamate([]);
-        setChiamateErrore(true);
-      });
-
-    return () => {
-      annullato = true;
-    };
-  }, [filters.from, filters.to, variante, defaultFrom, defaultTo]);
-
-  useEffect(() => {
-    const from = filters.from ?? defaultFrom;
-    const to = filters.to ?? defaultTo;
-    let annullato = false;
-
-    fetch(`/api/campaign-trattative?from=${from}&to=${to}&variante=${variante}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((data: { righe?: CampaignTrattativeRow[] }) => {
-        if (annullato) return;
-        setConsulenze(data.righe ?? []);
-        setConsulenzeErrore(false);
-      })
-      .catch((err) => {
-        if (annullato) return;
-        console.error("[campaign-trattative]", err);
-        setConsulenze([]);
-        setConsulenzeErrore(true);
-      });
-
-    return () => {
-      annullato = true;
-    };
-  }, [filters.from, filters.to, variante, defaultFrom, defaultTo]);
+  // LE QUATTRO FONTI SI LEGGONO INSIEME E SI SCRIVONO INSIEME.
+  //
+  // Erano quattro letture separate, ognuna che aggiornava il suo pezzo appena
+  // arrivava: cambiando un filtro la tabella si rimescolava tre o quattro
+  // volte, con i numeri che cambiavano sotto gli occhi. Al primo caricamento
+  // non si vedeva, perche' un cancello la teneva nascosta finche' non erano
+  // arrivate tutte - ma quel cancello, una volta aperto, non si richiudeva.
+  //
+  // Ora c'e' un solo momento in cui i dati cambiano: quando ci sono tutti.
+  //
+  // Gli incassi restano in memoria per intervallo di date, perche' la loro
+  // lettura non dipende dalla variante: passando da Unificate a Instant si
+  // rilegge il database, non HubSpot, che e' la chiamata lenta.
+  const memoriaIncassi = useRef<{ chiave: string; dati: RawBoomRecord[] | null }>({
+    chiave: "",
+    dati: null
+  });
 
   useEffect(() => {
     const from = filters.from ?? defaultFrom;
     const to = filters.to ?? defaultTo;
     let annullato = false;
 
-    // Restano solo gli incassi da HubSpot in diretta: gli Appuntamenti ora
-    // arrivano da /api/campaign-trattative, che li conta dalla nostra tabella e
-    // sa a quale gruppo appartengono. Una chiamata in meno a ogni cambio di
-    // periodo, ed era quella su 2.000 record.
-    const leggi = async () => {
+    setPronto(false);
+
+    /** Null quando la fonte non risponde: e' un'altra cosa dal rispondere zero. */
+    const leggi = async <T,>(url: string, dove: string): Promise<T[] | null> => {
       try {
-        const b = await fetch(`/api/hubspot-data?from=${from}&to=${to}`).then((r) =>
-          r.ok ? r.json() : Promise.reject(new Error(`incassi HTTP ${r.status}`))
-        );
-        if (annullato) return;
-        setBoomRecords(b.boomRecords ?? []);
-        setHubspotErrore(false);
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = (await r.json()) as { righe?: T[] };
+        return d.righe ?? [];
       } catch (err) {
-        if (annullato) return;
-        console.error("[campagne/hubspot]", err);
-        setBoomRecords([]);
-        setHubspotErrore(true);
+        console.error(dove, err);
+        return null;
       }
     };
-    leggi();
+
+    const leggiIncassi = async (): Promise<RawBoomRecord[] | null> => {
+      const chiave = `${from}|${to}`;
+      if (memoriaIncassi.current.chiave === chiave) return memoriaIncassi.current.dati;
+      try {
+        const r = await fetch(`/api/hubspot-data?from=${from}&to=${to}`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = await r.json();
+        const dati = (d.boomRecords ?? []) as RawBoomRecord[];
+        memoriaIncassi.current = { chiave, dati };
+        return dati;
+      } catch (err) {
+        console.error("[campagne/hubspot]", err);
+        memoriaIncassi.current = { chiave, dati: null };
+        return null;
+      }
+    };
+
+    void (async () => {
+      const [conv, chia, trat, inca] = await Promise.all([
+        leggi<CampaignConversionRow>(
+          `/api/campaign-conversions?from=${from}&to=${to}&variante=${variante}`,
+          "[campaign-conversions]"
+        ),
+        leggi<CampaignChiamateRow>(
+          `/api/campaign-chiamate?from=${from}&to=${to}&variante=${variante}`,
+          "[campaign-chiamate]"
+        ),
+        leggi<CampaignTrattativeRow>(
+          `/api/campaign-trattative?from=${from}&to=${to}&variante=${variante}`,
+          "[campaign-trattative]"
+        ),
+        leggiIncassi()
+      ]);
+      if (annullato) return;
+
+      setConversioni(conv ?? []);
+      setConversioniErrore(conv === null);
+      setChiamate(chia ?? []);
+      setChiamateErrore(chia === null);
+      setConsulenze(trat ?? []);
+      setConsulenzeErrore(trat === null);
+      setBoomRecords(inca ?? []);
+      setHubspotErrore(inca === null);
+      setPronto(true);
+    })();
 
     return () => {
       annullato = true;
     };
-  }, [filters.from, filters.to, defaultFrom, defaultTo]);
+  }, [filters.from, filters.to, variante, defaultFrom, defaultTo]);
 
   const funnelByCampagna = useMemo(() => {
     const map = new Map<string, FunnelCampagna>();
@@ -492,21 +485,6 @@ export default function CampaignsDashboard({
   const campaignSummaryFull = useMemo(() => aggregateByCampagna(operatoriNorm), [operatoriNorm]);
 
 
-  // LA TABELLA SI MOSTRA SOLO QUANDO CI SONO TUTTE E QUATTRO LE FONTI.
-  //
-  // Le righe nascono dall'unione di spesa, lead, telefonate, trattative e
-  // incassi, che arrivano da richieste separate: disegnandola a ogni risposta
-  // si vedevano quattro rimescolamenti di fila, con righe che comparivano e
-  // numeri che cambiavano sotto gli occhi. Meglio aspettare e disegnare una
-  // volta sola con i valori definitivi.
-  //
-  // "Arrivata" comprende anche "fallita": se una fonte non risponde la tabella
-  // deve comunque comparire, con l'avviso che spiega quali colonne sono a zero.
-  const pronto =
-    conversioniErrore !== null &&
-    consulenzeErrore !== null &&
-    chiamateErrore !== null &&
-    hubspotErrore !== null;
 
   const campaignAdsRows = useMemo(() => {
     let rows = buildCampaignAdsRows(spesaByCampagna, conversioniByCampagna, funnelByCampagna, variante, varianti);
