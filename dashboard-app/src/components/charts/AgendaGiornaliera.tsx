@@ -58,20 +58,6 @@ const COLORI: Record<TipoEvento, { fondo: string; testo: string; secondario: str
   annullato: { fondo: "#cbd5e1", testo: "#475569", secondario: "#64748b" }
 };
 
-/**
- * Advisor che compaiono solo nei giorni in cui hanno qualcosa in agenda.
- *
- * Gli altri hanno una colonna sempre, anche vuota, perche' "oggi e' libero" e'
- * meta' della risposta che si cerca guardando un'agenda. Per queste quattro
- * persone la colonna vuota c'e' quasi tutti i giorni e sposta di seicento pixel
- * chi invece lavora, quindi si mostra solo quando serve.
- *
- * E' un elenco di nomi e non una regola, perche' regola non e': dipende da come
- * sono organizzate le persone, non da un dato. Il confronto passa da
- * chiaveNome, quindi maiuscole, spazi doppi e apostrofi non contano.
- */
-const SOLO_SE_IMPEGNATI = ["Anna Natale", "Asia Cuccu", "Nelly Salinas", "Sabina Noia"];
-
 const LEGENDA: Array<{ tipo: TipoEvento; label: string }> = [
   { tipo: "appuntamento", label: "Fissato" },
   { tipo: "svolta", label: "Svolto" },
@@ -174,8 +160,6 @@ export default function AgendaGiornaliera({
       nomi.push(scrittoCome.get(k) ?? k);
     }
 
-    const soloSeImpegnati = new Set(SOLO_SE_IMPEGNATI.map(chiaveNome));
-
     return nomi
       .map((nome) => {
         const suoi = perChiave.get(chiaveNome(nome)) ?? [];
@@ -185,17 +169,19 @@ export default function AgendaGiornaliera({
           // Si contano gli appuntamenti con un cliente: le riunioni interne e
           // gli annullati non sono lavoro fatto ne' da fare.
           quanti: suoi.filter((e) => e.tipo === "appuntamento" || e.tipo === "svolta").length,
-          // Un appuntamento annullato o disertato conta come "aveva qualcosa":
-          // era un posto occupato in agenda, e chi si presenta solo quando ha
-          // da fare merita la colonna anche in quel caso. Le riunioni interne
-          // no: quelle le ha chiunque.
-          haAppuntamenti: suoi.some((e) => e.tipo !== "interno")
+          quantoHa: suoi.length
         };
       })
-      // Ci sono tutti, anche chi oggi non ha niente: una colonna vuota dice
-      // "e' libero", che e' la meta' della domanda a cui serve rispondere.
-      // Fanno eccezione i quattro di SOLO_SE_IMPEGNATI.
-      .filter((c) => c.haAppuntamenti || !soloSeImpegnati.has(chiaveNome(c.nome)));
+      // IN AGENDA CI VA CHI HA QUALCOSA IN AGENDA.
+      //
+      // Una colonna vuota dice "questa persona oggi e' libera", che e' una
+      // risposta - ma su venti advisor sono quasi sempre piu' della meta', e
+      // spingono fuori schermo chi invece lavora. Chi e' libero lo si vede
+      // dalla tabella qui sopra; qui si guarda la giornata di chi ce l'ha.
+      //
+      // "Qualcosa" comprende le riunioni interne: se qualcuno ha solo quelle,
+      // nasconderlo toglierebbe dalla vista l'unica cosa che ha.
+      .filter((c) => c.quantoHa > 0);
   }, [eventi, operatori]);
 
   // La griglia si adatta a quello che c'e': parte dalle 8 e finisce alle 20, ma
@@ -224,21 +210,6 @@ export default function AgendaGiornaliera({
       {/* Legenda e comandi sulla stessa riga: il titolo della sezione dice gia'
           cos'e', e una riga in meno e' una riga di agenda in piu'. */}
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-        <div className="flex flex-wrap items-center gap-4">
-          {LEGENDA.map((v) => (
-            <div key={v.tipo} className="flex items-center gap-2">
-              <span className="inline-block h-3 w-3 rounded-[3px]" style={{ background: COLORI[v.tipo].fondo }} />
-              <span className="text-xs font-medium text-slate-700">{v.label}</span>
-            </div>
-          ))}
-          {lineaOra !== null ? (
-            <div className="flex items-center gap-2">
-              <span className="inline-block h-0.5 w-[18px]" style={{ background: "#e11d48" }} />
-              <span className="text-xs font-medium text-slate-700">ora corrente</span>
-            </div>
-          ) : null}
-        </div>
-
         <div className="flex flex-shrink-0 items-center gap-3">
           <div className="flex items-center gap-2">
             {[
@@ -260,6 +231,21 @@ export default function AgendaGiornaliera({
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4">
+          {LEGENDA.map((v) => (
+            <div key={v.tipo} className="flex items-center gap-2">
+              <span className="inline-block h-3 w-3 rounded-[3px]" style={{ background: COLORI[v.tipo].fondo }} />
+              <span className="text-xs font-medium text-slate-700">{v.label}</span>
+            </div>
+          ))}
+          {lineaOra !== null ? (
+            <div className="flex items-center gap-2">
+              <span className="inline-block h-0.5 w-[18px]" style={{ background: "#e11d48" }} />
+              <span className="text-xs font-medium text-slate-700">ora corrente</span>
+            </div>
+          ) : null}
         </div>
       </div>
 
