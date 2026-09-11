@@ -45,7 +45,8 @@ const INTESTAZIONI_NUMERI = [
   "Consulenze",
   "Chiusure",
   "% Chiusura",
-  "Boom"
+  "Boom",
+  "Obiettivo"
 ];
 const LARGHEZZA_NUMERI = larghezzaColonnaNumeri(INTESTAZIONI_NUMERI);
 
@@ -56,7 +57,8 @@ export default function OperatorStatsTable({
   precomputedTotals,
   hubspotLoading,
   trattativeLoading,
-  operatorLabel = "Advisor"
+  operatorLabel = "Advisor",
+  obiettivi
 }: {
   data: OperatorSummary[];
   hubspotOverrides?: Record<string, { chiusure: number; boom: number }>;
@@ -65,12 +67,22 @@ export default function OperatorStatsTable({
   hubspotLoading?: boolean;
   trattativeLoading?: boolean;
   operatorLabel?: string;
+  /** L'obiettivo di Boom del mese, per persona, con la stessa chiave di nome
+   *  degli altri valori che arrivano da fuori.
+   *
+   *  Oggi non lo alimenta nessuno e la colonna mostra trattini: si riempira'
+   *  da un modulo, e l'obiettivo si fissa a inizio mese e resta fermo fino al
+   *  mese dopo. Il trattino e' voluto: uno zero si leggerebbe come "obiettivo
+   *  zero", che e' un'altra cosa da "non ancora fissato". */
+  obiettivi?: Record<string, number>;
 }) {
   const isSetterView = operatorLabel === "Setter";
   const normKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
   const effChiusure = (r: OperatorSummary) => hubspotOverrides?.[normKey(r.operatore)]?.chiusure ?? 0;
   const effBoom = (r: OperatorSummary) => hubspotOverrides?.[normKey(r.operatore)]?.boom ?? 0;
   const effAppuntamenti = (r: OperatorSummary) => trattativeOverrides?.[normKey(r.operatore)] ?? 0;
+  const effObiettivo = (r: OperatorSummary): number | null =>
+    obiettivi?.[normKey(r.operatore)] ?? null;
 
   const totals = useMemo(() => {
     const base = data.reduce(
@@ -81,16 +93,20 @@ export default function OperatorStatsTable({
         appuntamenti: acc.appuntamenti + effAppuntamenti(r),
         consulenze: acc.consulenze + (isSetterView ? r.noShow : r.consulenze),
         chiusure: acc.chiusure + effChiusure(r),
-        boom: acc.boom + effBoom(r)
+        boom: acc.boom + effBoom(r),
+        obiettivo: acc.obiettivo + (effObiettivo(r) ?? 0)
       }),
-      { assegnati: 0, chiamate: 0, connessioni: 0, appuntamenti: 0, consulenze: 0, chiusure: 0, boom: 0 }
+      { assegnati: 0, chiamate: 0, connessioni: 0, appuntamenti: 0, consulenze: 0, chiusure: 0, boom: 0, obiettivo: 0 }
     );
     return {
       ...base,
+      // Null quando nessuno ha un obiettivo: sommare zeri e scrivere "0 EUR"
+      // direbbe che l'obiettivo del mese e' zero.
+      obiettivo: data.some((r) => effObiettivo(r) !== null) ? base.obiettivo : null,
       chiusure: precomputedTotals?.chiusure ?? base.chiusure,
       boom: precomputedTotals?.boom ?? base.boom
     };
-  }, [data, hubspotOverrides, trattativeOverrides, precomputedTotals]);
+  }, [data, hubspotOverrides, trattativeOverrides, precomputedTotals, obiettivi]);
 
   const maxValues = useMemo(
     () => ({
@@ -132,6 +148,13 @@ export default function OperatorStatsTable({
     { label: "Boom", valore: (r) => effBoom(r) }
   ];
 
+  // L'OBIETTIVO E' SOLO DEGLI ADVISOR. E' il traguardo di Boom del mese, che si
+  // fissa il primo giorno e resta fermo: sui setter, che il Boom lo portano ma
+  // non lo chiudono, non e' stato chiesto.
+  if (!isSetterView) {
+    colonne.push({ label: "Obiettivo", valore: (r) => effObiettivo(r) });
+  }
+
   // La colonna su cui si sta ordinando. Vuota vuol dire ordine di partenza -
   // per Boom, poi per appuntamenti - e non viene ricordata da nessuna parte,
   // quindi ogni ricaricamento riporta la tabella li'.
@@ -165,7 +188,7 @@ export default function OperatorStatsTable({
     320,
     14
   );
-  const larghezzaTotale = larghezzaNome + 9 * LARGHEZZA_NUMERI;
+  const larghezzaTotale = larghezzaNome + colonne.length * LARGHEZZA_NUMERI;
 
   return (
     // Il tetto d'altezza serve alla riga delle intestazioni per restare ferma:
@@ -180,7 +203,7 @@ export default function OperatorStatsTable({
       >
         <colgroup>
           <col style={{ width: larghezzaNome }} />
-          {Array.from({ length: 9 }).map((_, i) => (
+          {colonne.map((_, i) => (
             <col key={i} style={{ width: LARGHEZZA_NUMERI }} />
           ))}
         </colgroup>
@@ -281,6 +304,15 @@ export default function OperatorStatsTable({
                 >
                   {hubspotLoading ? <span className="text-slate-400">–</span> : formatEur(effBoom(r))}
                 </td>
+                {isSetterView ? null : (
+                  <td className="border-r border-white px-2 py-1.5 text-right tabular-nums">
+                    {effObiettivo(r) !== null ? (
+                      formatEur(effObiettivo(r) as number)
+                    ) : (
+                      <span className="text-slate-400">–</span>
+                    )}
+                  </td>
+                )}
               </tr>
             );
           })}
@@ -306,6 +338,15 @@ export default function OperatorStatsTable({
               {hubspotLoading ? <span className="font-normal text-slate-400">–</span> : totalTc !== null ? formatPct(totalTc, 2) : <span className="font-normal text-slate-400">–</span>}
             </td>
             <td className="border-r border-white px-2 py-2 text-right tabular-nums">{hubspotLoading ? <span className="font-normal text-slate-400">–</span> : formatEur(totals.boom)}</td>
+            {isSetterView ? null : (
+              <td className="border-r border-white px-2 py-2 text-right tabular-nums">
+                {totals.obiettivo !== null ? (
+                  formatEur(totals.obiettivo)
+                ) : (
+                  <span className="font-normal text-slate-400">–</span>
+                )}
+              </td>
+            )}
           </tr>
         </tfoot>
       </table>
