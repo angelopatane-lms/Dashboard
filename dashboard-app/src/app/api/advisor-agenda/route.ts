@@ -22,6 +22,27 @@ const HUBSPOT_API = "https://api.hubapi.com";
 /** Il tipo decide il colore, e lo decidono i dati: e' l'esito del meeting. */
 export type TipoEvento = "appuntamento" | "svolta" | "annullato" | "interno";
 
+/**
+ * L'analisi della call, quando c'e'.
+ *
+ * Arriva dall'oggetto Appuntamento di HubSpot, che un'integrazione riempie
+ * leggendo la trascrizione. Non e' una cosa che si puo' dare per scontata: su
+ * 4.123 consulenze svolte nel 2026 il record esiste per circa una su dieci, e
+ * quando esiste compare in media tre ore e mezza DOPO la call. Sull'agenda di
+ * oggi quindi sara' quasi sempre assente, e su quella di ieri no: e' il motivo
+ * per cui la scheda si apre solo dove c'e' davvero qualcosa da leggere.
+ */
+export type AnalisiCall = {
+  /** Il riassunto. E' un elenco perche' il campo ne contiene piu' d'uno. */
+  riassunti: string[];
+  /** Lo scarto fra quello che il contatto si aspettava e quello che offriamo. */
+  mismatch: string[];
+  obiezione: string;
+  urgenza: string;
+  problema: string;
+  obiettivo: string;
+};
+
 export type EventoAgenda = {
   operatore: string;
   /** Il nome del contatto: dal titolo si toglie " and <advisor>", che ripete
@@ -34,6 +55,8 @@ export type EventoAgenda = {
   inizio: string;
   fine: string;
   tipo: TipoEvento;
+  /** Presente solo per gli appuntamenti di cui esiste l'analisi della call. */
+  analisi?: AnalisiCall;
 };
 
 const due = (n: number) => String(n).padStart(2, "0");
@@ -110,6 +133,111 @@ async function contattiDeiMeeting(token: string, ids: string[]): Promise<Map<str
       if (da) out.set(da, a);
     }
   }
+  return out;
+}
+
+/** I campi dell'analisi che finiscono nella scheda. */
+const CAMPI_ANALISI = [
+  "hs_appointment_name",
+  "summary_3lines",
+  "commento_mismatch",
+  "obiezione_principale",
+  "urgency_level",
+  "inferno_tema_principale",
+  "paradiso_tema_principale"
+];
+
+/** Un campo dell'analisi contiene piu' blocchi, uno per riga: qui diventano un elenco. */
+const blocchi = (v: string | null | undefined): string[] =>
+  (v ?? "")
+    .split(/\r?\n/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+const ultimo = (v: string | null | undefined): string => {
+  const b = blocchi(v);
+  return b.length ? b[b.length - 1] : "";
+};
+
+/**
+ * L'analisi della call dei contatti di giornata.
+ *
+ * SI PARTE DAI CONTATTI, non dalla data. Il record dell'appuntamento nasce ore
+ * o giorni dopo la call, quindi cercarlo per data di creazione non lo
+ * troverebbe; il suo nome comincia con la data della call ma e' testo libero, e
+ * la ricerca di HubSpot lo spezza in pezzi che non si possono interrogare in
+ * modo affidabile. L'associazione al contatto invece e' precisa e c'e' sempre:
+ * misurata su tutti i 1.114 record, nessuno ne e' privo.
+ *
+ * Restituisce una mappa per numero di contatto, perche' e' da li' che l'evento
+ * dell'agenda la ritrova.
+ */
+async function analisiDeiContatti(
+  token: string,
+  contatti: number[],
+  giorno: string
+): Promise<Map<number, AnalisiCall>> {
+  const out = new Map<number, AnalisiCall>();
+  if (!contatti.length) return out;
+
+  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+  // 1. quali appuntamenti ha ogni contatto
+  const appDiContatto = new Map<number, string[]>();
+  for (let i = 0; i < contatti.length; i += 100) {
+    const res = await fetch(`${HUBSPOT_API}/crm/v4/associations/contacts/appointments/batch/read`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ inputs: contatti.slice(i, i + 100).map((id) => ({ id: String(id) })) })
+    });
+    if (!res.ok) throw new Error(`associazioni appuntamenti ${res.status}`);
+    const data = await res.json();
+    for (const r of data.results ?? []) {
+      const da = Number(r.from?.id);
+      const a = (r.to ?? []).map((x: { toObjectId?: string | number }) => String(x.toObjectId)).filter(Boolean);
+      if (Number.isFinite(da) && a.length) appDiContatto.set(da, a);
+    }
+  }
+
+  const idApp = Array.from(new Set(Array.from(appDiContatto.values()).flat()));
+  if (!idApp.length) return out;
+
+  // 2. il contenuto di quegli appuntamenti
+  const perId = new Map<string, Record<string, string | null>>();
+  for (let i = 0; i < idApp.length; i += 100) {
+    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/appointments/batch/read`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ properties: CAMPI_ANALISI, inputs: idApp.slice(i, i + 100).map((id) => ({ id })) })
+    });
+    if (!res.ok) throw new Error(`appuntamenti ${res.status}`);
+    const data = await res.json();
+    for (const r of data.results ?? []) perId.set(String(r.id), r.properties ?? {});
+  }
+
+  // 3. si tiene solo l'appuntamento di QUESTA giornata: un contatto puo' averne
+  //    fatti altri in passato, e mostrare l'analisi di un'altra call sarebbe
+  //    peggio che non mostrarne nessuna.
+  for (const [contatto, lista] of appDiContatto) {
+    for (const id of lista) {
+      const p = perId.get(id);
+      if (!p) continue;
+      if (!(p.hs_appointment_name ?? "").startsWith(`${giorno} `)) continue;
+      const riassunti = blocchi(p.summary_3lines);
+      const mismatch = blocchi(p.commento_mismatch);
+      if (!riassunti.length && !mismatch.length) continue;
+      out.set(contatto, {
+        riassunti,
+        mismatch,
+        obiezione: ultimo(p.obiezione_principale),
+        urgenza: ultimo(p.urgency_level),
+        problema: ultimo(p.inferno_tema_principale),
+        obiettivo: ultimo(p.paradiso_tema_principale)
+      });
+      break;
+    }
+  }
+
   return out;
 }
 
@@ -234,6 +362,18 @@ export async function GET(req: NextRequest) {
       })
     ]);
 
+    // L'analisi si chiede dopo, perche' serve sapere prima chi sono i contatti
+    // di giornata. Se non risponde, l'agenda resta quella di sempre: le schede
+    // non si aprono, ma nessun appuntamento sparisce.
+    const analisi = await analisiDeiContatti(
+      token,
+      Array.from(new Set(Array.from(contatti.values()).flat())),
+      giorno
+    ).catch((err) => {
+      console.error("[advisor-agenda] analisi call", err instanceof Error ? err.message : err);
+      return new Map<number, AnalisiCall>();
+    });
+
     let senzaPersona = 0;
     let svolteTrovate = 0;
     const eventi: EventoAgenda[] = [];
@@ -269,6 +409,9 @@ export async function GET(req: NextRequest) {
         svolteTrovate += 1;
       }
 
+      const suoi = contatti.get(r.id) ?? [];
+      const analisiSua = suoi.map((c) => analisi.get(c)).find(Boolean);
+
       eventi.push({
         operatore,
         titolo: senzaAdvisor || titolo || "Senza titolo",
@@ -276,14 +419,16 @@ export async function GET(req: NextRequest) {
         fineMin,
         inizio: da.testo,
         fine: a ? a.testo : "",
-        tipo
+        tipo,
+        ...(analisiSua ? { analisi: analisiSua } : {})
       });
     }
 
     eventi.sort((x, y) => x.inizioMin - y.inizioMin);
     console.log(
       `[advisor-agenda] ${giorno}: ${eventi.length} eventi, ${new Set(eventi.map((e) => e.operatore)).size} persone, ` +
-        `${eventi.filter((e) => e.tipo === "svolta").length} svolte (${svolteTrovate} dalle trattative)` +
+        `${eventi.filter((e) => e.tipo === "svolta").length} svolte (${svolteTrovate} dalle trattative), ` +
+        `${eventi.filter((e) => e.analisi).length} con analisi della call` +
         (senzaPersona ? `, ${senzaPersona} senza proprietario` : "")
     );
 

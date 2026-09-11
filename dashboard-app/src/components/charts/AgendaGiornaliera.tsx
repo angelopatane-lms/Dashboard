@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { EventoAgenda, TipoEvento } from "@/app/api/advisor-agenda/route";
+import type { AnalisiCall, EventoAgenda, TipoEvento } from "@/app/api/advisor-agenda/route";
 import { chiaveNome } from "@/lib/nomi";
 
 // Un'ora alta 44 pixel: dalle 8 alle 20 fa 528, che sta in mezza schermata e
@@ -108,6 +108,132 @@ function inCorsie(eventi: EventoAgenda[]): { eventi: EventoInCorsia[]; corsie: n
   return { eventi: out, corsie: Math.max(1, fineDiCorsia.length) };
 }
 
+/** "crescita_fatturato" non e' una parola: qui torna a esserlo. */
+const leggibile = (v: string): string => {
+  const s = v.replace(/_/g, " ").trim();
+  return s ? s[0].toUpperCase() + s.slice(1) : "";
+};
+
+/**
+ * LA SCHEDA DELL'APPUNTAMENTO.
+ *
+ * Mostra l'ULTIMO blocco e non tutti, perche' il campo ne contiene in media tre
+ * - misurati: uno solo nel 25% dei casi, fino a quattordici - scritti in una
+ * volta sola dall'integrazione. Messi in fila si contraddicono ("la call si
+ * interrompe prima della presentazione" sopra, "il closer ha presentato in modo
+ * esaustivo" sotto), e chi legge non ha modo di sapere quale vale.
+ *
+ * Che l'ultimo sia il piu' recente e' un'IPOTESI, non un fatto: lo storico di
+ * HubSpot ha una sola versione per record, quindi l'ordine dipende da come li
+ * accoda l'integrazione e va confermato con chi l'ha scritta. Finche' non lo
+ * sappiamo gli altri blocchi non si buttano, si aprono con un tasto: se
+ * l'ipotesi e' sbagliata il contenuto giusto resta comunque raggiungibile.
+ */
+function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: () => void }) {
+  const a = evento.analisi as AnalisiCall;
+  const [tutte, setTutte] = useState(false);
+
+  useEffect(() => {
+    const tasto = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") onChiudi();
+    };
+    window.addEventListener("keydown", tasto);
+    return () => window.removeEventListener("keydown", tasto);
+  }, [onChiudi]);
+
+  const etichette = [
+    { titolo: "Obiezione", valore: a.obiezione },
+    { titolo: "Urgenza", valore: a.urgenza },
+    { titolo: "Problema", valore: a.problema },
+    { titolo: "Obiettivo", valore: a.obiettivo }
+  ].filter((x) => x.valore);
+
+  const riassunti = tutte ? a.riassunti : a.riassunti.slice(-1);
+  const mismatch = tutte ? a.mismatch : a.mismatch.slice(-1);
+  const altri = Math.max(a.riassunti.length, a.mismatch.length) - 1;
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-slate-900/20" onClick={onChiudi} aria-hidden="true" />
+      <aside
+        role="dialog"
+        aria-label="Analisi della call"
+        className="fixed right-0 top-0 z-50 flex h-full w-full max-w-[420px] flex-col border-l border-slate-200 bg-white shadow-2xl"
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+          <div className="min-w-0">
+            <div className="truncate text-base font-semibold text-slate-900">{evento.titolo}</div>
+            <div className="mt-0.5 text-xs text-slate-500">
+              {evento.operatore}
+              {" · "}
+              {evento.inizio}
+              {evento.fine ? " – " + evento.fine : ""}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onChiudi}
+            aria-label="Chiudi"
+            className="flex-shrink-0 rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 transition hover:border-neutral-800 hover:text-black"
+          >
+            Chiudi
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {etichette.length ? (
+            <div className="mb-4 flex flex-wrap gap-2">
+              {etichette.map((x) => (
+                <span
+                  key={x.titolo}
+                  className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700"
+                >
+                  <span className="text-slate-500">{x.titolo}: </span>
+                  {leggibile(x.valore)}
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          {riassunti.length ? (
+            <section className="mb-5">
+              <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Riassunto</h4>
+              {riassunti.map((b, i) => (
+                <p key={i} className="mb-2 text-sm leading-relaxed text-slate-700">
+                  {b}
+                </p>
+              ))}
+            </section>
+          ) : null}
+
+          {mismatch.length ? (
+            <section className="mb-5">
+              <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Scarto con le aspettative
+              </h4>
+              {mismatch.map((b, i) => (
+                <p key={i} className="mb-2 text-sm leading-relaxed text-slate-700">
+                  {b}
+                </p>
+              ))}
+            </section>
+          ) : null}
+
+          {altri > 0 ? (
+            <button
+              type="button"
+              onClick={() => setTutte((v) => !v)}
+              className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-neutral-800 hover:text-black"
+            >
+              {tutte ? "Mostra solo l'ultima analisi" : "Mostra anche le altre " + altri + " analisi"}
+            </button>
+          ) : null}
+        </div>
+      </aside>
+    </>
+  );
+}
+
 export default function AgendaGiornaliera({
   giorno,
   onGiorno,
@@ -126,6 +252,7 @@ export default function AgendaGiornaliera({
 }) {
   // L'ora corrente si aggiorna da sola: una linea ferma a quando si e' aperta
   // la pagina sarebbe peggio che non averla.
+  const [scheda, setScheda] = useState<EventoAgenda | null>(null);
   const [adesso, setAdesso] = useState<number | null>(null);
   useEffect(() => {
     setAdesso(minutiOra());
@@ -335,11 +462,28 @@ export default function AgendaGiornaliera({
                     const colore = COLORI[e.tipo];
                     const largo = (larghezzaCol - 6) / c.corsie;
                     const alto = Math.max(y(e.fineMin) - y(e.inizioMin) - 2, 14);
+                    // SI APRE SOLO QUELLO CHE HA DENTRO QUALCOSA. Una card che
+                    // reagisce al click e poi mostra una scheda vuota insegna a
+                    // non cliccare piu' nessuna card.
+                    const apribile = Boolean(e.analisi);
                     return (
                       <div
                         key={`${e.titolo}-${e.inizioMin}-${i}`}
-                        className="absolute overflow-hidden rounded"
-                        title={`${e.inizio}${e.fine ? ` – ${e.fine}` : ""} · ${e.titolo}`}
+                        className={`absolute overflow-hidden rounded${apribile ? " cursor-pointer transition hover:brightness-95" : ""}`}
+                        onClick={apribile ? () => setScheda(e) : undefined}
+                        role={apribile ? "button" : undefined}
+                        tabIndex={apribile ? 0 : undefined}
+                        onKeyDown={
+                          apribile
+                            ? (ev) => {
+                                if (ev.key === "Enter" || ev.key === " ") {
+                                  ev.preventDefault();
+                                  setScheda(e);
+                                }
+                              }
+                            : undefined
+                        }
+                        title={`${e.inizio}${e.fine ? ` – ${e.fine}` : ""} · ${e.titolo}${apribile ? " · clicca per l'analisi della call" : ""}`}
                         style={{
                           top: y(e.inizioMin),
                           left: 3 + e.corsia * largo,
@@ -364,6 +508,15 @@ export default function AgendaGiornaliera({
                             {e.inizio}
                             {e.fine ? ` – ${e.fine}` : ""}
                           </div>
+                        ) : null}
+                        {/* Un punto nell'angolo: dice che c'e' altro da
+                            leggere senza rubare spazio al nome, che resta la
+                            cosa che si cerca per prima. */}
+                        {apribile ? (
+                          <span
+                            className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full"
+                            style={{ background: colore.secondario }}
+                          />
                         ) : null}
                       </div>
                     );
@@ -406,6 +559,8 @@ export default function AgendaGiornaliera({
           </div>
         </div>
       </div>
+
+      {scheda?.analisi ? <SchedaAnalisi evento={scheda} onChiudi={() => setScheda(null)} /> : null}
 
       {!caricamento && !errore && eventi.length === 0 ? (
         <div className="mt-3 text-sm text-slate-500">Nessun appuntamento in agenda per questo giorno.</div>
