@@ -58,6 +58,9 @@ type RawTotals = {
   risposte: number;
   fissati: number;
   processati: number;
+  /** Appuntamenti disertati. Nessuna colonna lo mostra da quando % Show Up
+   *  guarda gli appuntamenti fissati, ma arriva dalla stessa fonte delle
+   *  consulenze e serve il giorno che si vorra' una colonna sua. */
   noShow: number;
   chiusure: number;
   importo: number;
@@ -175,10 +178,30 @@ function costoPerUnita(spesa: number, unita: number): number | null {
   return spesa > 0 && unita > 0 ? spesa / unita : null;
 }
 
-// % Show Up = consulenze svolte sul totale degli appuntamenti giunti a
-// scadenza (svolti + disertati). Prima calcolava No Show / Consulenze, che era
-// il suo esatto contrario e poteva superare il 100%: ad agosto i disertati sono
-// piu' degli svolti.
+// % SHOW UP = CONSULENZE SU APPUNTAMENTI. Degli appuntamenti fissati, quanti
+// si sono svolti.
+//
+// LE TRE PERCENTUALI DEL FUNNEL SI INCATENANO, ed e' questa la ragione vera
+// della formula: % Appuntamento porta dalle connessioni agli appuntamenti,
+// % Show Up dagli appuntamenti alle consulenze, e il prodotto delle due da'
+// esattamente % Consulenza, che va dalle connessioni alle consulenze. Su una
+// riga reale: 12,9% x 31,9% = 4,1%.
+//
+// Prima era consulenze / (consulenze + no show), cioe' degli appuntamenti
+// giunti a scadenza quanti si erano svolti. Difendibile in se', ma rompeva la
+// catena e - soprattutto - si appoggiava a un numero, i no show, che nella
+// tabella non e' una colonna: chi leggeva vedeva Appuntamenti 116 e Consulenze
+// 37 e non poteva ricavare il 48,7% che gli comparivamo accanto. Una
+// percentuale che non si puo' verificare con gli occhi e' una percentuale di
+// cui non ci si fida, ed e' cosi' che il calcolo e' stato segnalato come
+// sbagliato.
+//
+// IL PREZZO, misurato: il numeratore conta le consulenze SVOLTE nel periodo e
+// il denominatore gli appuntamenti NATI nel periodo, che sono due gruppi
+// diversi. Recuperando un arretrato una riga puo' superare il 100%: succede su
+// 7 campagne su 187 a luglio, 0 su 134 ad agosto, 3 su 63 a settembre, e sempre
+// su numeri minuscoli - due consulenze su un appuntamento. Sul totale non
+// succede mai.
 function deriveMetrics(raw: RawTotals): DerivedMetrics {
   return {
     ...raw,
@@ -201,7 +224,7 @@ function deriveMetrics(raw: RawTotals): DerivedMetrics {
     //                   rispondeva e' coperta meglio da % Show Up, che confronta
     //                   solo appuntamenti giunti a scadenza.
     pctConsulenza: div(raw.processati, raw.risposte),
-    pctShowUp: div(raw.processati, raw.processati + raw.noShow),
+    pctShowUp: div(raw.processati, raw.fissati),
     crSales: div(raw.chiusure, raw.processati),
     cpa: costoPerUnita(raw.spesa, raw.chiusure),
     roas: div(raw.importo, raw.spesa)
