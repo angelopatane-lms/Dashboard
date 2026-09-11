@@ -208,8 +208,15 @@ export default function AgendaGiornaliera({
   return (
     <div>
       {/* Legenda e comandi sulla stessa riga: il titolo della sezione dice gia'
-          cos'e', e una riga in meno e' una riga di agenda in piu'. */}
-      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+          cos'e', e una riga in meno e' una riga di agenda in piu'.
+          
+          TRE COLONNE, quella di mezzo grande quanto serve e le due laterali
+          uguali fra loro: e' il modo di avere la legenda al centro del riquadro
+          e non al centro dello spazio rimasto dopo i tasti. La terza colonna e'
+          vuota apposta, ed e' lei che tiene il centro dov'e'. Sotto i mille
+          pixel le due parti si impilano, che e' meglio di una legenda
+          schiacciata in mezzo schermo. */}
+      <div className="grid grid-cols-1 items-center gap-x-6 gap-y-3 lg:grid-cols-[1fr_auto_1fr]">
         <div className="flex flex-shrink-0 items-center gap-3">
           <div className="flex items-center gap-2">
             {[
@@ -233,7 +240,7 @@ export default function AgendaGiornaliera({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-wrap items-center justify-center gap-4">
           {LEGENDA.map((v) => (
             <div key={v.tipo} className="flex items-center gap-2">
               <span className="inline-block h-3 w-3 rounded-[3px]" style={{ background: COLORI[v.tipo].fondo }} />
@@ -247,6 +254,8 @@ export default function AgendaGiornaliera({
             </div>
           ) : null}
         </div>
+
+        <div aria-hidden="true" className="hidden lg:block" />
       </div>
 
       {errore ? (
