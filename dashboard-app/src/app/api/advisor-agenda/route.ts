@@ -891,7 +891,15 @@ export async function GET(req: NextRequest) {
       contattiConCampo,
       portale: await portaleCollegato(token),
       ...(req.nextUrl.searchParams.get("sonda")
-        ? { sonda: await sondaContatto(token, req.nextUrl.searchParams.get("sonda") as string) }
+        ? {
+            sonda: {
+              ...(await sondaContatto(token, req.nextUrl.searchParams.get("sonda") as string)),
+              // Il contatto compare fra quelli letti per la giornata? Se la sonda
+              // lo vede pieno ma qui risulta assente, non e' un problema di
+              // permessi: stiamo leggendo un altro insieme di contatti.
+              inGiornata: diGiornata.includes(Number(req.nextUrl.searchParams.get("sonda")))
+            }
+          }
         : {}),
       ...(ultimoErrore ? { erroreTrascrizioni: ultimoErrore } : {})
     };
