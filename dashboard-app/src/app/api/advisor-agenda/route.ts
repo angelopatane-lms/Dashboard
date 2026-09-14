@@ -365,9 +365,17 @@ async function analisiDeiContatti(
 /** Il motivo dell'ultimo fallimento nella lettura delle trascrizioni, esposto
  *  nei conti di controllo: senza, un errore resta invisibile da fuori. */
 let ultimoErrore: string | null = null;
+/** Quanti contatti sono tornati dalla lettura e quanti avevano il campo
+ *  pieno: distingue "HubSpot non da' la proprieta'" da "la da' ma non si
+ *  riesce a ricavarne l'identificativo". Senza questa distinzione le due
+ *  cause sono indistinguibili da fuori, e si finisce a indovinare. */
+let contattiLetti = 0;
+let contattiConCampo = 0;
 
 async function trascrizioniDeiContatti(token: string, contatti: number[]): Promise<Map<number, string>> {
   ultimoErrore = null;
+  contattiLetti = 0;
+  contattiConCampo = 0;
   // Il valore della mappa e' l'IDENTIFICATIVO della trascrizione: da quello si
   // ricavano sia l'indirizzo della pagina sia, con una chiamata, il file audio.
   const out = new Map<number, string>();
@@ -394,6 +402,8 @@ async function trascrizioniDeiContatti(token: string, contatti: number[]): Promi
     }
     const data = await res.json();
     for (const r of data.results ?? []) {
+      contattiLetti += 1;
+      if ((r.properties?.link_trascrizione_fireflies ?? "").trim()) contattiConCampo += 1;
       const trascrizione = idTrascrizione(r.properties?.link_trascrizione_fireflies);
       const id = Number(r.id);
       if (trascrizione && Number.isFinite(id)) out.set(id, trascrizione);
@@ -832,6 +842,8 @@ export async function GET(req: NextRequest) {
       trascrizioniRisolte: trascrizioni.size,
       analisiTrovate: analisi.size,
       presenzeLette: presenze.size,
+      contattiLetti,
+      contattiConCampo,
       ...(ultimoErrore ? { erroreTrascrizioni: ultimoErrore } : {})
     };
 
