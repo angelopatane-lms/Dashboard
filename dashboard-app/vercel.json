@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/abbina-trascrizioni",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/abbina-trascrizioni",
+      "schedule": "0 12 * * *"
     }
   ]
 }

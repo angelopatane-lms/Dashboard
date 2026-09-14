@@ -13,6 +13,19 @@ export const maxDuration = 300;
  *  quello che e' gia' a posto non viene toccato. */
 const GIORNI = 5;
 
+/** Quanti giorni guarda il giro di mezzogiorno.
+ *
+ *  Serve a un'altra cosa rispetto a quello notturno: non recuperare i
+ *  ritardatari, ma far comparire in agenda le call della mattina prima della
+ *  fine della giornata, quando all'advisor servono ancora. Oggi e ieri
+ *  bastano; le cinque giornate restano al giro notturno, che ha tempo. */
+const GIORNI_MEZZOGIORNO = 2;
+
+/** L'orario del giro di mezzogiorno. I cron di Vercel sono sempre in UTC:
+ *  12:00 UTC sono le 14:00 italiane con l'ora legale, le 13:00 in inverno.
+ *  Deve restare identico a quello scritto in vercel.json. */
+const ORARIO_MEZZOGIORNO = "0 12 * * *";
+
 /**
  * Il giro notturno che collega le registrazioni di Fireflies ai contatti.
  *
@@ -34,7 +47,17 @@ export async function GET(req: NextRequest) {
   // Una prova senza scrivere si chiede con ?prova=1: utile dopo una modifica,
   // per vedere cosa farebbe prima di lasciarglielo fare.
   const scrivi = req.nextUrl.searchParams.get("prova") !== "1";
-  const giorni = Number(req.nextUrl.searchParams.get("giorni") ?? "") || GIORNI;
+
+  // I DUE GIRI CONDIVIDONO QUESTO ENDPOINT e si distinguono dall'header che
+  // Vercel aggiunge a ogni chiamata programmata, che contiene l'espressione
+  // cron che l'ha fatta partire. E' il modo previsto dalla documentazione
+  // quando piu' cron puntano allo stesso path, e non dipende dalla query
+  // string, che nei cron non e' documentata. A mano si passa ?giorni=N e
+  // comanda quello.
+  const diMezzogiorno = req.headers.get("x-vercel-cron-schedule") === ORARIO_MEZZOGIORNO;
+  const giorni =
+    Number(req.nextUrl.searchParams.get("giorni") ?? "") ||
+    (diMezzogiorno ? GIORNI_MEZZOGIORNO : GIORNI);
 
   const a = new Date();
   const da = new Date(a.getTime() - giorni * 24 * 60 * 60 * 1000);
@@ -42,7 +65,8 @@ export async function GET(req: NextRequest) {
   try {
     const { esito } = await sincronizzaTrascrizioni({ token, chiaveFireflies, da, a, scrivi });
     console.log(
-      `[cron/trascrizioni] ${esito.registrazioni} registrazioni, ${esito.riunioni} riunioni, ` +
+      `[cron/trascrizioni] giro ${diMezzogiorno ? "di mezzogiorno" : "notturno"} ` +
+        `su ${giorni} giorni: ${esito.registrazioni} registrazioni, ${esito.riunioni} riunioni, ` +
         `${esito.abbinate} abbinate (${JSON.stringify(esito.perCriterio)}), ` +
         `${esito.scritti} scritti, ${esito.invariati} gia' a posto, ${esito.falliti} falliti, ` +
         `${esito.orfane} registrazioni lunghe senza appuntamento`
