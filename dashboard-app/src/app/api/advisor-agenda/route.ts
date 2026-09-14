@@ -57,6 +57,10 @@ export type EventoAgenda = {
   tipo: TipoEvento;
   /** Presente solo per gli appuntamenti di cui esiste l'analisi della call. */
   analisi?: AnalisiCall;
+  /** L'indirizzo della trascrizione su Fireflies, quando si riesce a ricavarlo. */
+  trascrizione?: string;
+  /** Il file audio della call, da ascoltare direttamente. */
+  audio?: string;
 };
 
 const due = (n: number) => String(n).padStart(2, "0");
@@ -131,6 +135,71 @@ async function contattiDeiMeeting(token: string, ids: string[]): Promise<Map<str
       const da = String(r.from?.id ?? "");
       const a = (r.to ?? []).map((t: { toObjectId?: string | number }) => Number(t.toObjectId)).filter(Number.isFinite);
       if (da) out.set(da, a);
+    }
+  }
+  return out;
+}
+
+/**
+ * L'INDIRIZZO DELLA TRASCRIZIONE, RICOSTRUITO.
+ *
+ * Su HubSpot il contatto porta il link di SCARICAMENTO del file, che e' firmato
+ * e vale sei ore: `X-Amz-Expires=21600`. Provato su tre call - una di ieri, una
+ * di giugno, una del 2025 - risponde sempre "403 Request has expired". Messo in
+ * un'icona manderebbe le persone su una pagina di errore.
+ *
+ * Dentro quell'indirizzo pero' c'e' l'identificativo della trascrizione, che e'
+ * il primo pezzo del percorso:
+ *
+ *   /01M25ZKTJM9G0AWB5HE43E8FYA/downloads/transcript/jth-hhtk-jmn-...docx
+ *
+ * Con quello si compone l'indirizzo dell'applicazione Fireflies, che non scade.
+ * Verificato aprendone uno: mostra la call giusta.
+ */
+function idTrascrizione(grezzo: string | null | undefined): string | undefined {
+  const v = (grezzo ?? "").trim();
+  if (!v.startsWith("http")) return undefined;
+  try {
+    const id = new URL(v).pathname.split("/").filter(Boolean)[0] ?? "";
+    // Un ULID: ventisei caratteri fra cifre e lettere maiuscole. Il controllo
+    // serve a non costruire un indirizzo da un percorso di forma diversa, che
+    // porterebbe a una pagina "riunione non trovata".
+    return /^[0-9A-Z]{20,32}$/.test(id) ? id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const linkTrascrizione = (id: string) => `https://app.fireflies.ai/view/${id}`;
+
+/**
+ * Il file audio delle registrazioni, chiesto fresco a Fireflies.
+ *
+ * NON si usa "Link Audio Fireflies" salvato sul contatto: provato su quattro
+ * contatti, risponde 403 - e' su un host che non serve piu' quei file. Quello
+ * che l'API restituisce adesso invece e' un indirizzo non firmato che risponde
+ * 206 con tipo audio/mp3, quindi si puo' aprire direttamente.
+ *
+ * Se la chiave non c'e' o Fireflies non risponde si torna una mappa vuota: in
+ * agenda spariscono le icone dell'altoparlante, non gli appuntamenti.
+ */
+async function audioDelleTrascrizioni(ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const chiave = process.env.FIREFLIES_API_KEY;
+  if (!chiave || !ids.length) return out;
+  for (const id of ids) {
+    try {
+      const res = await fetch("https://api.fireflies.ai/graphql", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${chiave}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ query: `{ transcript(id: "${id}") { audio_url } }` })
+      });
+      if (!res.ok) continue;
+      const dati = await res.json();
+      const url = dati?.data?.transcript?.audio_url;
+      if (typeof url === "string" && url.startsWith("http")) out.set(id, url);
+    } catch {
+      // una registrazione senza audio non e' un motivo per far fallire l'agenda
     }
   }
   return out;
@@ -238,6 +307,40 @@ async function analisiDeiContatti(
     }
   }
 
+  return out;
+}
+
+/**
+ * Il link alla trascrizione dei contatti di giornata.
+ *
+ * E' una proprieta' sola sul contatto, quindi tiene l'ultima trascrizione e non
+ * una per appuntamento. Nella pratica coincidono: misurati gli appuntamenti da
+ * giugno, 137 contatti su 140 hanno una sola call. I tre con due call le hanno
+ * fatte lo stesso giorno, e somigliano a un appuntamento spostato.
+ */
+async function trascrizioniDeiContatti(token: string, contatti: number[]): Promise<Map<number, string>> {
+  // Il valore della mappa e' l'IDENTIFICATIVO della trascrizione: da quello si
+  // ricavano sia l'indirizzo della pagina sia, con una chiamata, il file audio.
+  const out = new Map<number, string>();
+  if (!contatti.length) return out;
+
+  for (let i = 0; i < contatti.length; i += 100) {
+    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/contacts/batch/read`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        properties: ["link_trascrizione_fireflies"],
+        inputs: contatti.slice(i, i + 100).map((id) => ({ id: String(id) }))
+      })
+    });
+    if (!res.ok) throw new Error(`contatti ${res.status}`);
+    const data = await res.json();
+    for (const r of data.results ?? []) {
+      const trascrizione = idTrascrizione(r.properties?.link_trascrizione_fireflies);
+      const id = Number(r.id);
+      if (trascrizione && Number.isFinite(id)) out.set(id, trascrizione);
+    }
+  }
   return out;
 }
 
@@ -365,18 +468,22 @@ export async function GET(req: NextRequest) {
     // L'analisi si chiede dopo, perche' serve sapere prima chi sono i contatti
     // di giornata. Se non risponde, l'agenda resta quella di sempre: le schede
     // non si aprono, ma nessun appuntamento sparisce.
-    const analisi = await analisiDeiContatti(
-      token,
-      Array.from(new Set(Array.from(contatti.values()).flat())),
-      giorno
-    ).catch((err) => {
-      console.error("[advisor-agenda] analisi call", err instanceof Error ? err.message : err);
-      return new Map<number, AnalisiCall>();
-    });
+    const diGiornata = Array.from(new Set(Array.from(contatti.values()).flat()));
+    const [analisi, trascrizioni] = await Promise.all([
+      analisiDeiContatti(token, diGiornata, giorno).catch((err) => {
+        console.error("[advisor-agenda] analisi call", err instanceof Error ? err.message : err);
+        return new Map<number, AnalisiCall>();
+      }),
+      trascrizioniDeiContatti(token, diGiornata).catch((err) => {
+        console.error("[advisor-agenda] trascrizioni", err instanceof Error ? err.message : err);
+        return new Map<number, string>();
+      })
+    ]);
 
     let senzaPersona = 0;
     let svolteTrovate = 0;
     const eventi: EventoAgenda[] = [];
+    const idDiEvento: Array<string | undefined> = [];
 
     for (const r of grezzi) {
       const p = r.properties;
@@ -411,6 +518,9 @@ export async function GET(req: NextRequest) {
 
       const suoi = contatti.get(r.id) ?? [];
       const analisiSua = suoi.map((c) => analisi.get(c)).find(Boolean);
+      // Le riunioni interne non hanno un cliente di cui leggere la call.
+      const idTrascrizioneSua =
+        tipo === "interno" ? undefined : suoi.map((c) => trascrizioni.get(c)).find(Boolean);
 
       eventi.push({
         operatore,
@@ -420,15 +530,31 @@ export async function GET(req: NextRequest) {
         inizio: da.testo,
         fine: a ? a.testo : "",
         tipo,
-        ...(analisiSua ? { analisi: analisiSua } : {})
+        ...(analisiSua ? { analisi: analisiSua } : {}),
+        ...(idTrascrizioneSua ? { trascrizione: linkTrascrizione(idTrascrizioneSua) } : {})
       });
+      idDiEvento.push(idTrascrizioneSua);
     }
+
+    // L'audio si chiede solo per le trascrizioni che compaiono davvero in
+    // giornata - oggi una manciata - e l'agenda tiene comunque un minuto di
+    // memoria, quindi non si ripete a ogni respiro.
+    const audio = await audioDelleTrascrizioni([
+      ...new Set(idDiEvento.filter((x): x is string => Boolean(x)))
+    ]);
+    eventi.forEach((e, i) => {
+      const id = idDiEvento[i];
+      const url = id ? audio.get(id) : undefined;
+      if (url) e.audio = url;
+    });
 
     eventi.sort((x, y) => x.inizioMin - y.inizioMin);
     console.log(
       `[advisor-agenda] ${giorno}: ${eventi.length} eventi, ${new Set(eventi.map((e) => e.operatore)).size} persone, ` +
         `${eventi.filter((e) => e.tipo === "svolta").length} svolte (${svolteTrovate} dalle trattative), ` +
-        `${eventi.filter((e) => e.analisi).length} con analisi della call` +
+        `${eventi.filter((e) => e.analisi).length} con analisi, ` +
+        `${eventi.filter((e) => e.trascrizione).length} con trascrizione, ` +
+        `${eventi.filter((e) => e.audio).length} con audio` +
         (senzaPersona ? `, ${senzaPersona} senza proprietario` : "")
     );
 

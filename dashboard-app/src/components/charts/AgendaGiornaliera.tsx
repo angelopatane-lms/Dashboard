@@ -108,6 +108,27 @@ function inCorsie(eventi: EventoAgenda[]): { eventi: EventoInCorsia[]; corsie: n
   return { eventi: out, corsie: Math.max(1, fineDiCorsia.length) };
 }
 
+/** Il quadratino con la freccia: "questo si apre altrove". */
+function IconaTrascrizione({ colore }: { colore: string }) {
+  return (
+    <svg viewBox="0 0 12 12" width="9" height="9" fill="none" stroke={colore} strokeWidth="1.6" aria-hidden="true">
+      <path d="M4.5 1.5h6v6" strokeLinecap="round" />
+      <path d="M10.5 1.5 5 7" strokeLinecap="round" />
+      <path d="M9 7.5v3h-7.5V3h3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** L'altoparlante: "questa call si puo' ascoltare". */
+function IconaAudio({ colore }: { colore: string }) {
+  return (
+    <svg viewBox="0 0 12 12" width="10" height="10" fill="none" stroke={colore} strokeWidth="1.5" aria-hidden="true">
+      <path d="M2 4.5h1.8L6 2.5v7L3.8 7.5H2z" strokeLinejoin="round" />
+      <path d="M8 4.2a2.4 2.4 0 0 1 0 3.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 /** "crescita_fatturato" non e' una parola: qui torna a esserlo. */
 const leggibile = (v: string): string => {
   const s = v.replace(/_/g, " ").trim();
@@ -217,6 +238,30 @@ function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: (
                 </p>
               ))}
             </section>
+          ) : null}
+
+          {evento.trascrizione ? (
+            <a
+              href={evento.trascrizione}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mb-4 inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-neutral-800 hover:text-black"
+            >
+              <IconaTrascrizione colore="currentColor" />
+              Apri la trascrizione su Fireflies
+            </a>
+          ) : null}
+
+          {evento.audio ? (
+            <a
+              href={evento.audio}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mb-4 ml-2 inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-neutral-800 hover:text-black"
+            >
+              <IconaAudio colore="currentColor" />
+              Ascolta la call
+            </a>
           ) : null}
 
           {altri > 0 ? (
@@ -509,15 +554,48 @@ export default function AgendaGiornaliera({
                             {e.fine ? ` – ${e.fine}` : ""}
                           </div>
                         ) : null}
-                        {/* Un punto nell'angolo: dice che c'e' altro da
-                            leggere senza rubare spazio al nome, che resta la
-                            cosa che si cerca per prima. */}
-                        {apribile ? (
-                          <span
-                            className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full"
-                            style={{ background: colore.secondario }}
-                          />
-                        ) : null}
+                        {/* I segni nell'angolo, non sotto il nome: il nome e'
+                            la cosa che si cerca per prima e non va accorciata.
+                            Il punto dice che c'e' l'analisi da leggere nella
+                            scheda; la freccia porta fuori, alla trascrizione.
+
+                            LA FRECCIA FERMA IL CLIC prima che arrivi alla card,
+                            altrimenti aprirebbe anche la scheda dietro la
+                            scheda nuova del browser. */}
+                        <span className="absolute right-1 top-1 flex items-center gap-1">
+                          {apribile ? (
+                            <span
+                              className="h-1.5 w-1.5 rounded-full"
+                              style={{ background: colore.secondario }}
+                            />
+                          ) : null}
+                          {e.audio ? (
+                            <a
+                              href={e.audio}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(ev) => ev.stopPropagation()}
+                              title="Ascolta la registrazione della call"
+                              aria-label="Ascolta la registrazione della call"
+                              className="flex opacity-70 transition hover:opacity-100"
+                            >
+                              <IconaAudio colore={colore.secondario} />
+                            </a>
+                          ) : null}
+                          {e.trascrizione ? (
+                            <a
+                              href={e.trascrizione}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(ev) => ev.stopPropagation()}
+                              title="Apri la trascrizione su Fireflies"
+                              aria-label="Apri la trascrizione su Fireflies"
+                              className="flex opacity-70 transition hover:opacity-100"
+                            >
+                              <IconaTrascrizione colore={colore.secondario} />
+                            </a>
+                          ) : null}
+                        </span>
                       </div>
                     );
                   })}
