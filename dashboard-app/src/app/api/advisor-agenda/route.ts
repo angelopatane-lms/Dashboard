@@ -381,6 +381,29 @@ let contattiConCampo = 0;
  * quali vede quella proprieta' - questo lo rende evidente invece di lasciarlo
  * dedurre. Non espone nulla di riservato: solo il numero del portale.
  */
+/**
+ * Legge UN contatto indicato a mano e dice soltanto se il collegamento alla
+ * trascrizione risulta pieno.
+ *
+ * Serve a separare due cause che da fuori si somigliano: il server non vede
+ * quella proprieta', oppure la vede ma sta guardando contatti diversi da
+ * quelli che ci aspettiamo. Restituisce un si o un no, mai il valore.
+ */
+async function sondaContatto(token: string, id: string): Promise<Record<string, unknown>> {
+  try {
+    const res = await fetch(
+      `${HUBSPOT_API}/crm/v3/objects/contacts/${encodeURIComponent(id)}?properties=link_trascrizione_fireflies`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!res.ok) return { id, stato: res.status };
+    const d = await res.json();
+    const v = String(d.properties?.link_trascrizione_fireflies ?? "").trim();
+    return { id, stato: 200, campoPieno: Boolean(v), lunghezza: v.length, risolto: Boolean(idTrascrizione(v)) };
+  } catch (e) {
+    return { id, errore: e instanceof Error ? e.message.slice(0, 120) : "?" };
+  }
+}
+
 async function portaleCollegato(token: string): Promise<string> {
   try {
     const res = await fetch(`${HUBSPOT_API}/account-info/v3/details`, {
@@ -867,6 +890,9 @@ export async function GET(req: NextRequest) {
       contattiLetti,
       contattiConCampo,
       portale: await portaleCollegato(token),
+      ...(req.nextUrl.searchParams.get("sonda")
+        ? { sonda: await sondaContatto(token, req.nextUrl.searchParams.get("sonda") as string) }
+        : {}),
       ...(ultimoErrore ? { erroreTrascrizioni: ultimoErrore } : {})
     };
 
