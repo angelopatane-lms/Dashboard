@@ -61,6 +61,13 @@ export type EventoAgenda = {
   trascrizione?: string;
   /** Il file audio della call, da ascoltare direttamente. */
   audio?: string;
+  /**
+   * L'advisor a cui l'appuntamento era stato prenotato, quando la consulenza
+   * l'ha poi tenuta un altro. La card sta nella colonna di chi l'ha gestita -
+   * altrimenti l'agenda mostrerebbe occupato chi era libero e libero chi stava
+   * lavorando - e questo campo conserva da dove arriva.
+   */
+  prenotatoPer?: string;
 };
 
 const due = (n: number) => String(n).padStart(2, "0");
@@ -345,6 +352,90 @@ async function trascrizioniDeiContatti(token: string, contatti: number[]): Promi
 }
 
 /**
+ * Chi ha gestito davvero ciascuna riunione, quando non e' chi l'aveva prenotata.
+ *
+ * QUANDO UN APPUNTAMENTO PASSA A UN ALTRO ADVISOR - l'overbooking - il nuovo
+ * proprietario viene scritto a mano sulla trattativa, mentre la riunione resta
+ * intestata all'originale. La discordanza fra i due e' quindi la firma del
+ * passaggio, ed e' l'unico modo per vederlo: in HubSpot non esiste un campo che
+ * lo dica.
+ *
+ * Si guarda la TRATTATIVA e non il contatto perche' la trattativa nasce da
+ * questo appuntamento e non cambia piu', mentre il proprietario del contatto si
+ * muove anche per riassegnazioni commerciali successive - misurato, 8% di
+ * discordanza contro 21%.
+ *
+ * E si aggancia per data di CREAZIONE: il flusso HubSpot crea la trattativa
+ * circa sei minuti dopo la riunione, con una dispersione di venti secondi. La
+ * data di chiusura invece si sposta quando la trattativa viene vinta.
+ */
+async function gestoriEffettivi(
+  token: string,
+  riunioni: Array<{ id: string; creata: number; proprietario: string }>,
+  contatti: Map<string, number[]>
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const idContatti = Array.from(new Set(Array.from(contatti.values()).flat().map(String)));
+  if (!idContatti.length) return out;
+
+  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  const trattativeDi = new Map<string, string[]>();
+  for (let i = 0; i < idContatti.length; i += 100) {
+    const res = await fetch(`${HUBSPOT_API}/crm/v4/associations/contacts/deals/batch/read`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ inputs: idContatti.slice(i, i + 100).map((id) => ({ id })) })
+    });
+    if (!res.ok) return out;
+    const data = await res.json();
+    for (const r of data.results ?? []) {
+      const lista = (r.to ?? []).map((x: { toObjectId: string | number }) => String(x.toObjectId));
+      if (lista.length) trattativeDi.set(String(r.from?.id), lista);
+    }
+  }
+
+  const idTrattative = Array.from(new Set(Array.from(trattativeDi.values()).flat()));
+  const dati = new Map<string, { owner: string; creata: number }>();
+  for (let i = 0; i < idTrattative.length; i += 100) {
+    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/batch/read`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        properties: ["hubspot_owner_id", "createdate"],
+        inputs: idTrattative.slice(i, i + 100).map((id) => ({ id }))
+      })
+    });
+    if (!res.ok) return out;
+    const data = await res.json();
+    for (const r of data.results ?? []) {
+      dati.set(String(r.id), {
+        owner: String(r.properties?.hubspot_owner_id ?? "").trim(),
+        creata: Date.parse(r.properties?.createdate ?? "")
+      });
+    }
+  }
+
+  const QUINDICI_MINUTI = 15 * 60 * 1000;
+  for (const r of riunioni) {
+    if (!Number.isFinite(r.creata) || !r.proprietario) continue;
+    const suoi = (contatti.get(r.id) ?? []).map(String);
+    let migliore: { scarto: number; owner: string } | null = null;
+    for (const c of suoi) {
+      for (const idT of trattativeDi.get(c) ?? []) {
+        const d = dati.get(idT);
+        if (!d || !Number.isFinite(d.creata) || !d.owner) continue;
+        const scarto = Math.abs(d.creata - r.creata);
+        if (scarto <= QUINDICI_MINUTI && (!migliore || scarto < migliore.scarto)) {
+          migliore = { scarto, owner: d.owner };
+        }
+      }
+    }
+    if (migliore && migliore.owner !== r.proprietario) out.set(r.id, migliore.owner);
+  }
+  return out;
+}
+
+/**
  * I contatti che quel giorno hanno fatto una consulenza.
  *
  * L'alias serve alle persone che sono state unite in HubSpot: la trattativa
@@ -439,7 +530,8 @@ export async function GET(req: NextRequest) {
             "hs_meeting_start_time",
             "hs_meeting_end_time",
             "hubspot_owner_id",
-            "hs_meeting_outcome"
+            "hs_meeting_outcome",
+            "hs_createdate"
           ],
           limit: 100,
           ...(after ? { after } : {})
@@ -468,6 +560,19 @@ export async function GET(req: NextRequest) {
     // L'analisi si chiede dopo, perche' serve sapere prima chi sono i contatti
     // di giornata. Se non risponde, l'agenda resta quella di sempre: le schede
     // non si aprono, ma nessun appuntamento sparisce.
+    const gestori = await gestoriEffettivi(
+      token,
+      grezzi.map((r) => ({
+        id: r.id,
+        creata: Date.parse(r.properties.hs_createdate ?? ""),
+        proprietario: String(r.properties.hubspot_owner_id ?? "").trim()
+      })),
+      contatti
+    ).catch((err) => {
+      console.error("[advisor-agenda] gestori effettivi", err instanceof Error ? err.message : err);
+      return new Map<string, string>();
+    });
+
     const diGiornata = Array.from(new Set(Array.from(contatti.values()).flat()));
     const [analisi, trascrizioni] = await Promise.all([
       analisiDeiContatti(token, diGiornata, giorno).catch((err) => {
@@ -487,12 +592,25 @@ export async function GET(req: NextRequest) {
 
     for (const r of grezzi) {
       const p = r.properties;
-      const id = (p.hubspot_owner_id ?? "").trim();
-      const operatore = id ? proprietari[id] ?? "" : "";
+      const idPrenotato = (p.hubspot_owner_id ?? "").trim();
+      const nomePrenotato = idPrenotato ? proprietari[idPrenotato] ?? "" : "";
+
+      // LA COLONNA E' DI CHI HA TENUTO LA CONSULENZA, non di chi l'aveva
+      // prenotata: quando un appuntamento passa a un altro advisor, mettere la
+      // card nella colonna dell'originale farebbe risultare occupato chi non
+      // stava facendo niente e libero chi stava lavorando, e sbaglierebbe i
+      // conteggi di entrambi.
+      const idEffettivo = gestori.get(r.id) ?? idPrenotato;
+      const nomeEffettivo = idEffettivo ? proprietari[idEffettivo] ?? "" : "";
+
+      // Se il nuovo proprietario non e' fra gli attivi - un utente archiviato,
+      // per esempio - si resta su quello prenotato invece di perdere la riga.
+      const operatore = nomeEffettivo || nomePrenotato;
       if (!operatore) {
         senzaPersona += 1;
         continue;
       }
+      const prenotatoPer = nomeEffettivo && nomeEffettivo !== nomePrenotato ? nomePrenotato : "";
 
       const da = oraRoma(p.hs_meeting_start_time ?? "");
       if (!da) continue;
@@ -503,8 +621,11 @@ export async function GET(req: NextRequest) {
       const fineMin = a && a.minuti > da.minuti ? a.minuti : Math.min(da.minuti + 30, 24 * 60);
 
       const titolo = (p.hs_meeting_title ?? "").trim();
+      // Il titolo dice "Contatto and <advisor prenotato>", quindi si ripulisce
+      // con quel nome anche quando la card finisce in un'altra colonna.
+      const nelTitolo = nomePrenotato || operatore;
       const senzaAdvisor = titolo
-        .replace(new RegExp(`\\s+and\\s+${operatore.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}\\s*$`, "i"), "")
+        .replace(new RegExp(`\\s+and\\s+${nelTitolo.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}\\s*$`, "i"), "")
         .trim();
 
       let tipo = tipoDa(p.hs_meeting_outcome);
@@ -531,7 +652,8 @@ export async function GET(req: NextRequest) {
         fine: a ? a.testo : "",
         tipo,
         ...(analisiSua ? { analisi: analisiSua } : {}),
-        ...(idTrascrizioneSua ? { trascrizione: linkTrascrizione(idTrascrizioneSua) } : {})
+        ...(idTrascrizioneSua ? { trascrizione: linkTrascrizione(idTrascrizioneSua) } : {}),
+        ...(prenotatoPer ? { prenotatoPer } : {})
       });
       idDiEvento.push(idTrascrizioneSua);
     }
@@ -554,7 +676,8 @@ export async function GET(req: NextRequest) {
         `${eventi.filter((e) => e.tipo === "svolta").length} svolte (${svolteTrovate} dalle trattative), ` +
         `${eventi.filter((e) => e.analisi).length} con analisi, ` +
         `${eventi.filter((e) => e.trascrizione).length} con trascrizione, ` +
-        `${eventi.filter((e) => e.audio).length} con audio` +
+        `${eventi.filter((e) => e.audio).length} con audio, ` +
+        `${eventi.filter((e) => e.prenotatoPer).length} passati a un altro advisor` +
         (senzaPersona ? `, ${senzaPersona} senza proprietario` : "")
     );
 

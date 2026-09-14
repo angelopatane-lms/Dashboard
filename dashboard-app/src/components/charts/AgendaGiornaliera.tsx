@@ -58,6 +58,9 @@ const COLORI: Record<TipoEvento, { fondo: string; testo: string; secondario: str
   annullato: { fondo: "#cbd5e1", testo: "#475569", secondario: "#64748b" }
 };
 
+/** Il segno dell'appuntamento ricevuto da un altro advisor. */
+const COLORE_RICEVUTO = "#475569";
+
 const LEGENDA: Array<{ tipo: TipoEvento; label: string }> = [
   { tipo: "appuntamento", label: "Fissato" },
   { tipo: "svolta", label: "Svolto" },
@@ -151,7 +154,9 @@ const leggibile = (v: string): string => {
  * l'ipotesi e' sbagliata il contenuto giusto resta comunque raggiungibile.
  */
 function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: () => void }) {
-  const a = evento.analisi as AnalisiCall;
+  // L'analisi puo' mancare: una card si apre anche quando c'e' solo la
+  // trascrizione o l'audio, e in quel caso la finestra mostra i due pulsanti.
+  const a: AnalisiCall | undefined = evento.analisi;
   const [tutte, setTutte] = useState(false);
 
   useEffect(() => {
@@ -163,23 +168,28 @@ function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: (
   }, [onChiudi]);
 
   const etichette = [
-    { titolo: "Obiezione", valore: a.obiezione },
-    { titolo: "Urgenza", valore: a.urgenza },
-    { titolo: "Problema", valore: a.problema },
-    { titolo: "Obiettivo", valore: a.obiettivo }
-  ].filter((x) => x.valore);
+    { titolo: "Obiezione", valore: a?.obiezione },
+    { titolo: "Urgenza", valore: a?.urgenza },
+    { titolo: "Problema", valore: a?.problema },
+    { titolo: "Obiettivo", valore: a?.obiettivo }
+  ].filter((x): x is { titolo: string; valore: string } => Boolean(x.valore));
 
-  const riassunti = tutte ? a.riassunti : a.riassunti.slice(-1);
-  const mismatch = tutte ? a.mismatch : a.mismatch.slice(-1);
-  const altri = Math.max(a.riassunti.length, a.mismatch.length) - 1;
+  const riassunti = a ? (tutte ? a.riassunti : a.riassunti.slice(-1)) : [];
+  const mismatch = a ? (tutte ? a.mismatch : a.mismatch.slice(-1)) : [];
+  const altri = a ? Math.max(a.riassunti.length, a.mismatch.length) - 1 : 0;
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-slate-900/20" onClick={onChiudi} aria-hidden="true" />
+      <div className="fixed inset-0 z-40 bg-slate-900/40" onClick={onChiudi} aria-hidden="true" />
+      {/* UNA FINESTRA AL CENTRO, non una fascia a destra: il contenuto e' un
+          testo da leggere, e al centro dello schermo la riga resta corta e
+          l'occhio non deve attraversare tutta la pagina. L'altezza si ferma
+          all'85% dello schermo e il corpo scorre da solo. */}
       <aside
         role="dialog"
-        aria-label="Analisi della call"
-        className="fixed right-0 top-0 z-50 flex h-full w-full max-w-[420px] flex-col border-l border-slate-200 bg-white shadow-2xl"
+        aria-modal="true"
+        aria-label="Dettaglio della consulenza"
+        className="fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-[calc(100vw-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border border-slate-200 bg-white shadow-2xl"
       >
         <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
           <div className="min-w-0">
@@ -190,6 +200,15 @@ function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: (
               {evento.inizio}
               {evento.fine ? " – " + evento.fine : ""}
             </div>
+            {evento.prenotatoPer ? (
+              <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700">
+                <span
+                  className="inline-block h-2.5 w-2.5 rounded-[2px]"
+                  style={{ background: COLORE_RICEVUTO }}
+                />
+                Era prenotato per {evento.prenotatoPer}
+              </div>
+            ) : null}
           </div>
           <button
             type="button"
@@ -202,6 +221,40 @@ function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: (
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
+          {/* I due pulsanti usano le stesse tinte della legenda: il blu degli
+              appuntamenti per la trascrizione, il verde degli svolti per
+              l'audio. Colorati perche' sono l'azione principale della
+              finestra, e stanno in alto perche' spesso e' l'unica cosa che si
+              cerca aprendola. */}
+          {evento.trascrizione || evento.audio ? (
+            <div className="mb-4 flex flex-wrap gap-2">
+              {evento.trascrizione ? (
+                <a
+                  href={evento.trascrizione}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition hover:brightness-95"
+                  style={{ background: COLORI.appuntamento.fondo, color: COLORI.appuntamento.testo }}
+                >
+                  <IconaTrascrizione colore={COLORI.appuntamento.testo} />
+                  Apri la trascrizione
+                </a>
+              ) : null}
+              {evento.audio ? (
+                <a
+                  href={evento.audio}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition hover:brightness-95"
+                  style={{ background: COLORI.svolta.fondo, color: COLORI.svolta.testo }}
+                >
+                  <IconaAudio colore={COLORI.svolta.testo} />
+                  Ascolta la call
+                </a>
+              ) : null}
+            </div>
+          ) : null}
+
           {etichette.length ? (
             <div className="mb-4 flex flex-wrap gap-2">
               {etichette.map((x) => (
@@ -238,30 +291,6 @@ function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: (
                 </p>
               ))}
             </section>
-          ) : null}
-
-          {evento.trascrizione ? (
-            <a
-              href={evento.trascrizione}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mb-4 inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-neutral-800 hover:text-black"
-            >
-              <IconaTrascrizione colore="currentColor" />
-              Apri la trascrizione su Fireflies
-            </a>
-          ) : null}
-
-          {evento.audio ? (
-            <a
-              href={evento.audio}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mb-4 ml-2 inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-neutral-800 hover:text-black"
-            >
-              <IconaAudio colore="currentColor" />
-              Ascolta la call
-            </a>
           ) : null}
 
           {altri > 0 ? (
@@ -434,6 +463,18 @@ export default function AgendaGiornaliera({
               <span className="text-xs font-medium text-slate-700">{v.label}</span>
             </div>
           ))}
+          {/* Non e' un colore ma un segno: le quattro tinte dicono lo stato
+              dell'appuntamento, e una call ricevuta da un altro advisor resta
+              comunque fissata o svolta. Dare a questa casistica un quinto
+              colore cancellerebbe quell'informazione. */}
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-block h-3 w-3 rounded-[3px] bg-slate-200"
+              style={{ borderLeft: `3px solid ${COLORE_RICEVUTO}` }}
+            />
+            <span className="text-xs font-medium text-slate-700">Ricevuto da un altro advisor</span>
+          </div>
+
           {lineaOra !== null ? (
             <div className="flex items-center gap-2">
               <span className="inline-block h-0.5 w-[18px]" style={{ background: "#e11d48" }} />
@@ -525,7 +566,9 @@ export default function AgendaGiornaliera({
                     // SI APRE SOLO QUELLO CHE HA DENTRO QUALCOSA. Una card che
                     // reagisce al click e poi mostra una scheda vuota insegna a
                     // non cliccare piu' nessuna card.
-                    const apribile = Boolean(e.analisi);
+                    // Si apre se c'e' qualcosa da vedere: l'analisi, la
+                    // trascrizione o l'audio.
+                    const apribile = Boolean(e.analisi || e.trascrizione || e.audio);
                     return (
                       <div
                         key={`${e.titolo}-${e.inizioMin}-${i}`}
@@ -543,7 +586,11 @@ export default function AgendaGiornaliera({
                               }
                             : undefined
                         }
-                        title={`${e.inizio}${e.fine ? ` – ${e.fine}` : ""} · ${e.titolo}${apribile ? " · clicca per l'analisi della call" : ""}`}
+                        title={
+                          `${e.inizio}${e.fine ? ` – ${e.fine}` : ""} · ${e.titolo}` +
+                          `${e.prenotatoPer ? ` · prenotato per ${e.prenotatoPer}` : ""}` +
+                          `${apribile ? " · clicca per il dettaglio" : ""}`
+                        }
                         style={{
                           top: y(e.inizioMin),
                           left: 3 + e.corsia * largo,
@@ -551,7 +598,12 @@ export default function AgendaGiornaliera({
                           height: alto,
                           background: colore.fondo,
                           padding: "2px 6px",
-                          boxSizing: "border-box"
+                          boxSizing: "border-box",
+                          // La barra dice che l'appuntamento era di un altro e
+                          // l'ha preso questa persona. La card sta gia' nella
+                          // colonna giusta, quindi il segno racconta da dove
+                          // arriva, non dove dovrebbe stare.
+                          ...(e.prenotatoPer ? { borderLeft: `3px solid ${COLORE_RICEVUTO}` } : {})
                         }}
                       >
                         <div
@@ -569,48 +621,18 @@ export default function AgendaGiornaliera({
                             {e.fine ? ` – ${e.fine}` : ""}
                           </div>
                         ) : null}
-                        {/* I segni nell'angolo, non sotto il nome: il nome e'
-                            la cosa che si cerca per prima e non va accorciata.
-                            Il punto dice che c'e' l'analisi da leggere nella
-                            scheda; la freccia porta fuori, alla trascrizione.
-
-                            LA FRECCIA FERMA IL CLIC prima che arrivi alla card,
-                            altrimenti aprirebbe anche la scheda dietro la
-                            scheda nuova del browser. */}
-                        <span className="absolute right-1 top-1 flex items-center gap-1">
-                          {apribile ? (
-                            <span
-                              className="h-1.5 w-1.5 rounded-full"
-                              style={{ background: colore.secondario }}
-                            />
-                          ) : null}
-                          {e.audio ? (
-                            <a
-                              href={e.audio}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(ev) => ev.stopPropagation()}
-                              title="Ascolta la registrazione della call"
-                              aria-label="Ascolta la registrazione della call"
-                              className="flex opacity-70 transition hover:opacity-100"
-                            >
-                              <IconaAudio colore={colore.secondario} />
-                            </a>
-                          ) : null}
-                          {e.trascrizione ? (
-                            <a
-                              href={e.trascrizione}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(ev) => ev.stopPropagation()}
-                              title="Apri la trascrizione su Fireflies"
-                              aria-label="Apri la trascrizione su Fireflies"
-                              className="flex opacity-70 transition hover:opacity-100"
-                            >
-                              <IconaTrascrizione colore={colore.secondario} />
-                            </a>
-                          ) : null}
-                        </span>
+                        {/* UN SOLO SEGNO: il punto nell'angolo dice che c'e'
+                            qualcosa da vedere - l'analisi, la trascrizione,
+                            l'audio - e si apre cliccando la card. Le azioni
+                            stanno dentro la finestra, non sulla card: qui lo
+                            spazio e' quello di un appuntamento da mezz'ora, e
+                            il nome del contatto viene prima di tutto. */}
+                        {apribile ? (
+                          <span
+                            className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full"
+                            style={{ background: colore.secondario }}
+                          />
+                        ) : null}
                       </div>
                     );
                   })}
@@ -653,7 +675,7 @@ export default function AgendaGiornaliera({
         </div>
       </div>
 
-      {scheda?.analisi ? <SchedaAnalisi evento={scheda} onChiudi={() => setScheda(null)} /> : null}
+      {scheda ? <SchedaAnalisi evento={scheda} onChiudi={() => setScheda(null)} /> : null}
 
       {!caricamento && !errore && eventi.length === 0 ? (
         <div className="mt-3 text-sm text-slate-500">Nessun appuntamento in agenda per questo giorno.</div>
