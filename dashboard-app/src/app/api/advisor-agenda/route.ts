@@ -795,7 +795,20 @@ export async function GET(req: NextRequest) {
         (senzaPersona ? `, ${senzaPersona} senza proprietario` : "")
     );
 
-    const corpo = { giorno, eventi };
+    // CONTI DI CONTROLLO. Quando in agenda manca qualcosa, da fuori non si
+    // distingue fra "il dato non c'e'" e "il dato c'e' ma si perde per
+    // strada": questi numeri dicono a quale anello si e' rotta la catena
+    // senza dover leggere i log del server. Viaggiano dentro il corpo perche'
+    // devono restare veri anche quando la risposta arriva dalla memoria.
+    const conti = {
+      riunioni: grezzi.length,
+      contattiAssociati: diGiornata.length,
+      trascrizioniRisolte: trascrizioni.size,
+      analisiTrovate: analisi.size,
+      presenzeLette: presenze.size
+    };
+
+    const corpo = { giorno, eventi, conti };
     memoria = { chiave, scade: Date.now() + DURATA_MEMORIA_MS, corpo };
     return NextResponse.json(corpo, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
