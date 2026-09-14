@@ -70,6 +70,15 @@ export type EventoAgenda = {
   prenotatoPer?: string;
   /** Creato a mano invece che da una pagina di prenotazione. */
   manuale?: boolean;
+  /**
+   * Chi era in call secondo la registrazione, quando lo sappiamo.
+   *
+   * Viaggia fino alla scheda perche' questo stato arriva da una deduzione e
+   * non da un campo compilato da qualcuno: chi guarda una card verde deve
+   * poter vedere su cosa si basa, altrimenti un colore nuovo e' solo un
+   * colore di cui fidarsi al buio.
+   */
+  presenza?: "presentato" | "solo-advisor" | "non-si-sa";
 };
 
 const due = (n: number) => String(n).padStart(2, "0");
@@ -488,6 +497,28 @@ async function contattiConConsulenza(dalle: number, alle: number): Promise<Set<n
  * Il collegamento passa dalla trattativa, perche' no_show registra il deal e
  * non il contatto.
  */
+/**
+ * Chi era in call, per riunione, letto dalle voci nella registrazione.
+ *
+ * PERCHE' SERVE ANCHE AVENDO GIA' svolte E disertati: quei due arrivano dalle
+ * trattative, che l'advisor sposta a fine giornata - misurato sui no show di
+ * settembre, fra le 18:00 e le 19:46. Per tutto il pomeriggio l'agenda non sa
+ * cosa sia successo la mattina. Le voci lo dicono due minuti dopo la call.
+ *
+ * Il calcolo non e' qui: lo fa il sync quando abbina la registrazione, e qui
+ * si legge soltanto. Vedi chiEraInCall().
+ */
+async function presenzeDelleRiunioni(ids: string[]): Promise<Map<string, string>> {
+  if (!ids.length) return new Map();
+  const r = await getDb().query(
+    `SELECT riunione_id, esito FROM presenza_call WHERE riunione_id = ANY($1::text[])`,
+    [ids]
+  );
+  return new Map(
+    r.rows.map((x: { riunione_id: string; esito: string }) => [String(x.riunione_id), String(x.esito)])
+  );
+}
+
 async function contattiConNoShow(dalle: number, alle: number): Promise<Set<number>> {
   const r = await getDb().query(
     `SELECT DISTINCT COALESCE(a.nuovo_id, t.contact_id) AS id
@@ -593,7 +624,7 @@ export async function GET(req: NextRequest) {
     // Le due letture che dicono quali appuntamenti si sono davvero svolti.
     // Se una delle due non risponde, gli appuntamenti restano "fissati": e'
     // meno informazione, non informazione sbagliata.
-    const [contatti, svolte, disertati] = await Promise.all([
+    const [contatti, svolte, disertati, presenze] = await Promise.all([
       contattiDeiMeeting(token, grezzi.map((r) => r.id)).catch((err) => {
         console.error("[advisor-agenda] associazioni", err instanceof Error ? err.message : err);
         return new Map<string, number[]>();
@@ -605,6 +636,10 @@ export async function GET(req: NextRequest) {
       contattiConNoShow(dalle, alle).catch((err) => {
         console.error("[advisor-agenda] no show", err instanceof Error ? err.message : err);
         return new Set<number>();
+      }),
+      presenzeDelleRiunioni(grezzi.map((r) => r.id)).catch((err) => {
+        console.error("[advisor-agenda] presenze", err instanceof Error ? err.message : err);
+        return new Map<string, string>();
       })
     ]);
 
@@ -682,16 +717,35 @@ export async function GET(req: NextRequest) {
       let tipo = tipoDa(p.hs_meeting_outcome);
       const suoiContatti = contatti.get(r.id) ?? [];
 
-      // I DUE STATI VERI VENGONO DAL DATABASE, non dall'esito del meeting, che
-      // nessuno compila: la consulenza svolta da trattativa.svolta_ts, la
-      // diserzione dalla tabella no_show.
+      // L'ORDINE DELLE FONTI, dalla piu' forte alla piu' debole.
       //
-      // LA CONSULENZA SVOLTA VINCE: se un contatto risulta sia svolto sia
-      // disertato - capita quando l'appuntamento viene spostato e poi tenuto -
-      // il fatto avvenuto conta piu' di quello mancato.
-      if (suoiContatti.some((c) => svolte.has(c))) {
+      // 1. CHI PARLA NELLA REGISTRAZIONE, quando dice che il cliente c'era. E'
+      //    un'osservazione diretta e arriva subito, mentre le trattative
+      //    arrivano a sera. Vince anche su un no show gia' segnato, perche'
+      //    quel caso l'abbiamo guardato: una consulenza del 7 settembre
+      //    risultava disertata mentre la trascrizione porta il cliente che
+      //    saluta per nome e parla per 42 battute in 12 minuti. La
+      //    registrazione aveva ragione.
+      // 2. LE TRATTATIVE, che restano la fonte per tutto cio' che Fireflies
+      //    non ha visto - e oggi e' la maggioranza, perche' su sette
+      //    postazioni su undici l'estensione non cattura.
+      // 3. LE VOCI QUANDO DICONO CHE C'ERA SOLO L'ADVISOR: vale meno del
+      //    punto 2 perche' una trattativa segnata svolta e' un'affermazione
+      //    di una persona, e in quel conflitto preferiamo crederle.
+      //
+      // Il quarto stato, "non-si-sa", non compare qui apposta: quando la
+      // registrazione non ha frasi non si conclude niente e si scende al
+      // punto 2. E' cio' che impedisce agli advisor le cui postazioni non
+      // catturano di riempirsi di no show inventati.
+      const presenza = presenze.get(r.id);
+      if (presenza === "presentato") {
         if (tipo !== "svolta") svolteTrovate += 1;
         tipo = "svolta";
+      } else if (suoiContatti.some((c) => svolte.has(c))) {
+        if (tipo !== "svolta") svolteTrovate += 1;
+        tipo = "svolta";
+      } else if (presenza === "solo-advisor") {
+        tipo = "annullato";
       } else if (suoiContatti.some((c) => disertati.has(c))) {
         tipo = "annullato";
       }
@@ -711,7 +765,8 @@ export async function GET(req: NextRequest) {
         ...(analisiSua ? { analisi: analisiSua } : {}),
         ...(idTrascrizioneSua ? { trascrizione: linkTrascrizione(idTrascrizioneSua) } : {}),
         ...(prenotatoPer ? { prenotatoPer } : {}),
-        ...(creataAMano(p.hs_meeting_outcome) ? { manuale: true } : {})
+        ...(creataAMano(p.hs_meeting_outcome) ? { manuale: true } : {}),
+        ...(presenza ? { presenza: presenza as "presentato" | "solo-advisor" | "non-si-sa" } : {})
       });
       idDiEvento.push(idTrascrizioneSua);
     }

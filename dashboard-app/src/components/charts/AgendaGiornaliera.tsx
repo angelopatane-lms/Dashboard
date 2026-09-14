@@ -202,6 +202,22 @@ function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: (
               {evento.inizio}
               {evento.fine ? " – " + evento.fine : ""}
             </div>
+            {evento.presenza && evento.presenza !== "non-si-sa" ? (
+              <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700">
+                <span
+                  className="inline-block h-2.5 w-2.5 rounded-full"
+                  style={{
+                    background:
+                      evento.presenza === "presentato"
+                        ? COLORI.svolta.fondo
+                        : COLORI.annullato.fondo
+                  }}
+                />
+                {evento.presenza === "presentato"
+                  ? "Dalla registrazione: il cliente era in call"
+                  : "Dalla registrazione: ha parlato solo l'advisor"}
+              </div>
+            ) : null}
             {evento.prenotatoPer ? (
               <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700">
                 <span
