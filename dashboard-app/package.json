@@ -15,7 +15,8 @@
     "analizza:chiamate": "tsx scripts/analizza-chiamate.ts",
     "verifica:svolte": "tsx scripts/verifica-trattative-svolte.ts",
     "bootstrap:trattative": "tsx scripts/bootstrap-trattative.ts",
-    "bootstrap:chiamate": "tsx scripts/bootstrap-chiamate.ts"
+    "bootstrap:chiamate": "tsx scripts/bootstrap-chiamate.ts",
+    "abbina": "tsx scripts/abbina-trascrizioni.ts"
   },
   "dependencies": {
     "date-fns": "3.6.0",
