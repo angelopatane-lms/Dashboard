@@ -54,18 +54,20 @@ function larghezzaColonna(nomi: string[]): number {
 const COLORI: Record<TipoEvento, { fondo: string; testo: string; secondario: string }> = {
   appuntamento: { fondo: "#7dd3fc", testo: "#0c4a6e", secondario: "#075985" },
   svolta: { fondo: "#6ee7b7", testo: "#064e3b", secondario: "#065f46" },
-  interno: { fondo: "#fcd34d", testo: "#78350f", secondario: "#92400e" },
   annullato: { fondo: "#cbd5e1", testo: "#475569", secondario: "#64748b" }
 };
 
 /** Il segno dell'overbooking: un appuntamento passato da un altro advisor. */
 const COLORE_RICEVUTO = "#475569";
 
+/** Il segno dell'appuntamento creato a mano, sul lato opposto per non
+ *  confondersi con l'altro quando capitano insieme. */
+const COLORE_MANUALE = "#a16207";
+
 const LEGENDA: Array<{ tipo: TipoEvento; label: string }> = [
   { tipo: "appuntamento", label: "Fissato" },
   { tipo: "svolta", label: "Svolto" },
-  { tipo: "annullato", label: "Annullato o no show" },
-  { tipo: "interno", label: "Riunione interna" }
+  { tipo: "annullato", label: "Annullato o no show" }
 ];
 
 /** Ora di Roma adesso, in minuti dalla mezzanotte. */
@@ -475,6 +477,14 @@ export default function AgendaGiornaliera({
             <span className="text-xs font-medium text-slate-700">Overbooking</span>
           </div>
 
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-block h-3 w-3 rounded-[3px] bg-slate-200"
+              style={{ borderLeft: `6px solid ${COLORE_MANUALE}` }}
+            />
+            <span className="text-xs font-medium text-slate-700">Creati manualmente</span>
+          </div>
+
           {lineaOra !== null ? (
             <div className="flex items-center gap-2">
               <span className="inline-block h-0.5 w-[18px]" style={{ background: "#e11d48" }} />
@@ -589,6 +599,7 @@ export default function AgendaGiornaliera({
                         title={
                           `${e.inizio}${e.fine ? ` – ${e.fine}` : ""} · ${e.titolo}` +
                           `${e.prenotatoPer ? ` · prenotato per ${e.prenotatoPer}` : ""}` +
+                          `${e.manuale ? " · creato a mano" : ""}` +
                           `${apribile ? " · clicca per il dettaglio" : ""}`
                         }
                         style={{
@@ -603,7 +614,10 @@ export default function AgendaGiornaliera({
                           // l'ha preso questa persona. La card sta gia' nella
                           // colonna giusta, quindi il segno racconta da dove
                           // arriva, non dove dovrebbe stare.
-                          ...(e.prenotatoPer ? { borderRight: `6px solid ${COLORE_RICEVUTO}` } : {})
+                          ...(e.prenotatoPer ? { borderRight: `6px solid ${COLORE_RICEVUTO}` } : {}),
+                          // Creato a mano: il colore continua a dire lo stato,
+                          // il segno dice da dove arriva la riunione.
+                          ...(e.manuale ? { borderLeft: `6px solid ${COLORE_MANUALE}` } : {})
                         }}
                       >
                         <div

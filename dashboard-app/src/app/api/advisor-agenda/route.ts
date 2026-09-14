@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 const HUBSPOT_API = "https://api.hubapi.com";
 
 /** Il tipo decide il colore, e lo decidono i dati: e' l'esito del meeting. */
-export type TipoEvento = "appuntamento" | "svolta" | "annullato" | "interno";
+export type TipoEvento = "appuntamento" | "svolta" | "annullato";
 
 /**
  * L'analisi della call, quando c'e'.
@@ -68,6 +68,8 @@ export type EventoAgenda = {
    * lavorando - e questo campo conserva da dove arriva.
    */
   prenotatoPer?: string;
+  /** Creato a mano invece che da una pagina di prenotazione. */
+  manuale?: boolean;
 };
 
 const due = (n: number) => String(n).padStart(2, "0");
@@ -121,11 +123,25 @@ function tipoDa(esito: string | null | undefined): TipoEvento {
   const e = (esito ?? "").trim().toUpperCase();
   if (e === "COMPLETED") return "svolta";
   if (e === "CANCELED" || e === "NO_SHOW") return "annullato";
-  // Senza esito sono le riunioni interne, che nessuno "svolge" con un cliente:
-  // misurato sul 2 settembre, l'unica era "Riunione Mattutina".
-  if (!e) return "interno";
   return "appuntamento";
 }
+
+/**
+ * L'appuntamento e' stato creato a mano invece che da una pagina di prenotazione.
+ *
+ * COME SI RICONOSCE: quando un contatto prenota da una pagina, HubSpot mette da
+ * solo l'esito a "SCHEDULED". Se la riunione viene creata a mano nel CRM o
+ * arriva dal calendario, quel campo resta vuoto perche' nessuno lo compila.
+ *
+ * PERCHE' MERITA UN SEGNO E NON UN COLORE. Fino a ieri l'agenda dipingeva queste
+ * riunioni di giallo chiamandole "interne", perche' quasi sempre lo erano - la
+ * riunione mattutina del team, i workshop. Ma non tutte: su quattordici giorni
+ * di settembre, fra le diciannove senza esito ce n'era una con un contatto vero
+ * e un orario da consulenza, che finiva in giallo e restava fuori dai conteggi.
+ * Il modo in cui una riunione e' nata non dice se sia una consulenza: quello lo
+ * dicono il contatto e lo stato, e restano affidati al colore.
+ */
+const creataAMano = (esito: string | null | undefined): boolean => !(esito ?? "").trim();
 
 /** I contatti di ogni meeting, un'unica chiamata ogni duecento. */
 async function contattiDeiMeeting(token: string, ids: string[]): Promise<Map<string, number[]>> {
@@ -456,6 +472,37 @@ async function contattiConConsulenza(dalle: number, alle: number): Promise<Set<n
 }
 
 /**
+ * I contatti che quel giorno hanno disertato l'appuntamento.
+ *
+ * PERCHE' NON DALL'ESITO DEL MEETING. HubSpot ha il campo apposta - vale
+ * NO_SHOW o CANCELED - ma non lo compila nessuno: su 396 riunioni di settembre
+ * un solo NO_SHOW e quattro CANCELED, mentre i no show reali sono piu' della
+ * meta' degli appuntamenti. Colorare di grigio quei cinque avrebbe mostrato una
+ * diserzione ogni ottanta.
+ *
+ * Il dato vero sta nella tabella no_show, alimentata dal sync a partire dal
+ * workflow di HubSpot: nello stesso periodo sono 183 contatti, una ventina al
+ * giorno. E' la stessa scelta gia' fatta per le consulenze svolte, che non
+ * vengono da COMPLETED ma da trattativa.svolta_ts.
+ *
+ * Il collegamento passa dalla trattativa, perche' no_show registra il deal e
+ * non il contatto.
+ */
+async function contattiConNoShow(dalle: number, alle: number): Promise<Set<number>> {
+  const r = await getDb().query(
+    `SELECT DISTINCT COALESCE(a.nuovo_id, t.contact_id) AS id
+       FROM no_show n
+       JOIN trattativa t ON t.deal_id = n.deal_id
+       LEFT JOIN alias_contatto a ON a.vecchio_id = t.contact_id
+      WHERE t.contact_id IS NOT NULL
+        AND n.ts >= $1::timestamptz
+        AND n.ts <  $2::timestamptz`,
+    [new Date(dalle).toISOString(), new Date(alle).toISOString()]
+  );
+  return new Set(r.rows.map((x: { id: number }) => Number(x.id)).filter(Number.isFinite));
+}
+
+/**
  * Chi sono i proprietari, per numero.
  *
  * Si sfoglia fino in fondo invece di chiedere i primi cento: gli utenti attivi
@@ -546,13 +593,17 @@ export async function GET(req: NextRequest) {
     // Le due letture che dicono quali appuntamenti si sono davvero svolti.
     // Se una delle due non risponde, gli appuntamenti restano "fissati": e'
     // meno informazione, non informazione sbagliata.
-    const [contatti, svolte] = await Promise.all([
+    const [contatti, svolte, disertati] = await Promise.all([
       contattiDeiMeeting(token, grezzi.map((r) => r.id)).catch((err) => {
         console.error("[advisor-agenda] associazioni", err instanceof Error ? err.message : err);
         return new Map<string, number[]>();
       }),
       contattiConConsulenza(dalle, alle).catch((err) => {
         console.error("[advisor-agenda] consulenze", err instanceof Error ? err.message : err);
+        return new Set<number>();
+      }),
+      contattiConNoShow(dalle, alle).catch((err) => {
+        console.error("[advisor-agenda] no show", err instanceof Error ? err.message : err);
         return new Set<number>();
       })
     ]);
@@ -629,19 +680,25 @@ export async function GET(req: NextRequest) {
         .trim();
 
       let tipo = tipoDa(p.hs_meeting_outcome);
-      // La consulenza svolta vince sul "fissato": e' un fatto avvenuto, mentre
-      // "fissato" e' solo lo stato in cui il meeting e' rimasto. Non tocca gli
-      // annullati ne' le riunioni interne.
-      if (tipo === "appuntamento" && (contatti.get(r.id) ?? []).some((c) => svolte.has(c))) {
+      const suoiContatti = contatti.get(r.id) ?? [];
+
+      // I DUE STATI VERI VENGONO DAL DATABASE, non dall'esito del meeting, che
+      // nessuno compila: la consulenza svolta da trattativa.svolta_ts, la
+      // diserzione dalla tabella no_show.
+      //
+      // LA CONSULENZA SVOLTA VINCE: se un contatto risulta sia svolto sia
+      // disertato - capita quando l'appuntamento viene spostato e poi tenuto -
+      // il fatto avvenuto conta piu' di quello mancato.
+      if (suoiContatti.some((c) => svolte.has(c))) {
+        if (tipo !== "svolta") svolteTrovate += 1;
         tipo = "svolta";
-        svolteTrovate += 1;
+      } else if (suoiContatti.some((c) => disertati.has(c))) {
+        tipo = "annullato";
       }
 
       const suoi = contatti.get(r.id) ?? [];
       const analisiSua = suoi.map((c) => analisi.get(c)).find(Boolean);
-      // Le riunioni interne non hanno un cliente di cui leggere la call.
-      const idTrascrizioneSua =
-        tipo === "interno" ? undefined : suoi.map((c) => trascrizioni.get(c)).find(Boolean);
+      const idTrascrizioneSua = suoi.map((c) => trascrizioni.get(c)).find(Boolean);
 
       eventi.push({
         operatore,
@@ -653,7 +710,8 @@ export async function GET(req: NextRequest) {
         tipo,
         ...(analisiSua ? { analisi: analisiSua } : {}),
         ...(idTrascrizioneSua ? { trascrizione: linkTrascrizione(idTrascrizioneSua) } : {}),
-        ...(prenotatoPer ? { prenotatoPer } : {})
+        ...(prenotatoPer ? { prenotatoPer } : {}),
+        ...(creataAMano(p.hs_meeting_outcome) ? { manuale: true } : {})
       });
       idDiEvento.push(idTrascrizioneSua);
     }
@@ -674,6 +732,7 @@ export async function GET(req: NextRequest) {
     console.log(
       `[advisor-agenda] ${giorno}: ${eventi.length} eventi, ${new Set(eventi.map((e) => e.operatore)).size} persone, ` +
         `${eventi.filter((e) => e.tipo === "svolta").length} svolte (${svolteTrovate} dalle trattative), ` +
+        `${eventi.filter((e) => e.tipo === "annullato").length} disertate, ` +
         `${eventi.filter((e) => e.analisi).length} con analisi, ` +
         `${eventi.filter((e) => e.trascrizione).length} con trascrizione, ` +
         `${eventi.filter((e) => e.audio).length} con audio, ` +
