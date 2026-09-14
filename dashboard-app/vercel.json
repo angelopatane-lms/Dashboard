@@ -1,5 +1,12 @@
 {
   "crons": [
-    { "path": "/api/cron/campaign-conversions-incremental", "schedule": "0 3 * * *" }
+    {
+      "path": "/api/cron/campaign-conversions-incremental",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/abbina-trascrizioni",
+      "schedule": "30 3 * * *"
+    }
   ]
 }

@@ -410,6 +410,21 @@ export default function AgendaGiornaliera({
               </button>
             ))}
           </div>
+
+          {/* Il selettore serve a guardare indietro oltre ieri: le trascrizioni
+              e gli audio compaiono solo sulle giornate in cui qualcuno ha
+              registrato, e non sono necessariamente le ultime due. Il tasto
+              Oggi resta il modo rapido di tornare al presente. */}
+          <input
+            type="date"
+            value={giorno}
+            max={giornoRoma(1)}
+            onChange={(e) => {
+              if (e.target.value) onGiorno(e.target.value);
+            }}
+            aria-label="Scegli il giorno"
+            className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:border-neutral-800 hover:text-black"
+          />
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-4">
