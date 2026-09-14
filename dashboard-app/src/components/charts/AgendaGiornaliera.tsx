@@ -62,12 +62,12 @@ const COLORE_RICEVUTO = "#475569";
 
 /** Il segno dell'appuntamento creato a mano, sul lato opposto per non
  *  confondersi con l'altro quando capitano insieme. */
-const COLORE_MANUALE = "#a16207";
+const COLORE_MANUALE = "#b91c1c";
 
 const LEGENDA: Array<{ tipo: TipoEvento; label: string }> = [
   { tipo: "appuntamento", label: "Fissato" },
   { tipo: "svolta", label: "Svolto" },
-  { tipo: "annullato", label: "Annullato o no show" }
+  { tipo: "annullato", label: "Annullato / No Show" }
 ];
 
 /** Ora di Roma adesso, in minuti dalla mezzanotte. */
@@ -480,15 +480,15 @@ export default function AgendaGiornaliera({
           <div className="flex items-center gap-2">
             <span
               className="inline-block h-3 w-3 rounded-[3px] bg-slate-200"
-              style={{ borderLeft: `6px solid ${COLORE_MANUALE}` }}
+              style={{ borderRight: `6px solid ${COLORE_MANUALE}` }}
             />
-            <span className="text-xs font-medium text-slate-700">Creati manualmente</span>
+            <span className="text-xs font-medium text-slate-700">Creati Manualmente</span>
           </div>
 
           {lineaOra !== null ? (
             <div className="flex items-center gap-2">
               <span className="inline-block h-0.5 w-[18px]" style={{ background: "#e11d48" }} />
-              <span className="text-xs font-medium text-slate-700">ora corrente</span>
+              <span className="text-xs font-medium text-slate-700">Ora Corrente</span>
             </div>
           ) : null}
         </div>
@@ -614,10 +614,18 @@ export default function AgendaGiornaliera({
                           // l'ha preso questa persona. La card sta gia' nella
                           // colonna giusta, quindi il segno racconta da dove
                           // arriva, non dove dovrebbe stare.
-                          ...(e.prenotatoPer ? { borderRight: `6px solid ${COLORE_RICEVUTO}` } : {}),
-                          // Creato a mano: il colore continua a dire lo stato,
-                          // il segno dice da dove arriva la riunione.
-                          ...(e.manuale ? { borderLeft: `6px solid ${COLORE_MANUALE}` } : {})
+                          // I due segni dicono da dove arriva la riunione,
+                          // mentre il colore continua a dire lo stato. Stanno
+                          // tutti e due a destra, ma quando capitano insieme
+                          // sulla stessa card quello scuro si sposta a
+                          // sinistra: altrimenti il secondo bordo
+                          // sovrascriverebbe il primo e se ne vedrebbe uno solo.
+                          ...(e.prenotatoPer
+                            ? e.manuale
+                              ? { borderLeft: `6px solid ${COLORE_RICEVUTO}` }
+                              : { borderRight: `6px solid ${COLORE_RICEVUTO}` }
+                            : {}),
+                          ...(e.manuale ? { borderRight: `6px solid ${COLORE_MANUALE}` } : {})
                         }}
                       >
                         <div
