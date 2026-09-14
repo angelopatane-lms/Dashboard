@@ -350,7 +350,12 @@ async function analisiDeiContatti(
  * giugno, 137 contatti su 140 hanno una sola call. I tre con due call le hanno
  * fatte lo stesso giorno, e somigliano a un appuntamento spostato.
  */
+/** Il motivo dell'ultimo fallimento nella lettura delle trascrizioni, esposto
+ *  nei conti di controllo: senza, un errore resta invisibile da fuori. */
+let ultimoErrore: string | null = null;
+
 async function trascrizioniDeiContatti(token: string, contatti: number[]): Promise<Map<number, string>> {
+  ultimoErrore = null;
   // Il valore della mappa e' l'IDENTIFICATIVO della trascrizione: da quello si
   // ricavano sia l'indirizzo della pagina sia, con una chiamata, il file audio.
   const out = new Map<number, string>();
@@ -365,7 +370,16 @@ async function trascrizioniDeiContatti(token: string, contatti: number[]): Promi
         inputs: contatti.slice(i, i + 100).map((id) => ({ id: String(id) }))
       })
     });
-    if (!res.ok) throw new Error(`contatti ${res.status}`);
+    // UN BLOCCO CHE FALLISCE NON DEVE PORTARSI VIA LA GIORNATA. Prima questo
+    // lanciava, e il chiamante lo raccoglieva restituendo una mappa vuota:
+    // bastava un errore su una richiesta per lasciare senza trascrizione
+    // tutte le card del giorno, e da fuori sembrava che il dato non ci
+    // fosse. Si annota il motivo e si prosegue con gli altri blocchi.
+    if (!res.ok) {
+      ultimoErrore = `HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`;
+      console.error(`[advisor-agenda] trascrizioni, blocco ${i}: ${ultimoErrore}`);
+      continue;
+    }
     const data = await res.json();
     for (const r of data.results ?? []) {
       const trascrizione = idTrascrizione(r.properties?.link_trascrizione_fireflies);
@@ -805,7 +819,8 @@ export async function GET(req: NextRequest) {
       contattiAssociati: diGiornata.length,
       trascrizioniRisolte: trascrizioni.size,
       analisiTrovate: analisi.size,
-      presenzeLette: presenze.size
+      presenzeLette: presenze.size,
+      ...(ultimoErrore ? { erroreTrascrizioni: ultimoErrore } : {})
     };
 
     const corpo = { giorno, eventi, conti };
