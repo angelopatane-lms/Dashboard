@@ -372,6 +372,28 @@ let ultimoErrore: string | null = null;
 let contattiLetti = 0;
 let contattiConCampo = 0;
 
+/**
+ * Il portale e l-applicazione con cui stiamo parlando.
+ *
+ * SERVE PERCHE' LO STESSO CODICE, CON LO STESSO CONTATTO, DA' RISULTATI
+ * DIVERSI: da qui la proprieta' del collegamento e' piena, dal server e'
+ * vuota. Se le due parti stanno usando token di app diverse - una sola delle
+ * quali vede quella proprieta' - questo lo rende evidente invece di lasciarlo
+ * dedurre. Non espone nulla di riservato: solo il numero del portale.
+ */
+async function portaleCollegato(token: string): Promise<string> {
+  try {
+    const res = await fetch(`${HUBSPOT_API}/account-info/v3/details`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) return `non leggibile (${res.status})`;
+    const d = await res.json();
+    return String(d.portalId ?? d.hubId ?? "?");
+  } catch {
+    return "non leggibile";
+  }
+}
+
 async function trascrizioniDeiContatti(token: string, contatti: number[]): Promise<Map<number, string>> {
   ultimoErrore = null;
   contattiLetti = 0;
@@ -844,6 +866,7 @@ export async function GET(req: NextRequest) {
       presenzeLette: presenze.size,
       contattiLetti,
       contattiConCampo,
+      portale: await portaleCollegato(token),
       ...(ultimoErrore ? { erroreTrascrizioni: ultimoErrore } : {})
     };
 
