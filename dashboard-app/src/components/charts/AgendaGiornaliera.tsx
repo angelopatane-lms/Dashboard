@@ -58,7 +58,7 @@ const COLORI: Record<TipoEvento, { fondo: string; testo: string; secondario: str
   annullato: { fondo: "#cbd5e1", testo: "#475569", secondario: "#64748b" }
 };
 
-/** Il segno dell'appuntamento ricevuto da un altro advisor. */
+/** Il segno dell'overbooking: un appuntamento passato da un altro advisor. */
 const COLORE_RICEVUTO = "#475569";
 
 const LEGENDA: Array<{ tipo: TipoEvento; label: string }> = [
@@ -470,9 +470,9 @@ export default function AgendaGiornaliera({
           <div className="flex items-center gap-2">
             <span
               className="inline-block h-3 w-3 rounded-[3px] bg-slate-200"
-              style={{ borderLeft: `3px solid ${COLORE_RICEVUTO}` }}
+              style={{ borderRight: `6px solid ${COLORE_RICEVUTO}` }}
             />
-            <span className="text-xs font-medium text-slate-700">Ricevuto da un altro advisor</span>
+            <span className="text-xs font-medium text-slate-700">Overbooking</span>
           </div>
 
           {lineaOra !== null ? (
@@ -599,11 +599,11 @@ export default function AgendaGiornaliera({
                           background: colore.fondo,
                           padding: "2px 6px",
                           boxSizing: "border-box",
-                          // La barra dice che l'appuntamento era di un altro e
+                          // La barra a destra dice che l'appuntamento era di un altro e
                           // l'ha preso questa persona. La card sta gia' nella
                           // colonna giusta, quindi il segno racconta da dove
                           // arriva, non dove dovrebbe stare.
-                          ...(e.prenotatoPer ? { borderLeft: `3px solid ${COLORE_RICEVUTO}` } : {})
+                          ...(e.prenotatoPer ? { borderRight: `6px solid ${COLORE_RICEVUTO}` } : {})
                         }}
                       >
                         <div
