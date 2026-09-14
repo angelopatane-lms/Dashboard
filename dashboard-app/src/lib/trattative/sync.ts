@@ -124,7 +124,7 @@ function valoreAl(storico: Voce[], istante: number): string {
  * Ricostruzione verificata dove esistono entrambi (agosto-settembre 2026):
  * coincide nel 97,5% dei confronti.
  */
-function primaSvolta(
+export function primaSvolta(
   gruppi: Filtro[][],
   storici: Record<string, Voce[]>,
   correnti: Record<string, string>,
@@ -171,7 +171,7 @@ function primaSvolta(
  * trattativa puo' comparire piu' volte: viene ripianificata e il cliente
  * diserta di nuovo. Misurato: il 53% delle trattative ne ha almeno uno.
  */
-function ingressiNoShow(storici: Record<string, Voce[]>, idFaseNoShow: string): Date[] {
+export function ingressiNoShow(storici: Record<string, Voce[]>, idFaseNoShow: string): Date[] {
   const out: Date[] = [];
   for (const v of storici.dealstage ?? []) {
     if ((v.value ?? "").trim() !== idFaseNoShow) continue;
@@ -240,7 +240,7 @@ async function* cercaTrattative(
  * L'API accetta 200 input per chiamata e risponde in circa 300 ms: sul giro
  * incrementale sono una o due chiamate in tutto.
  */
-async function leggiContatti(token: string, dealIds: string[]): Promise<Map<string, number>> {
+export async function leggiContatti(token: string, dealIds: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   for (let i = 0; i < dealIds.length; i += 200) {
     const d = await chiamaHubSpot<any>(token, `${HUBSPOT_API}/crm/v4/associations/deals/contacts/batch/read`, {
@@ -309,19 +309,27 @@ async function inizioFinestraIncrementale(): Promise<string> {
   return new Date(Date.now() - 24 * 3600_000).toISOString();
 }
 
-export async function sincronizzaTrattative(
-  token: string,
-  tipo: TipoSyncTrattative = "bootstrap",
-  opzioni: OpzioniTrattative = {}
-): Promise<EsitoTrattative> {
-  const daIso =
-    opzioni.daIso ?? (tipo === "incrementale" ? await inizioFinestraIncrementale() : "2026-01-01");
-  const db = getDb();
+/**
+ * Tutto quello che serve per decidere se una transizione e' una consulenza
+ * svolta: i criteri del workflow, le proprieta' da leggere, le etichette delle
+ * fasi e l'id della fase No Show.
+ *
+ * E' ESTRATTO PERCHE' HA DUE CHIAMANTI: il giro completo qui sotto e
+ * l'aggiornamento della singola trattativa che arriva dal webhook. Tenerne una
+ * copia sola e' la ragione per cui i due non possono dare risposte diverse
+ * sulla stessa trattativa - che sarebbe l'errore peggiore, perche' nessuno lo
+ * noterebbe finche' i numeri di una pagina non smettono di tornare con quelli
+ * di un'altra.
+ */
+export type ContestoSvolte = {
+  gruppi: Filtro[][];
+  proprieta: string[];
+  conStorico: string[];
+  etichettaFase: Map<string, string>;
+  idFaseNoShow: string;
+};
 
-  const {
-    rows: [log]
-  } = await db.query(`INSERT INTO sync_log (tipo) VALUES ('trattative') RETURNING id`);
-
+export async function preparaContesto(token: string): Promise<ContestoSvolte> {
   const gruppi = await leggiCriteriSvolte(token);
   if (!gruppi.length) throw new Error("Nessun criterio letto dal workflow: non si puo' stabilire cosa sia svolto.");
   const proprieta = [...new Set(gruppi.flat().map((f) => f.proprieta))];
@@ -343,6 +351,101 @@ export async function sincronizzaTrattative(
 
   const idFaseNoShow = [...etichettaFase].find(([, label]) => label === "No Show")?.[0];
   if (!idFaseNoShow) throw new Error("Fase 'No Show' non trovata nella pipeline: impossibile contare gli appuntamenti disertati.");
+
+  return { gruppi, proprieta, conStorico, etichettaFase, idFaseNoShow };
+}
+
+/**
+ * Ricalcola UNA trattativa e ne riscrive la riga.
+ *
+ * E' quello che fa il giro completo, su un input di uno: stesse letture, stesse
+ * funzioni di calcolo, stesso SQL. Serve al webhook dei workflow HubSpot, che
+ * arriva quando una trattativa cambia fase - cioe' nell'istante in cui diventa
+ * svolta o disertata - invece di aspettare la ricostruzione notturna di tutto.
+ *
+ * PERCHE' RICALCOLA INVECE DI PRENDERE "ADESSO". Il workflow scatta a ogni
+ * cambio di fase_precedente, e solo alcuni di quei cambi valgono come
+ * consulenza svolta: la selezione la fanno i criteri, applicati alla cronologia
+ * in ordine. Prendere l'istante della chiamata come data della svolta
+ * segnerebbe svolte anche dove non ce ne sono.
+ *
+ * Restituisce null se la trattativa non e' leggibile o non ha una data di
+ * creazione valida, come fa il giro completo.
+ */
+export async function aggiornaUnaTrattativa(
+  token: string,
+  dealId: string,
+  contesto?: ContestoSvolte
+): Promise<{ dealId: number; svolta: Date | null; noShow: number } | null> {
+  const { gruppi, proprieta, conStorico, etichettaFase, idFaseNoShow } =
+    contesto ?? (await preparaContesto(token));
+
+  const d = await chiamaHubSpot<any>(token, `${HUBSPOT_API}/crm/v3/objects/deals/batch/read`, {
+    method: "POST",
+    body: {
+      inputs: [{ id: dealId }],
+      properties: [...proprieta, "id_campagna_track", "createdate"],
+      propertiesWithHistory: conStorico
+    }
+  });
+
+  const r = (d.results ?? [])[0];
+  if (!r) return null;
+
+  const creata = new Date(r.properties?.createdate ?? "");
+  if (Number.isNaN(creata.getTime())) return null;
+
+  const contatti = await leggiContatti(token, [String(r.id)]);
+  const campagna = (r.properties?.id_campagna_track ?? "").trim();
+  const svolta = primaSvolta(gruppi, r.propertiesWithHistory ?? {}, r.properties ?? {}, etichettaFase);
+  const noShow = ingressiNoShow(r.propertiesWithHistory ?? {}, idFaseNoShow);
+
+  await risolviIdCampagne([campagna]);
+  const campagnaId = campagna ? idCampagne.get(campagna) ?? null : null;
+  const db = getDb();
+
+  await db.query(
+    `INSERT INTO trattativa (deal_id, campagna_id, creata_ts, svolta_ts, contact_id)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (deal_id) DO UPDATE
+       SET campagna_id = EXCLUDED.campagna_id,
+           creata_ts   = EXCLUDED.creata_ts,
+           svolta_ts   = EXCLUDED.svolta_ts,
+           -- Se l'associazione non arriva si tiene quella gia' salvata,
+           -- invece di cancellarla con un NULL.
+           contact_id  = COALESCE(EXCLUDED.contact_id, trattativa.contact_id)`,
+    [Number(r.id), campagnaId, creata, svolta, contatti.get(String(r.id)) ?? null]
+  );
+
+  // Come nel giro completo: si cancella e si reinserisce, cosi' sparisce anche
+  // un no show che non risulta piu' nella cronologia.
+  await db.query(`DELETE FROM no_show WHERE deal_id = $1`, [Number(r.id)]);
+  if (noShow.length) {
+    await db.query(
+      `INSERT INTO no_show (deal_id, ts, campagna_id)
+       SELECT * FROM UNNEST($1::bigint[], $2::timestamptz[], $3::int[])
+       ON CONFLICT (deal_id, ts) DO UPDATE SET campagna_id = EXCLUDED.campagna_id`,
+      [noShow.map(() => Number(r.id)), noShow, noShow.map(() => campagnaId)]
+    );
+  }
+
+  return { dealId: Number(r.id), svolta, noShow: noShow.length };
+}
+
+export async function sincronizzaTrattative(
+  token: string,
+  tipo: TipoSyncTrattative = "bootstrap",
+  opzioni: OpzioniTrattative = {}
+): Promise<EsitoTrattative> {
+  const daIso =
+    opzioni.daIso ?? (tipo === "incrementale" ? await inizioFinestraIncrementale() : "2026-01-01");
+  const db = getDb();
+
+  const {
+    rows: [log]
+  } = await db.query(`INSERT INTO sync_log (tipo) VALUES ('trattative') RETURNING id`);
+
+  const { gruppi, proprieta, conStorico, etichettaFase, idFaseNoShow } = await preparaContesto(token);
 
   const esito: EsitoTrattative = { trattative: 0, svolte: 0, noShow: 0, senzaCampagna: 0, troncato: false };
 
