@@ -11,6 +11,7 @@
 // sorgenti, arricchire le riunioni, scrivere il risultato.
 
 import { getDb } from "@/lib/db";
+import { registraPresenze } from "@/lib/trascrizioni/presenze";
 import {
   abbina,
   type Abbinamento,
@@ -44,6 +45,8 @@ export type EsitoSync = {
   falliti: number;
   /** Registrazioni oltre i quindici minuti rimaste senza appuntamento. */
   orfane: number;
+  /** Quanti appuntamenti hanno ricevuto un verdetto su chi era in call. */
+  presenze: { nuove: number; gia: number; falliti: number };
 };
 
 async function hubspot<T>(token: string, percorso: string, corpo?: unknown, tentativi = 6): Promise<T> {
@@ -351,6 +354,18 @@ export async function sincronizzaTrascrizioni(opzioni: {
   const perCriterio: Record<string, number> = {};
   for (const x of abbinamenti) perCriterio[x.criterio] = (perCriterio[x.criterio] ?? 0) + 1;
 
+  // CHI C'ERA IN CALL, solo quando si sta scrivendo davvero: una prova a vuoto
+  // deve restare senza effetti, e questo lascia righe nel nostro database.
+  let presenze = { nuove: 0, gia: 0, falliti: 0 };
+  if (scrivi) {
+    presenze = await registraPresenze(chiaveFireflies, abbinamenti, registrazioni).catch((e) => {
+      // Non e' il mestiere principale di questo giro: se fallisce, i
+      // collegamenti su HubSpot si scrivono lo stesso.
+      console.error("[trascrizioni] presenze non registrate:", e instanceof Error ? e.message : e);
+      return { nuove: 0, gia: 0, falliti: 0 };
+    });
+  }
+
   let scritti = 0;
   let invariati = 0;
   let falliti = 0;
@@ -416,7 +431,8 @@ export async function sincronizzaTrascrizioni(opzioni: {
       scritti,
       invariati,
       falliti,
-      orfane: registrazioniSenzaRiunione.filter((r) => r.durataMin > 15).length
+      orfane: registrazioniSenzaRiunione.filter((r) => r.durataMin > 15).length,
+      presenze
     },
     abbinamenti
   };

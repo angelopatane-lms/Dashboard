@@ -38,8 +38,10 @@ export type Registrazione = {
   /** I nomi che Fireflies scrive fra doppi asterischi negli action items. */
   nomi?: string[];
   /** Le frasi con il loro istante, in secondi dall'inizio della registrazione.
-   *  Servono a capire dove finisce una consulenza e comincia la successiva. */
-  frasi?: Array<{ inizioSec: number; fineSec: number; testo: string }>;
+   *  Servono a capire dove finisce una consulenza e comincia la successiva, e
+   *  con il nome di chi parla anche a stabilire se il cliente si e' presentato
+   *  (vedi chiEraInCall). Il nome puo' mancare. */
+  frasi?: Array<{ inizioSec: number; fineSec: number; testo: string; voce?: string }>;
 };
 
 /** Un appuntamento di HubSpot, gia' arricchito con l'advisor effettivo. */

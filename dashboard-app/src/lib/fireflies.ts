@@ -136,14 +136,21 @@ export async function leggiNomiCitati(chiave: string, id: string): Promise<strin
 export async function leggiFrasi(
   chiave: string,
   id: string
-): Promise<Array<{ inizioSec: number; fineSec: number; testo: string }>> {
+): Promise<Array<{ inizioSec: number; fineSec: number; testo: string; voce: string }>> {
+  // speaker_name serve a stabilire chi c'era in call: e' il nome che Fireflies
+  // attribuisce a chi parla, e sulle consulenze coincide col nome del contatto
+  // ("Enrico Toniazzo"), mentre le battute dell'advisor risultano di "Advisor
+  // Leone Group". Vedi chiEraInCall().
   const dati = await interroga<{
-    transcript: { sentences: Array<{ start_time: number; end_time: number; text: string }> | null } | null;
-  }>(chiave, `{ transcript(id: "${id}") { sentences { start_time end_time text } } }`);
+    transcript: {
+      sentences: Array<{ start_time: number; end_time: number; text: string; speaker_name: string | null }> | null;
+    } | null;
+  }>(chiave, `{ transcript(id: "${id}") { sentences { start_time end_time text speaker_name } } }`);
   return (dati?.transcript?.sentences ?? []).map((f) => ({
     inizioSec: Number(f.start_time) || 0,
     fineSec: Number(f.end_time) || 0,
-    testo: f.text ?? ""
+    testo: f.text ?? "",
+    voce: f.speaker_name ?? ""
   }));
 }
 
