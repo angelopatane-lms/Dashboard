@@ -79,6 +79,14 @@ export type EventoAgenda = {
    * colore di cui fidarsi al buio.
    */
   presenza?: "presentato" | "solo-advisor" | "non-si-sa";
+  /**
+   * Quanto e' durata la registrazione, in minuti.
+   *
+   * E' la durata della CALL, non quella dello slot prenotato: le due si
+   * assomigliano solo quando tutto fila liscio. Uno slot da mezz'ora con una
+   * call da sei minuti racconta qualcosa che l'orario da solo non dice.
+   */
+  durataMin?: number;
 };
 
 const due = (n: number) => String(n).padStart(2, "0");
@@ -227,8 +235,10 @@ const linkTrascrizione = (id: string) => `https://app.fireflies.ai/view/${id}`;
  * Se la chiave non c'e' o Fireflies non risponde si torna una mappa vuota: in
  * agenda spariscono le icone dell'altoparlante, non gli appuntamenti.
  */
-async function audioDelleTrascrizioni(ids: string[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
+async function audioDelleTrascrizioni(
+  ids: string[]
+): Promise<Map<string, { audio?: string; durataMin?: number }>> {
+  const out = new Map<string, { audio?: string; durataMin?: number }>();
   const chiave = process.env.FIREFLIES_API_KEY;
   if (!chiave || !ids.length) return out;
   for (const id of ids) {
@@ -236,12 +246,18 @@ async function audioDelleTrascrizioni(ids: string[]): Promise<Map<string, string
       const res = await fetch("https://api.fireflies.ai/graphql", {
         method: "POST",
         headers: { Authorization: `Bearer ${chiave}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ query: `{ transcript(id: "${id}") { audio_url } }` })
+        // La durata arriva dalla stessa interrogazione: e' un campo in piu'
+        // nella risposta, non una chiamata in piu'.
+        body: JSON.stringify({ query: `{ transcript(id: "${id}") { audio_url duration } }` })
       });
       if (!res.ok) continue;
       const dati = await res.json();
       const url = dati?.data?.transcript?.audio_url;
-      if (typeof url === "string" && url.startsWith("http")) out.set(id, url);
+      const durata = Number(dati?.data?.transcript?.duration);
+      out.set(id, {
+        ...(typeof url === "string" && url.startsWith("http") ? { audio: url } : {}),
+        ...(Number.isFinite(durata) && durata > 0 ? { durataMin: Math.round(durata) } : {})
+      });
     } catch {
       // una registrazione senza audio non e' un motivo per far fallire l'agenda
     }
@@ -860,8 +876,9 @@ export async function GET(req: NextRequest) {
     ]);
     eventi.forEach((e, i) => {
       const id = idDiEvento[i];
-      const url = id ? audio.get(id) : undefined;
-      if (url) e.audio = url;
+      const d = id ? audio.get(id) : undefined;
+      if (d?.audio) e.audio = d.audio;
+      if (d?.durataMin) e.durataMin = d.durataMin;
     });
 
     eventi.sort((x, y) => x.inizioMin - y.inizioMin);

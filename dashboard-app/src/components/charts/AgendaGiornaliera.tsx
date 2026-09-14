@@ -201,6 +201,10 @@ function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: (
               {" · "}
               {evento.inizio}
               {evento.fine ? " – " + evento.fine : ""}
+              {/* La durata della CALL accanto all'orario dello slot: messe
+                  vicine si legge da sole quando una consulenza e' durata
+                  molto meno o molto piu' di quanto era prenotata. */}
+              {evento.durataMin ? ` · call di ${evento.durataMin} min` : ""}
             </div>
             {evento.presenza && evento.presenza !== "non-si-sa" ? (
               <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700">
