@@ -180,23 +180,35 @@ async function contattiDeiMeeting(token: string, ids: string[]): Promise<Map<str
  * di giugno, una del 2025 - risponde sempre "403 Request has expired". Messo in
  * un'icona manderebbe le persone su una pagina di errore.
  *
- * Dentro quell'indirizzo pero' c'e' l'identificativo della trascrizione, che e'
- * il primo pezzo del percorso:
+ * Dentro quell'indirizzo pero' c'e' l'identificativo della trascrizione:
  *
  *   /01M25ZKTJM9G0AWB5HE43E8FYA/downloads/transcript/jth-hhtk-jmn-...docx
  *
  * Con quello si compone l'indirizzo dell'applicazione Fireflies, che non scade.
  * Verificato aprendone uno: mostra la call giusta.
+ *
+ * DUE FORME, NON UNA. Sul contatto si trovano oggi due tipi di valore:
+ * quello dello Zap, dove l'identificativo e' il PRIMO pezzo del percorso, e
+ * quello che scriviamo noi dal webhook, che e' gia' l'indirizzo
+ * dell'applicazione e ha l'identificativo per ULTIMO:
+ *
+ *   https://app.fireflies.ai/view/01M2FPVQNBMF8D6BJZ24DKEB6Q [2026-09-14T...]
+ *
+ * Cercare solo nel primo pezzo funzionava finche' scriveva lo Zap; da quando
+ * scriviamo noi avrebbe reso invisibile in agenda ogni link nuovo, senza dare
+ * errore. Si cerca quindi la forma dell'identificativo fra TUTTI i pezzi.
  */
 function idTrascrizione(grezzo: string | null | undefined): string | undefined {
   const v = (grezzo ?? "").trim();
   if (!v.startsWith("http")) return undefined;
   try {
-    const id = new URL(v).pathname.split("/").filter(Boolean)[0] ?? "";
     // Un ULID: ventisei caratteri fra cifre e lettere maiuscole. Il controllo
-    // serve a non costruire un indirizzo da un percorso di forma diversa, che
-    // porterebbe a una pagina "riunione non trovata".
-    return /^[0-9A-Z]{20,32}$/.test(id) ? id : undefined;
+    // serve a non costruire un indirizzo da un pezzo qualunque del percorso,
+    // che porterebbe a una pagina "riunione non trovata".
+    return new URL(v).pathname
+      .split("/")
+      .filter(Boolean)
+      .find((p) => /^[0-9A-Z]{20,32}$/.test(p));
   } catch {
     return undefined;
   }
