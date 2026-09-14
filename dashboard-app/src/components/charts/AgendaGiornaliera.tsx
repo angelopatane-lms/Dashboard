@@ -329,6 +329,11 @@ export default function AgendaGiornaliera({
   // L'ora corrente si aggiorna da sola: una linea ferma a quando si e' aperta
   // la pagina sarebbe peggio che non averla.
   const [scheda, setScheda] = useState<EventoAgenda | null>(null);
+  // Il selettore parte VUOTO, come gli altri filtri della dashboard partono
+  // sulla loro voce predefinita: finche' si naviga con Ieri, Oggi e Domani non
+  // e' lui a comandare, e mostrarlo pieno farebbe sembrare che ci sia un filtro
+  // attivo quando non c'e'. Si riempie e diventa nero solo quando lo si usa.
+  const [dataScelta, setDataScelta] = useState("");
   const [adesso, setAdesso] = useState<number | null>(null);
   useEffect(() => {
     setAdesso(minutiOra());
@@ -430,7 +435,10 @@ export default function AgendaGiornaliera({
               <button
                 key={v.label}
                 type="button"
-                onClick={() => onGiorno(v.valore)}
+                onClick={() => {
+                  setDataScelta("");
+                  onGiorno(v.valore);
+                }}
                 className={`rounded-md border px-3 py-1.5 text-xs font-medium shadow-sm transition ${
                   giorno === v.valore
                     ? "border-neutral-700 bg-black text-white"
@@ -448,13 +456,18 @@ export default function AgendaGiornaliera({
               Oggi resta il modo rapido di tornare al presente. */}
           <input
             type="date"
-            value={giorno}
+            value={dataScelta}
             max={giornoRoma(1)}
             onChange={(e) => {
+              setDataScelta(e.target.value);
               if (e.target.value) onGiorno(e.target.value);
             }}
             aria-label="Scegli il giorno"
-            className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:border-neutral-800 hover:text-black"
+            className={`rounded-md border px-2 py-1.5 text-xs font-medium shadow-sm transition ${
+              dataScelta
+                ? "border-neutral-700 bg-black text-white [color-scheme:dark]"
+                : "border-slate-200 bg-white text-slate-700 hover:border-neutral-800 hover:text-black"
+            }`}
           />
         </div>
 
