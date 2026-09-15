@@ -1,4 +1,4 @@
-import { somiglianza, IMPOSTAZIONI } from "@/lib/abbinamento";
+import { stessoNome } from "@/lib/abbinamento";
 
 // Se il cliente si e' presentato alla consulenza, letto da chi parla nella
 // registrazione.
@@ -71,12 +71,11 @@ const VOCE_ADVISOR = "advisor leone group";
 /**
  * Il nome del contatto compare fra chi parla?
  *
- * Si usa `somiglianza()`, la stessa funzione con cui l'abbinamento riconosce i
- * nomi citati, e la stessa soglia: un solo criterio in tutto il sistema, invece
- * di due che col tempo si allontanano. Normalizza gia' da sola e confronta gia'
- * anche con i singoli pezzi del nome - serve perche' Fireflies a volte scrive
- * solo il nome di battesimo, e perche' storpia: "Ciao Enrico" contro "Enrico
- * Toniazzo".
+ * Si usa `stessoNome()`, lo stesso confronto con cui l'abbinamento decide di chi
+ * sia una registrazione contesa: un solo criterio in tutto il sistema, invece di
+ * due che col tempo si allontanano. Confronta le parole e non l'ordine, perche'
+ * HubSpot e Fireflies scrivono i nomi in ordine diverso - "Farinetti Marco"
+ * contro "Marco Farinetti" - e tollera le storpiature dell'AI.
  */
 function nomeFraLeVoci(voci: string[], contatto: string): boolean {
   if (!contatto.trim()) return false;
@@ -84,7 +83,7 @@ function nomeFraLeVoci(voci: string[], contatto: string): boolean {
     (v) =>
       v.trim() &&
       v.trim().toLowerCase() !== VOCE_ADVISOR &&
-      somiglianza(v, contatto) >= IMPOSTAZIONI.somiglianzaMinima
+      stessoNome(v, contatto)
   );
 }
 

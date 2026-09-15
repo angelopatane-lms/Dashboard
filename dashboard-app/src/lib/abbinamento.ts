@@ -513,6 +513,54 @@ export function abbina(
  * SENZA TRASCRIZIONE NON DECIDE. Le frasi si chiedono solo per le registrazioni
  * contese; dove mancano, tutto resta com'era.
  */
+/**
+ * Due nomi indicano la stessa persona?
+ *
+ * PERCHE' NON BASTA somiglianza(). Quella confronta le stringhe intere, e
+ * l'ordine in cui il nome viene scritto cambia da una fonte all'altra: su
+ * HubSpot si trova "Farinetti Marco" e "Arch. Tiziana Bernardini", mentre
+ * Fireflies scrive "Marco Farinetti" e "Bernardini Tiziana". Confrontate per
+ * intero risultano persone diverse - misurato, quattro casi su sette segnalati
+ * erano falsi allarmi di questo tipo, e su una bonifica avrebbero cancellato
+ * collegamenti giusti.
+ *
+ * SI CONFRONTANO LE PAROLE, non l'ordine. Servono ALMENO DUE parole in comune:
+ * con una sola si scambierebbero per la stessa persona due omonimi di cognome
+ * - "Cristina Cossu" e "Titti Cossu" condividono il cognome e potrebbero
+ * essere due persone come una sola con un diminutivo. Un solo riscontro non
+ * decide, e chi chiama questa funzione tratta il dubbio come un no.
+ */
+export function stessoNome(a: string | undefined, b: string | undefined): boolean {
+  const parole = (s: string) =>
+    ripulisci(s)
+      .split(" ")
+      .filter((p) => p.length >= 3);
+  const x = parole(a ?? "");
+  const y = parole(b ?? "");
+  if (!x.length || !y.length) return false;
+
+  // La soglia qui e' piu' alta di quella generale: si confrontano parole
+  // singole, dove una lettera di differenza pesa molto di piu' che su un nome
+  // intero, e basta tollerare le storpiature dell'AI ("Toniazo", "Alessandri").
+  // Il TRONCAMENTO va trattato a parte: su HubSpot i cognomi arrivano tagliati
+  // ("Daniela Petr" per "Daniela Petre"), e su parole corte una sola lettera
+  // mancante scende sotto qualunque soglia ragionevole. Quattro lettere di
+  // radice comune bastano, visto che comunque ne servono due di parole.
+  const pari = (p: string, q: string) => {
+    if (p === q) return true;
+    const corta = p.length <= q.length ? p : q;
+    const lunga = p.length <= q.length ? q : p;
+    if (corta.length >= 4 && lunga.startsWith(corta)) return true;
+    return somiglianza(p, q) >= 0.85;
+  };
+
+  let comuni = 0;
+  for (const p of x) {
+    if (y.some((q) => pari(p, q))) comuni += 1;
+  }
+  return comuni >= 2;
+}
+
 export function disambiguaPerVoce(abbinamenti: Abbinamento[]): Abbinamento[] {
   const perRegistrazione = new Map<string, Abbinamento[]>();
   for (const x of abbinamenti) {
@@ -532,8 +580,7 @@ export function disambiguaPerVoce(abbinamenti: Abbinamento[]): Abbinamento[] {
     );
     if (!voci.length) continue;
 
-    const combacia = (nome: string | undefined): boolean =>
-      Boolean(nome) && voci.some((v) => somiglianza(v, nome as string) >= IMPOSTAZIONI.somiglianzaMinima);
+    const combacia = (nome: string | undefined): boolean => voci.some((v) => stessoNome(v, nome));
 
     // Se nessuno dei contendenti si riconosce fra le voci non sappiamo niente
     // di piu' di prima: meglio lasciare la scelta degli orari che toglierla.
