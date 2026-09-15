@@ -686,14 +686,19 @@ async function contattiConConsulenza(dalle: number, alle: number): Promise<Set<n
  * Il calcolo non e' qui: lo fa il sync quando abbina la registrazione, e qui
  * si legge soltanto. Vedi chiEraInCall().
  */
-async function presenzeDelleRiunioni(ids: string[]): Promise<Map<string, string>> {
+async function presenzeDelleRiunioni(
+  ids: string[]
+): Promise<Map<string, { esito: string; trascrizione: string }>> {
   if (!ids.length) return new Map();
   const r = await getDb().query(
-    `SELECT riunione_id, esito FROM presenza_call WHERE riunione_id = ANY($1::text[])`,
+    `SELECT riunione_id, esito, trascrizione FROM presenza_call WHERE riunione_id = ANY($1::text[])`,
     [ids]
   );
   return new Map(
-    r.rows.map((x: { riunione_id: string; esito: string }) => [String(x.riunione_id), String(x.esito)])
+    r.rows.map((x: { riunione_id: string; esito: string; trascrizione: string }) => [
+      String(x.riunione_id),
+      { esito: String(x.esito), trascrizione: String(x.trascrizione ?? "") }
+    ])
   );
 }
 
@@ -817,7 +822,7 @@ export async function GET(req: NextRequest) {
       }),
       presenzeDelleRiunioni(grezzi.map((r) => r.id)).catch((err) => {
         console.error("[advisor-agenda] presenze", err instanceof Error ? err.message : err);
-        return new Map<string, string>();
+        return new Map<string, { esito: string; trascrizione: string }>();
       })
     ]);
 
@@ -915,7 +920,7 @@ export async function GET(req: NextRequest) {
       // registrazione non ha frasi non si conclude niente e si scende al
       // punto 2. E' cio' che impedisce agli advisor le cui postazioni non
       // catturano di riempirsi di no show inventati.
-      const presenza = presenze.get(r.id);
+      const presenza = presenze.get(r.id)?.esito;
       if (presenza === "presentato") {
         if (tipo !== "svolta") svolteTrovate += 1;
         tipo = "svolta";
@@ -930,7 +935,24 @@ export async function GET(req: NextRequest) {
 
       const suoi = contatti.get(r.id) ?? [];
       const analisiSua = suoi.map((c) => analisi.get(c)).find(Boolean);
-      const idTrascrizioneSua = suoi.map((c) => trascrizioni.get(c)).find(Boolean);
+      // PRIMA IL NOSTRO DATO, POI QUELLO DI HUBSPOT.
+      //
+      // L'identificativo della trascrizione lo decide il nostro abbinamento e lo
+      // salviamo in presenza_call: leggerlo da li' e' diretto, sta nel database
+      // che stiamo gia' interrogando e non dipende da nessuno.
+      //
+      // La proprieta' sul contatto resta come riserva, e serve ancora: le righe
+      // in presenza_call esistono solo da quando il webhook e' in funzione,
+      // mentre le giornate precedenti hanno il collegamento solo su HubSpot.
+      //
+      // Non e' una preferenza di stile. Oggi la lettura a blocchi da HubSpot ha
+      // restituito quarantadue contatti tutti senza quel campo, mentre lo stesso
+      // contatto letto da solo - stesso token, stessa richiesta, stessa funzione
+      // - il campo ce l'aveva. Su ieri invece ne tornavano sette su trentasei.
+      // Non ho una spiegazione di quel comportamento; ho pero' un dato nostro
+      // che non ne ha bisogno.
+      const idTrascrizioneSua =
+        presenze.get(r.id)?.trascrizione || suoi.map((c) => trascrizioni.get(c)).find(Boolean);
 
       eventi.push({
         operatore,
@@ -988,38 +1010,6 @@ export async function GET(req: NextRequest) {
       contattiLetti,
       contattiConCampo,
       portale: await portaleCollegato(token),
-      // LA CHIAMATA VERA, RIFATTA QUI. La sonda su un contatto solo vede il
-      // campo, la lettura di giornata no: l'unica differenza rimasta e' la
-      // lista. Questa la rifa' identica, con gli stessi identificativi, e dice
-      // quanti tornano col campo pieno.
-      provaGiornata: await (async () => {
-        try {
-          const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/contacts/batch/read`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              properties: ["link_trascrizione_fireflies"],
-              inputs: diGiornata.map((id) => ({ id: String(id) }))
-            })
-          });
-          if (!res.ok) return { stato: res.status, testo: (await res.text()).slice(0, 200) };
-          const d = await res.json();
-          const pieni = (d.results ?? []).filter((r: { properties?: Record<string, string | null> }) =>
-            (r.properties?.link_trascrizione_fireflies ?? "").trim()
-          );
-          return {
-            stato: 200,
-            inviati: diGiornata.length,
-            risultati: (d.results ?? []).length,
-            conCampo: pieni.length,
-            primo: pieni[0]?.id ?? null,
-            contieneLia: diGiornata.map(String).includes("38673359080"),
-            primiIds: diGiornata.slice(0, 6).map(String)
-          };
-        } catch (e) {
-          return { errore: e instanceof Error ? e.message.slice(0, 150) : "?" };
-        }
-      })(),
       ...(req.nextUrl.searchParams.get("sonda")
         ? {
             sonda: {
