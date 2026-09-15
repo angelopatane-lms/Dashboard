@@ -44,8 +44,23 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     return NextResponse.json({ error: "identificativo non valido" }, { status: 400 });
   }
 
-  const dato = req.nextUrl.searchParams.get("t") ?? "";
   const atteso = gettoneTrascrizione(id, segreto);
+
+  // CHIEDERE L'INDIRIZZO FIRMATO, invece del testo. Il gettone lo calcola il
+  // server, che e' l'unico a conoscere il segreto: senza questo, per ottenere
+  // un indirizzo da consegnare a qualcuno bisognerebbe farsi passare il segreto
+  // - che e' esattamente la cosa da non fare. Chiede il permesso dei cron,
+  // quindi non e' alla portata di chi passa.
+  if (req.nextUrl.searchParams.get("firma") === "1") {
+    if (req.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
+      return NextResponse.json({ error: "non autorizzato" }, { status: 401 });
+    }
+    return NextResponse.json({
+      url: `${req.nextUrl.origin}/api/trascrizione/${id}?t=${atteso}`
+    });
+  }
+
+  const dato = req.nextUrl.searchParams.get("t") ?? "";
   const a = Buffer.from(dato);
   const b = Buffer.from(atteso);
   if (a.length !== b.length || !timingSafeEqual(a, b)) {
