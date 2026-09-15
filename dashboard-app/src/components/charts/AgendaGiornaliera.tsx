@@ -57,6 +57,82 @@ const COLORI: Record<TipoEvento, { fondo: string; testo: string; secondario: str
   annullato: { fondo: "#cbd5e1", testo: "#475569", secondario: "#64748b" }
 };
 
+/**
+ * La media aziendale del voto complessivo dell'advisor, misurata su 600 analisi.
+ *
+ * Sta accanto al voto perche' un numero da solo non si interpreta: senza un
+ * riferimento, chi legge un 6 pensa alla sufficienza scolastica e lo giudica
+ * appena passabile. La media vera e' 5,8, quindi un 6 e' nella norma e un 7
+ * e' un buon risultato - il contrario di quello che suggerisce l'istinto.
+ */
+const VOTO_MEDIO_ADVISOR = 5.8;
+
+/**
+ * Come e' andato l'advisor in quella call.
+ *
+ * I punteggi sono tutti sulla scala 0-10, scelti apposta: fra le proprieta'
+ * dell'analisi ne convivono due, e alcune misurano la stessa cosa su scale
+ * diverse. Mescolarle farebbe leggere un 2,5 su 5 come peggiore di un 5 su 10,
+ * che e' lo stesso identico valore.
+ */
+function PrestazioneAdvisor({ dati }: { dati: NonNullable<AnalisiCall["advisor"]> }) {
+  const sopra = dati.voto >= VOTO_MEDIO_ADVISOR;
+  return (
+    <section className="mb-5">
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Come e&apos; andato l&apos;advisor
+      </h4>
+
+      <div className="mb-3 flex items-baseline gap-2">
+        <span className="text-2xl font-semibold tabular-nums text-slate-900">
+          {dati.voto.toLocaleString("it-IT")}
+        </span>
+        <span className="text-sm text-slate-500">/ 10</span>
+        {/* Il confronto con la media sta qui e non in legenda: e' l'unica cosa
+            che rende leggibile il voto, e a distanza non verrebbe collegata. */}
+        <span className="ml-1 text-[11px] font-medium" style={{ color: sopra ? "#0d6b60" : "#a8491a" }}>
+          {sopra ? "sopra" : "sotto"} la media ({VOTO_MEDIO_ADVISOR.toLocaleString("it-IT")})
+        </span>
+      </div>
+
+      {dati.fasi.length ? (
+        <div className="mb-3 flex flex-col gap-1.5">
+          {dati.fasi.map((f) => (
+            <div key={f.nome} className="flex items-center gap-2">
+              <span className="w-[130px] flex-shrink-0 text-[11px] text-slate-600">{f.nome}</span>
+              <div className="h-1.5 flex-1 rounded-sm bg-slate-100">
+                <div
+                  className="h-full rounded-sm"
+                  style={{
+                    width: `${Math.max(0, Math.min(100, f.punteggio * 10))}%`,
+                    background: f.punteggio >= VOTO_MEDIO_ADVISOR ? COLORI.svolta.fondo : "#e2b7a2"
+                  }}
+                />
+              </div>
+              <span className="w-7 flex-shrink-0 text-right text-[11px] tabular-nums text-slate-700">
+                {f.punteggio.toLocaleString("it-IT")}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {dati.puntiDiForza ? (
+        <p className="mb-2 text-sm leading-relaxed text-slate-700">
+          <span className="font-medium text-slate-900">Punti di forza. </span>
+          {dati.puntiDiForza}
+        </p>
+      ) : null}
+      {dati.daMigliorare ? (
+        <p className="text-sm leading-relaxed text-slate-700">
+          <span className="font-medium text-slate-900">Da migliorare. </span>
+          {dati.daMigliorare}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 /** Il segno dell'overbooking: un appuntamento passato da un altro advisor. */
 const COLORE_RICEVUTO = "#475569";
 
@@ -290,6 +366,8 @@ function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: (
               ))}
             </div>
           ) : null}
+
+          {a?.advisor ? <PrestazioneAdvisor dati={a.advisor} /> : null}
 
           {riassunti.length ? (
             <section className="mb-5">

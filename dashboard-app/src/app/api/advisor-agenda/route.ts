@@ -41,7 +41,28 @@ export type AnalisiCall = {
   urgenza: string;
   problema: string;
   obiettivo: string;
+  /**
+   * Come e' andato l'advisor, secondo l'analisi della call.
+   *
+   * SOLO LA FAMIGLIA SU DIECI. Le proprieta' dei punteggi usano due scale
+   * diverse - misurato su 600 record, alcune arrivano a 10 e altre si fermano a
+   * 5 - e alcune misurano la stessa cosa su entrambe: gestione_obiezioni_score
+   * sta su dieci, objection_handling su cinque. Mostrarle insieme farebbe
+   * sembrare un 2,5 su 5 peggiore di un 5 su 10, che e' lo stesso valore.
+   *
+   * Assente quando l'analisi non porta punteggi: allora nella scheda non
+   * compare il riquadro, invece di comparire vuoto.
+   */
+  advisor?: {
+    /** Il voto complessivo, da 0 a 10. */
+    voto: number;
+    /** Le fasi della call, tutte sulla stessa scala. */
+    fasi: Array<{ nome: string; punteggio: number }>;
+    puntiDiForza: string;
+    daMigliorare: string;
+  };
 };
+
 
 export type EventoAgenda = {
   operatore: string;
@@ -273,7 +294,17 @@ const CAMPI_ANALISI = [
   "obiezione_principale",
   "urgency_level",
   "inferno_tema_principale",
-  "paradiso_tema_principale"
+  "paradiso_tema_principale",
+  // Come e' andato l'advisor. Solo i punteggi sulla scala 0-10: vedi il campo
+  // "advisor" di AnalisiCall per il motivo.
+  "valutazione_closer_score",
+  "discovery_score_closer",
+  "rapport_score_closer",
+  "gestione_obiezioni_score",
+  "presentazione_soluzione_score",
+  "chiarezza_cta_score",
+  "punti_di_forza_closer",
+  "aree_miglioramento_closer"
 ];
 
 /** Un campo dell'analisi contiene piu' blocchi, uno per riga: qui diventano un elenco. */
@@ -355,13 +386,36 @@ async function analisiDeiContatti(
       const riassunti = blocchi(p.summary_3lines);
       const mismatch = blocchi(p.commento_mismatch);
       if (!riassunti.length && !mismatch.length) continue;
+      const numero = (v: string | null | undefined): number | null => {
+        const n = parseFloat(String(v ?? ""));
+        return Number.isFinite(n) ? Math.round(n * 10) / 10 : null;
+      };
+      const voto = numero(p.valutazione_closer_score);
+      const fasi = [
+        { nome: "Discovery", punteggio: numero(p.discovery_score_closer) },
+        { nome: "Rapport", punteggio: numero(p.rapport_score_closer) },
+        { nome: "Gestione obiezioni", punteggio: numero(p.gestione_obiezioni_score) },
+        { nome: "Presentazione", punteggio: numero(p.presentazione_soluzione_score) },
+        { nome: "Chiarezza CTA", punteggio: numero(p.chiarezza_cta_score) }
+      ].filter((f): f is { nome: string; punteggio: number } => f.punteggio !== null);
+
       out.set(contatto, {
         riassunti,
         mismatch,
         obiezione: ultimo(p.obiezione_principale),
         urgenza: ultimo(p.urgency_level),
         problema: ultimo(p.inferno_tema_principale),
-        obiettivo: ultimo(p.paradiso_tema_principale)
+        obiettivo: ultimo(p.paradiso_tema_principale),
+        ...(voto !== null
+          ? {
+              advisor: {
+                voto,
+                fasi,
+                puntiDiForza: (p.punti_di_forza_closer ?? "").trim(),
+                daMigliorare: (p.aree_miglioramento_closer ?? "").trim()
+              }
+            }
+          : {})
       });
       break;
     }
