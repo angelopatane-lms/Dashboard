@@ -1,22 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { RawDealRecord } from "@/app/api/hubspot-data/route";
+import { nomiPerRotta } from "@/lib/proprietari";
 
 const DEALS_PIPELINE_ID = "433643709";
 const HUBSPOT_API = "https://api.hubapi.com";
 
-async function fetchOwners(token: string): Promise<Record<string, string>> {
-  const res = await fetch(`${HUBSPOT_API}/crm/v3/owners?limit=500`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  if (!res.ok) throw new Error(`Owners error ${res.status}`);
-  const data = await res.json();
-  const map: Record<string, string> = {};
-  for (const o of data.results ?? []) {
-    const name = [o.firstName, o.lastName].filter(Boolean).join(" ");
-    if (o.id && name) map[String(o.id)] = name;
-  }
-  return map;
-}
+// I nomi dei proprietari arrivano da src/lib/proprietari.ts.
+//
+// PERCHE' NON PIU' IN LOCALE. La versione precedente chiamava
+// /crm/v3/owners?limit=500 senza `archived=true`, e quell'endpoint esclude di
+// default gli utenti DISATTIVATI: leggeva 76 proprietari invece di 496. Ogni
+// ex dipendente restava senza nome, e siccome il codice ricade sull'id quando
+// il nome manca, in tabella compariva un numero - che non combacia con nessuna
+// riga del foglio Operatori, quindi il suo lavoro spariva dal conteggio. Su un
+// solo mese erano sette persone, fra cui chi aveva fissato 38 appuntamenti poi
+// disertati.
 
 async function searchWithRetry(
   token: string,
@@ -55,7 +53,7 @@ export async function GET(req: NextRequest) {
   const toMs = new Date(to + "T23:59:59.999Z").getTime();
 
   try {
-    const ownerMap = await fetchOwners(token);
+    const ownerMap = await nomiPerRotta(token);
     const records: RawDealRecord[] = [];
     let after: string | undefined;
 

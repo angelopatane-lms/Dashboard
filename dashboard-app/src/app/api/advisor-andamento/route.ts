@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getDb } from "@/lib/db";
+import { nomiPerRotta } from "@/lib/proprietari";
 
 // Appuntamenti, chiusure e incassi di ogni persona, mese per mese.
 //
@@ -8,8 +10,19 @@ import { NextRequest, NextResponse } from "next/server";
 // mese, ed e' esattamente quello che fa questo file - con le stesse identiche
 // regole di attribuzione, se no i due numeri non tornerebbero.
 //
-// Le altre metriche del grafico - assegnati, chiamate, connessioni, no show -
-// arrivano dal foglio Operatori, che il client ha gia' in pagina.
+// Assegnati, chiamate e connessioni arrivano dal foglio Operatori, che il
+// client ha gia' in pagina. IL NO SHOW NO, non piu': la colonna del foglio e'
+// ferma a zero dal 19 agosto 2026 perche' lo script che la scriveva cerca un
+// valore HubSpot rinominato nel frattempo. Lo si conta qui dalla tabella
+// `no_show`, che nasce dalla cronologia delle fasi ed e' indipendente da come
+// si chiamano le etichette. Vedi src/app/api/setter-trattative/route.ts.
+//
+// L'ATTRIBUZIONE DIPENDE DALLA PAGINA, come nella tabella: su quella degli
+// Advisor gli incassi vanno a chi ha venduto, su quella dei Setter a chi ha
+// procurato l'appuntamento. Sono due persone diverse nel 39% dei casi, e se qui
+// si usasse sempre il proprietario la stessa persona avrebbe due numeri diversi
+// a mezzo schermo di distanza - che e' esattamente quello che questo file
+// esiste per evitare.
 //
 // RESTANO FUORI CONSULENZE E % CHIUSURA. Non e' una scelta: la tabella le
 // prende dal foglio, non da HubSpot, e nel foglio sono a zero prima di agosto
@@ -30,20 +43,14 @@ export type AdvisorAndamentoRow = {
   appuntamenti: number;
   chiusure: number;
   boom: number;
+  /** Appuntamenti disertati, dal database e non dal foglio. */
+  noShow: number;
 };
 
-async function fetchOwners(token: string): Promise<Record<string, string>> {
-  const res = await fetch(`${HUBSPOT_API}/crm/v3/owners?limit=100`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  if (!res.ok) return {};
-  const data = await res.json();
-  const map: Record<string, string> = {};
-  for (const o of data.results ?? []) {
-    map[String(o.id)] = `${o.firstName ?? ""} ${o.lastName ?? ""}`.trim();
-  }
-  return map;
-}
+// I nomi arrivano da src/lib/proprietari.ts. La versione locale chiedeva
+// ?limit=100 senza `archived=true`: leggeva 76 proprietari su 496, e ogni ex
+// dipendente finiva nel grafico come id numerico - cioe' come una persona che
+// non combacia con nessuna riga del foglio, quindi invisibile.
 
 /**
  * Sfoglia una ricerca HubSpot fino in fondo.
@@ -151,7 +158,10 @@ export async function GET(req: NextRequest) {
   const to = searchParams.get("to");
   if (!from || !to) return NextResponse.json({ error: "Mancano from o to" }, { status: 400 });
 
-  const chiave = `${from}|${to}`;
+  // La pagina che chiede: decide a chi vanno gli incassi.
+  const perSetter = searchParams.get("vista") === "setter";
+
+  const chiave = `${from}|${to}|${perSetter ? "setter" : "advisor"}`;
   if (memoria && memoria.chiave === chiave && memoria.scade > Date.now()) {
     return NextResponse.json(memoria.corpo, { headers: { "Cache-Control": "no-store" } });
   }
@@ -160,7 +170,7 @@ export async function GET(req: NextRequest) {
   const toMs = Date.parse(`${to}T23:59:59.999Z`);
 
   try {
-    const owners = await fetchOwners(token);
+    const owners = await nomiPerRotta(token);
 
     const finestre = mesiDellaFinestra(from, to).map((m) => ({
       inizio: Math.max(m.inizio, fromMs),
@@ -202,7 +212,7 @@ export async function GET(req: NextRequest) {
                 ]
               }
             ],
-            properties: ["data_di_pagamento", "importo", "hubspot_owner_id"]
+            properties: ["data_di_pagamento", "importo", "hubspot_owner_id", "setter"]
           })
         )
       )
@@ -216,7 +226,7 @@ export async function GET(req: NextRequest) {
       const k = `${m}|${chiaveNome(operatore)}`;
       const esistente = per.get(k);
       if (esistente) return esistente;
-      const nuova: AdvisorAndamentoRow = { mese: m, operatore, appuntamenti: 0, chiusure: 0, boom: 0 };
+      const nuova: AdvisorAndamentoRow = { mese: m, operatore, appuntamenti: 0, chiusure: 0, boom: 0, noShow: 0 };
       per.set(k, nuova);
       return nuova;
     };
@@ -237,7 +247,12 @@ export async function GET(req: NextRequest) {
     let incassiSenzaPersona = 0;
     for (const b of incassi) {
       const p = b.properties;
-      const id = (p.hubspot_owner_id ?? "").trim();
+      // Sulla pagina Setter conta chi ha procurato l'appuntamento, e se
+      // l'incasso non lo porta scritto il record si salta: attribuirlo al
+      // venditore metterebbe le sue vendite nella riga di un setter.
+      const id = perSetter
+        ? (p.setter ?? "").trim()
+        : (p.hubspot_owner_id ?? "").trim();
       const operatore = id ? owners[id] ?? id : "";
       const ms = quandoMs(p.data_di_pagamento);
       if (!operatore || !ms) {
@@ -249,8 +264,33 @@ export async function GET(req: NextRequest) {
       v.boom += parseFloat(p.importo ?? "0") || 0;
     }
 
+    // I NO SHOW, dal nostro database: una query per tutta la finestra, non una
+    // per mese, perche' il raggruppamento lo fa Postgres. Se non risponde le
+    // righe restano a zero e il resto del grafico si disegna comunque - la
+    // pagina non deve dipendere da una metrica sola.
+    try {
+      const { rows } = await getDb().query<{ mese: string; setter: string; n: string }>(
+        `SELECT to_char(n.ts, 'YYYY-MM') AS mese, p.nome AS setter, COUNT(*)::text AS n
+           FROM no_show n
+           JOIN proprietario p ON p.id = n.setter_id
+          WHERE n.ts >= $1::date AND n.ts < ($2::date + INTERVAL '1 day')
+          GROUP BY 1, 2`,
+        [from, to]
+      );
+      for (const r of rows) {
+        // tocca() e non per.get(): un setter puo' avere diserzioni in un mese
+        // in cui non ha fissato niente di nuovo, e quella riga va creata. Chi
+        // non e' nel foglio lo scarta poi unisciAdvisor(), che e' il posto
+        // giusto per deciderlo.
+        tocca(r.mese, r.setter).noShow += Number(r.n);
+      }
+    } catch (err) {
+      console.error("[advisor-andamento] no show non leggibili:", err instanceof Error ? err.message : err);
+    }
+
     console.log(
-      `[advisor-andamento] ${from} -> ${to} | deal:${deal.length} (senza persona ${dealSenzaPersona}) ` +
+      `[advisor-andamento] ${from} -> ${to} | vista:${perSetter ? "setter" : "advisor"} | ` +
+        `deal:${deal.length} (senza persona ${dealSenzaPersona}) ` +
         `incassi:${incassi.length} (senza persona ${incassiSenzaPersona})`
     );
 

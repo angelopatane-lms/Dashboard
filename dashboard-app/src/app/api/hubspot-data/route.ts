@@ -1,12 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { RE_SUFFISSO_VARIANTE, sqlEMarcatoreInstant, sqlNomeBase } from "@/lib/campagne";
+import { nomiPerRotta } from "@/lib/proprietari";
 
 const BOOM_OBJECT_ID = "2-130365112";
 const HUBSPOT_API = "https://api.hubapi.com";
 
 export type RawBoomRecord = {
+  /** Chi ha VENDUTO: il proprietario dell'incasso. E' la colonna della pagina
+   *  Advisor. */
   operatore: string;
+  /**
+   * Chi aveva FISSATO l'appuntamento da cui l'incasso e' nato. E' la colonna
+   * della pagina Setter.
+   *
+   * Sono due persone diverse nel 39% dei casi (misurato su 335 incassi di
+   * luglio-settembre), quindi aggregare per proprietario su una pagina di setter
+   * attribuisce a ciascuno il lavoro di qualcun altro: per proprietario in
+   * testa ci sono gli Advisor che vendono, per setter i setter che procurano.
+   *
+   * Vuoto quando non si riesce a stabilirlo, e chi aggrega lo salta: meglio un
+   * totale che non torna di un totale attribuito alla persona sbagliata.
+   */
+  setter: string;
   tipologia_di_incasso: string;
   importo: number;
   tipo_di_vendita: string;
@@ -15,6 +31,9 @@ export type RawBoomRecord = {
   data_di_pagamento_ms: number;
   /** Il contatto dietro l'incasso, dalla proprieta' "ID Contatto Associato". */
   contact_id: number | null;
+  /** La trattativa da cui l'incasso nasce, per risalire al setter quando
+   *  l'incasso non lo porta scritto. Solo uso interno alla rotta. */
+  id_trattativa: string;
   /** true se quel contatto, su quella campagna, era stato assegnato subito.
    *  Deciso dal CONTATTO e non dal nome campagna: vedi calcolaInstant(). */
   instant: boolean;
@@ -26,19 +45,16 @@ export type RawDealRecord = {
   createdate_ms: number;
 };
 
-async function fetchOwners(token: string): Promise<Record<string, string>> {
-  const res = await fetch(`${HUBSPOT_API}/crm/v3/owners?limit=500`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  if (!res.ok) throw new Error(`Owners error ${res.status}`);
-  const data = await res.json();
-  const map: Record<string, string> = {};
-  for (const o of data.results ?? []) {
-    const name = [o.firstName, o.lastName].filter(Boolean).join(" ");
-    if (o.id && name) map[String(o.id)] = name;
-  }
-  return map;
-}
+// I nomi dei proprietari arrivano da src/lib/proprietari.ts.
+//
+// PERCHE' NON PIU' IN LOCALE. La versione precedente chiamava
+// /crm/v3/owners?limit=500 senza `archived=true`, e quell'endpoint esclude di
+// default gli utenti DISATTIVATI: leggeva 76 proprietari invece di 496. Ogni
+// ex dipendente restava senza nome, e siccome il codice ricade sull'id quando
+// il nome manca, in tabella compariva un numero - che non combacia con nessuna
+// riga del foglio Operatori, quindi il suo lavoro spariva dal conteggio. Su un
+// solo mese erano sette persone, fra cui chi aveva fissato 38 appuntamenti poi
+// disertati.
 
 async function searchWithRetry(
   token: string,
@@ -81,7 +97,11 @@ async function fetchBoomRecords(
           { propertyName: "data_di_pagamento", operator: "LTE", value: String(toMs) }
         ]
       }],
-      properties: ["data_di_pagamento", "tipologia_di_incasso", "importo", "hubspot_owner_id", "id_campagna_track", "tipo_di_vendita", "prodotto", "id_contatto_associato"],
+      // "setter" e "id_trattativa" servono all'attribuzione della pagina
+      // Setter: il primo e' compilato sull'87% degli incassi, il secondo sul
+      // 98% e fa da ripiego per il resto. Sono proprieta' dello stesso oggetto,
+      // quindi non costano una chiamata in piu'.
+      properties: ["data_di_pagamento", "tipologia_di_incasso", "importo", "hubspot_owner_id", "setter", "id_trattativa", "id_campagna_track", "tipo_di_vendita", "prodotto", "id_contatto_associato"],
       limit: 100,
       ...(after ? { after } : {})
     };
@@ -94,6 +114,10 @@ async function fetchBoomRecords(
       if (!operatore) continue;
       records.push({
         operatore,
+        // Il setter dell'incasso quando c'e'. Per il 13% che non lo ha ci
+        // pensa setterDaTrattativa() qui sotto, che risale dalla trattativa.
+        setter: ownerMap[(p.setter ?? "").trim()] ?? "",
+        id_trattativa: (p.id_trattativa ?? "").trim(),
         tipologia_di_incasso: p.tipologia_di_incasso ?? "",
         importo: parseFloat(p.importo ?? "0") || 0,
         tipo_di_vendita: (p.tipo_di_vendita ?? "").trim(),
@@ -165,6 +189,54 @@ async function calcolaInstant(records: RawBoomRecord[]): Promise<void> {
   }
 }
 
+/**
+ * Completa il setter degli incassi che non lo portano scritto, risalendo alla
+ * trattativa da cui nascono.
+ *
+ * La proprieta' "setter" sull'incasso e' compilata sull'87% dei record; il
+ * restante 13% pesava 45.072 EUR su un solo trimestre, che senza questo
+ * ripiego resterebbero fuori da ogni riga della pagina Setter. "id trattativa"
+ * c'e' invece sul 98%, e la trattativa il suo setter ce l'ha - congelato alla
+ * data in cui l'appuntamento e' stato fissato, vedi setterAllaData() in
+ * src/lib/trattative/sync.ts.
+ *
+ * Una sola query per tutto l'insieme, sul database nostro. Se non risponde si
+ * lascia il setter vuoto: chi aggrega salta quei record, e il totale della
+ * pagina Setter non torna con quello della pagina Advisor - preferibile a un
+ * incasso attribuito a chi non lo ha procurato.
+ */
+async function completaSetter(
+  records: RawBoomRecord[],
+  ownerMap: Record<string, string>
+): Promise<void> {
+  const daRisolvere = records.filter((r) => !r.setter && r.id_trattativa);
+  if (!daRisolvere.length) return;
+
+  const ids = [...new Set(daRisolvere.map((r) => Number(r.id_trattativa)).filter(Number.isFinite))];
+  if (!ids.length) return;
+
+  try {
+    const { rows } = await getDb().query<{ deal_id: string; setter_id: string | null }>(
+      `SELECT deal_id::text AS deal_id, setter_id::text AS setter_id
+         FROM trattativa
+        WHERE deal_id = ANY($1::bigint[]) AND setter_id IS NOT NULL`,
+      [ids]
+    );
+    const perDeal = new Map(rows.map((r) => [r.deal_id, r.setter_id ?? ""]));
+    let risolti = 0;
+    for (const r of daRisolvere) {
+      const nome = ownerMap[perDeal.get(r.id_trattativa) ?? ""] ?? "";
+      if (nome) {
+        r.setter = nome;
+        risolti++;
+      }
+    }
+    console.log(`[hubspot-data] setter dedotto dalla trattativa: ${risolti}/${daRisolvere.length}`);
+  } catch (err) {
+    console.error("[hubspot-data] setter non deducibile:", err instanceof Error ? err.message : err);
+  }
+}
+
 export async function GET(req: NextRequest) {
   const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
   if (!token) return NextResponse.json({ error: "HUBSPOT_PRIVATE_APP_TOKEN not set" }, { status: 500 });
@@ -178,9 +250,10 @@ export async function GET(req: NextRequest) {
   const toMs = new Date(to + "T23:59:59.999Z").getTime();
 
   try {
-    const ownerMap = await fetchOwners(token);
+    const ownerMap = await nomiPerRotta(token);
     const boomRecords = await fetchBoomRecords(token, fromMs, toMs, ownerMap);
     await calcolaInstant(boomRecords);
+    await completaSetter(boomRecords, ownerMap);
     const uniqueOperatori = [...new Set(boomRecords.map((r) => r.operatore || "(empty)"))].slice(0, 8);
     const uniqueTipologie = [...new Set(boomRecords.map((r) => r.tipologia_di_incasso || "(empty)"))];
     console.log(`[hubspot-data] boom:${boomRecords.length} | operatori:${uniqueOperatori.join(" / ")} | tipologie:${uniqueTipologie.join(" / ")}`);
