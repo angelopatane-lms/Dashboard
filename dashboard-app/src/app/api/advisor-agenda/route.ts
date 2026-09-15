@@ -228,7 +228,14 @@ async function contattiDeiMeeting(token: string, ids: string[]): Promise<Map<str
  * errore. Si cerca quindi la forma dell'identificativo fra TUTTI i pezzi.
  */
 function idTrascrizione(grezzo: string | null | undefined): string | undefined {
-  const v = (grezzo ?? "").trim();
+  // SI TAGLIA AL PRIMO SPAZIO. Il valore che scriviamo porta in coda la data
+  // dell'appuntamento fra parentesi quadre - serve a riconoscere a quale
+  // consulenza appartiene un collegamento gia' presente - e new URL() non si
+  // ferma allo spazio: se lo tira dentro il percorso, e l'ultimo pezzo diventa
+  // "01M2HXYZ...%20[2026-09-15T09:00:00+02:00]", che non passa il controllo di
+  // forma. Sul formato dello Zap non si vedeva, perche' li' l'identificativo e'
+  // il PRIMO pezzo e il suffisso restava lontano.
+  const v = (grezzo ?? "").trim().split(/\s/)[0];
   if (!v.startsWith("http")) return undefined;
   try {
     // Un ULID: ventisei caratteri fra cifre e lettere maiuscole. Il controllo
