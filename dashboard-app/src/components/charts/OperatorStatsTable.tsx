@@ -33,6 +33,27 @@ function tassoChiusura(chius: number, cons: number): number | null {
   return cons > 0 ? chius / cons : null;
 }
 
+/**
+ * Quanto incassa un advisor per ogni ora di consulenza.
+ *
+ * LE ORE SONO QUELLE PRENOTATE, non quelle parlate. La durata vera della call
+ * la sapremmo da Fireflies, ma oggi solo il 31% delle consulenze svolte lascia
+ * una registrazione: la colonna direbbe che chi non registra rende
+ * all'infinito. Lo slot c'e' per tutti e sbaglia allo stesso modo per tutti,
+ * che su un confronto fra persone conta piu' della precisione assoluta.
+ *
+ * E NON SI CONTANO LE CONSULENZE PER UNA DURATA FISSA: gli slot medi vanno da
+ * 30 a 60 minuti a seconda dell'advisor, quindi una durata unica sbaglierebbe
+ * del doppio da una persona all'altra.
+ */
+function resaOraria(incasso: number, ore: number | undefined): number | null {
+  return ore && ore > 0 ? incasso / ore : null;
+}
+
+/** Come si legge in cella: "1.240 €/h". L'unita' sta qui e non
+ *  nell'intestazione, cosi' il titolo resta una parola sola. */
+const formatResa = (v: number): string => `${Math.round(v).toLocaleString("it-IT")} €/h`;
+
 // Serve solo a dare la larghezza alle colonne, che e' quella dell'intestazione
 // piu' lunga. I titoli veri, con il campo su cui ordinano, si costruiscono
 // dentro il componente: due di loro cambiano fra Advisor e Setter.
@@ -46,7 +67,8 @@ const INTESTAZIONI_NUMERI = [
   "Chiusure",
   "% Chiusura",
   "Boom",
-  "Obiettivo"
+  "Obiettivo",
+  "Resa"
 ];
 const LARGHEZZA_NUMERI = larghezzaColonnaNumeri(INTESTAZIONI_NUMERI);
 
@@ -58,6 +80,7 @@ export default function OperatorStatsTable({
   hubspotLoading,
   trattativeLoading,
   operatorLabel = "Advisor",
+  ore,
   obiettivi
 }: {
   data: OperatorSummary[];
@@ -67,6 +90,9 @@ export default function OperatorStatsTable({
   hubspotLoading?: boolean;
   trattativeLoading?: boolean;
   operatorLabel?: string;
+  /** Ore di consulenza per advisor, con la stessa chiave di nome degli altri
+   *  scavalchi. Assente finche' la lettura non e' arrivata. */
+  ore?: Record<string, number>;
   /** L'obiettivo di Boom del mese, per persona, con la stessa chiave di nome
    *  degli altri valori che arrivano da fuori.
    *
@@ -108,6 +134,12 @@ export default function OperatorStatsTable({
     };
   }, [data, hubspotOverrides, trattativeOverrides, precomputedTotals, obiettivi]);
 
+  // La chiave di nome e' la stessa con cui arrivano incasso e appuntamenti: se
+  // le due normalizzazioni divergessero le righe non si incontrerebbero e la
+  // colonna resterebbe vuota senza dire perche'.
+  const oreDi = (r: OperatorSummary): number | undefined =>
+    ore?.[r.operatore.trim().toLowerCase().replace(/\s+/g, " ")];
+
   const maxValues = useMemo(
     () => ({
       assegnati: Math.max(...data.map((r) => r.assegnati), 1),
@@ -116,10 +148,12 @@ export default function OperatorStatsTable({
       appuntamenti: Math.max(...data.map((r) => effAppuntamenti(r)), 1),
       consulenze: Math.max(...data.map((r) => isSetterView ? r.noShow : r.consulenze), 1),
       chiusure: Math.max(...data.map((r) => effChiusure(r)), 1),
-      boom: Math.max(...data.map((r) => effBoom(r)), 1)
+      boom: Math.max(...data.map((r) => effBoom(r)), 1),
+      resa: Math.max(...data.map((r) => resaOraria(effBoom(r), oreDi(r)) ?? 0), 1)
     }),
-    [data, hubspotOverrides, trattativeOverrides]
+    [data, hubspotOverrides, trattativeOverrides, ore]
   );
+
 
   const sorted = useMemo(
     () => [...data].sort((a, b) => effBoom(b) - effBoom(a) || effAppuntamenti(b) - effAppuntamenti(a)),
@@ -153,6 +187,7 @@ export default function OperatorStatsTable({
   // non lo chiudono, non e' stato chiesto.
   if (!isSetterView) {
     colonne.push({ label: "Obiettivo", valore: (r) => effObiettivo(r) });
+    colonne.push({ label: "Resa", valore: (r) => resaOraria(effBoom(r), oreDi(r)) });
   }
 
   // La colonna su cui si sta ordinando. Vuota vuol dire ordine di partenza -
@@ -170,6 +205,8 @@ export default function OperatorStatsTable({
 
   const totalTp = tassoPresa(totals.appuntamenti, totals.connessioni);
   const totalTc = tassoChiusura(totals.chiusure, isSetterView ? 0 : totals.consulenze);
+  const oreTotali = sorted.reduce((s, r) => s + (oreDi(r) ?? 0), 0);
+  const resaTotale = resaOraria(totals.boom, oreTotali);
 
   if (!data.length) return null;
 
@@ -313,6 +350,24 @@ export default function OperatorStatsTable({
                     )}
                   </td>
                 )}
+                {isSetterView ? null : (
+                  <td
+                    className="border-r border-white px-2 py-1.5 text-right tabular-nums"
+                    style={{
+                      background: hubspotLoading
+                        ? undefined
+                        : heatBg(resaOraria(effBoom(r), oreDi(r)) ?? 0, maxValues.resa)
+                    }}
+                  >
+                    {hubspotLoading ? (
+                      <span className="text-slate-400">–</span>
+                    ) : resaOraria(effBoom(r), oreDi(r)) !== null ? (
+                      formatResa(resaOraria(effBoom(r), oreDi(r)) as number)
+                    ) : (
+                      <span className="text-slate-400">–</span>
+                    )}
+                  </td>
+                )}
               </tr>
             );
           })}
@@ -344,6 +399,19 @@ export default function OperatorStatsTable({
                   formatEur(totals.obiettivo)
                 ) : (
                   <span className="font-normal text-slate-400">–</span>
+                )}
+              </td>
+            )}
+            {isSetterView ? null : (
+              <td className="border-r border-white px-2 py-2 text-right tabular-nums">
+                {/* La resa del totale NON e' la media delle rese: e' l'incasso
+                    di tutti diviso le ore di tutti. La media delle righe darebbe
+                    lo stesso peso a chi ha fatto due consulenze e a chi ne ha
+                    fatte quaranta. */}
+                {hubspotLoading || resaTotale === null ? (
+                  <span className="font-normal text-slate-400">–</span>
+                ) : (
+                  formatResa(resaTotale)
                 )}
               </td>
             )}
