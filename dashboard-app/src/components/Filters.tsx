@@ -445,13 +445,17 @@ export function FiltersBar({
   };
 
   const campoData = (etichetta: string, valore: string | undefined, quale: "from" | "to") => (
-    <label className="flex flex-1 flex-col gap-1">
-      <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">{etichetta}</span>
+    <label className="flex flex-1 items-center gap-1.5">
+      <span className="text-xs text-slate-500">{etichetta}</span>
+      {/* FONDO GRIGIO, NON BIANCO. Dentro una tendina bianca un campo bianco
+          con un filo di bordo chiaro non si vede: sembrava che sotto le voci
+          non ci fosse niente. Il grigio lo stacca dal foglio, come fanno i
+          campi sugli altri filtri. */}
       <input
         type="date"
         value={valore ?? ""}
         onChange={(e) => cambiaEstremo(quale, e.target.value)}
-        className="w-full rounded border border-slate-200 px-2 py-1 text-xs text-slate-700 outline-none focus:border-neutral-800"
+        className="w-full rounded border border-slate-300 bg-slate-100 px-2 py-1 text-xs text-slate-800 outline-none transition focus:border-neutral-800 focus:bg-white"
       />
     </label>
   );
@@ -469,11 +473,12 @@ export function FiltersBar({
     {
       testoScelto: testoIntervallo,
       piede: () => (
-        <div className="mt-1 border-t border-slate-200 px-2 pb-1 pt-2">
-          <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
-            Date Specifiche
-          </div>
-          <div className="flex items-end gap-2">
+        <div className="mt-1 border-t border-slate-200 pb-1 pt-1">
+          {/* STESSO CORPO DELLE ALTRE VOCI. Scritta in maiuscoletto minuto
+              sembrava un'etichetta di servizio, mentre e' una scelta come le
+              altre: cambia solo il modo di esprimerla. */}
+          <div className="px-2 py-1.5 text-sm text-slate-700">Date Specifiche</div>
+          <div className="flex flex-col gap-1.5 px-2 pb-1">
             {campoData("Dal", filters.from, "from")}
             {campoData("Al", filters.to, "to")}
           </div>
