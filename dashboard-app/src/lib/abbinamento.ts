@@ -108,6 +108,10 @@ export type Impostazioni = {
   margineMinimo: number;
 };
 
+/** Il proprietario dell-account condiviso: e la voce dell-advisor, non del
+ *  cliente. Verificato sulle trascrizioni: le sue battute sono attribuite cosi. */
+const VOCE_ADVISOR = "advisor leone group";
+
 export const IMPOSTAZIONI: Impostazioni = {
   // Dieci minuti e non cinque: a cinque restano abbinate 70 registrazioni sotto
   // i dieci minuti, che sono in larga parte prove tecniche; a dieci sono zero.
@@ -475,10 +479,79 @@ export function abbina(
     riunioniUsate.add(candidate[0].id);
   }
 
+  // 5. lo spareggio finale: quando piu' appuntamenti si contendono la stessa
+  //    registrazione, decide chi parla.
+  const scartati = disambiguaPerVoce(abbinamenti);
+  for (const x of scartati) {
+    const i = abbinamenti.indexOf(x);
+    if (i >= 0) abbinamenti.splice(i, 1);
+  }
+
   return {
     abbinamenti: abbinamenti.sort((a, b) => a.registrazione.inizio - b.registrazione.inizio),
     registrazioniSenzaRiunione: registrazioni.filter((r) => !registrazioniUsate.has(r.id))
   };
+}
+
+/**
+ * Toglie gli abbinamenti in cui e' evidente che la registrazione e' di un altro.
+ *
+ * IL CASO CHE RISOLVE. Due clienti prenotati sullo stesso orario nella stessa
+ * stanza, e se ne presenta uno solo. Dagli orari i due appuntamenti sono
+ * indistinguibili, quindi la registrazione finiva su entrambe le schede: una
+ * giusta e una con la consulenza di un estraneo. Misurato su quattordici
+ * giorni, cinque casi su sessantaquattro abbinamenti - e sono errori che
+ * nessuno nota, perche' una scheda con un collegamento sembra a posto.
+ *
+ * COME DECIDE. Fireflies attribuisce ogni frase a chi la pronuncia, e sulle
+ * consulenze il nome coincide con quello del contatto. Se fra chi parla c'e' il
+ * nome di UN ALTRO dei contendenti e non c'e' quello atteso, l'abbinamento e'
+ * sbagliato e va tolto. Non basta l'assenza del nome atteso: Fireflies a volte
+ * scrive "Speaker 2", e su quella sola assenza si scarterebbero abbinamenti
+ * buoni. Serve la presenza positiva di qualcun altro.
+ *
+ * SENZA TRASCRIZIONE NON DECIDE. Le frasi si chiedono solo per le registrazioni
+ * contese; dove mancano, tutto resta com'era.
+ */
+export function disambiguaPerVoce(abbinamenti: Abbinamento[]): Abbinamento[] {
+  const perRegistrazione = new Map<string, Abbinamento[]>();
+  for (const x of abbinamenti) {
+    const l = perRegistrazione.get(x.registrazione.id) ?? [];
+    l.push(x);
+    perRegistrazione.set(x.registrazione.id, l);
+  }
+
+  const daTogliere: Abbinamento[] = [];
+  for (const contendenti of perRegistrazione.values()) {
+    if (contendenti.length < 2) continue;
+    const frasi = contendenti[0].registrazione.frasi;
+    if (!frasi?.length) continue;
+
+    const voci = Array.from(
+      new Set(frasi.map((f) => (f.voce ?? "").trim()).filter((v) => v && v.toLowerCase() !== VOCE_ADVISOR))
+    );
+    if (!voci.length) continue;
+
+    const combacia = (nome: string | undefined): boolean =>
+      Boolean(nome) && voci.some((v) => somiglianza(v, nome as string) >= IMPOSTAZIONI.somiglianzaMinima);
+
+    // Se nessuno dei contendenti si riconosce fra le voci non sappiamo niente
+    // di piu' di prima: meglio lasciare la scelta degli orari che toglierla.
+    const riconosciuti = contendenti.filter((x) => combacia(x.riunione.contattoNome));
+    if (!riconosciuti.length) continue;
+
+    for (const x of contendenti) {
+      if (!riconosciuti.includes(x)) daTogliere.push(x);
+    }
+
+    // Chi resta si riprende tutta la registrazione: il taglio in fette era
+    // stato fatto per dividerla con qualcuno che non c'era.
+    if (riconosciuti.length === 1) {
+      riconosciuti[0].daSec = 0;
+      riconosciuti[0].aSec = Math.round(riconosciuti[0].registrazione.durataMin * 60);
+    }
+  }
+  return daTogliere;
 }
 
 /**

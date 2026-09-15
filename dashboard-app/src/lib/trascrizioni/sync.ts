@@ -338,7 +338,12 @@ export async function sincronizzaTrascrizioni(opzioni: {
           Math.max(x.registrazione.inizio, m.inizio) >=
           10 * MIN
     );
-    if (new Set(copre.map((m) => m.inizio)).size < 2) continue;
+    // SI CONTANO GLI APPUNTAMENTI, NON GLI ORARI DISTINTI. Prima si contavano
+    // gli orari, e due clienti prenotati sulla STESSA ora davano uno solo:
+    // proprio il caso in cui la registrazione finisce su entrambe le schede e
+    // una delle due riceve la consulenza di un estraneo. Le frasi servono
+    // anche li', perche' e' da chi parla che si capisce di chi sia la call.
+    if (copre.length < 2) continue;
     const r = registrazioni.find((y) => y.id === x.registrazione.id);
     if (!r || r.frasi) continue;
     try {
