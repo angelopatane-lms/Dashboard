@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { leggiFrasi } from "@/lib/fireflies";
 import { gettoneTrascrizione } from "@/lib/gettoneTrascrizione";
+import { documentoWord } from "@/lib/documentoWord";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -36,7 +37,11 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     return NextResponse.json({ error: "non configurato" }, { status: 500 });
   }
 
-  const id = String(params.id ?? "").replace(/\.txt$/i, "");
+  const grezzo = String(params.id ?? "");
+  // L'estensione decide il formato: .docx per l'applicazione che lo scarica,
+  // testo semplice per chi vuole soltanto leggerlo.
+  const comeWord = /\.docx$/i.test(grezzo);
+  const id = grezzo.replace(/\.(docx|txt)$/i, "");
   // La forma dell'identificativo si controlla prima di usarlo: un percorso
   // qualunque diventerebbe una chiamata a Fireflies fatta per conto di chi
   // bussa.
@@ -56,7 +61,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       return NextResponse.json({ error: "non autorizzato" }, { status: 401 });
     }
     return NextResponse.json({
-      url: `${req.nextUrl.origin}/api/trascrizione/${id}?t=${atteso}`
+      // Quello che finisce sul contatto e' il .docx: e' il formato che
+      // l'applicazione dell'analisi sa leggere.
+      docx: `${req.nextUrl.origin}/api/trascrizione/${id}.docx?t=${atteso}`,
+      testo: `${req.nextUrl.origin}/api/trascrizione/${id}?t=${atteso}`
     });
   }
 
@@ -79,11 +87,26 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     // CHI PARLA DAVANTI A OGNI RIGA. Il documento che scaricava il flusso
     // precedente aveva la stessa forma, ed e' quella su cui l'analisi e' stata
     // tarata: togliere i nomi cambierebbe il testo su cui ragiona.
-    const testo = frasi
-      .map((f) => `${(f.voce ?? "").trim() || "?"}: ${f.testo}`)
-      .join("\n");
+    const righe = frasi.map((f) => `${(f.voce ?? "").trim() || "?"}: ${f.testo}`);
 
-    return new NextResponse(testo, {
+    // UN .DOCX QUANDO L'INDIRIZZO LO CHIEDE. E' il formato che l'applicazione
+    // dell'analisi ha letto per mesi, quando il file glielo forniva il
+    // connettore Fireflies: dandogliene uno uguale non deve cambiare niente.
+    // Il testo semplice resta per chi vuole solo leggere.
+    if (comeWord) {
+      const documento = await documentoWord(righe);
+      return new NextResponse(new Uint8Array(documento), {
+        status: 200,
+        headers: {
+          "Content-Type":
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "Content-Disposition": `attachment; filename="${id}.docx"`,
+          "Cache-Control": "no-store"
+        }
+      });
+    }
+
+    return new NextResponse(righe.join("\n"), {
       status: 200,
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
