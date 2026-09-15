@@ -597,7 +597,13 @@ export default function AgendaGiornaliera({
                 if (e.target.value) onGiorno(e.target.value);
               }}
               aria-label="Scegli il giorno"
-              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              // TRASPARENTE AI CLIC. Sovrapposto al pulsante se li intercettava
+              // lui, e Chrome dal corpo di un campo data il calendario non lo
+              // apre - solo dall'iconcina - quindi il clic finiva nel vuoto e
+              // sembrava che il pulsante non rispondesse. Cosi' il gesto arriva
+              // al pulsante, che chiama showPicker(). Il campo resta nel flusso
+              // dei tasti, dove si apre da solo.
+              className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
             />
           </div>
         </div>
