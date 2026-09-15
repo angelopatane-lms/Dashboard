@@ -175,11 +175,12 @@ export default function OperatorStatsTable({
         connessioni: acc.connessioni + r.connessioni,
         appuntamenti: acc.appuntamenti + effAppuntamenti(r),
         consulenze: acc.consulenze + (isSetterView ? effNoShow(r) : r.consulenze),
+        svolte: acc.svolte + effConsulenzeChiusura(r),
         chiusure: acc.chiusure + effChiusure(r),
         boom: acc.boom + effBoom(r),
         obiettivo: acc.obiettivo + (effObiettivo(r) ?? 0)
       }),
-      { assegnati: 0, chiamate: 0, connessioni: 0, appuntamenti: 0, consulenze: 0, chiusure: 0, boom: 0, obiettivo: 0 }
+      { assegnati: 0, chiamate: 0, connessioni: 0, appuntamenti: 0, consulenze: 0, svolte: 0, chiusure: 0, boom: 0, obiettivo: 0 }
     );
     return {
       ...base,
@@ -198,6 +199,7 @@ export default function OperatorStatsTable({
       connessioni: Math.max(...data.map((r) => r.connessioni), 1),
       appuntamenti: Math.max(...data.map((r) => effAppuntamenti(r)), 1),
       consulenze: Math.max(...data.map((r) => isSetterView ? effNoShow(r) : r.consulenze), 1),
+      svolte: Math.max(...data.map((r) => effConsulenzeChiusura(r)), 1),
       chiusure: Math.max(...data.map((r) => effChiusure(r)), 1),
       boom: Math.max(...data.map((r) => effBoom(r)), 1),
       resa: Math.max(...data.map((r) => resaOraria(effIncassoChiusure(r), r.consulenze) ?? 0), 1)
@@ -228,6 +230,24 @@ export default function OperatorStatsTable({
       label: isSetterView ? "No Show" : "Consulenze",
       valore: (r) => (isSetterView ? effNoShow(r) : r.consulenze)
     },
+    // LE CONSULENZE DEL SETTER, e quante ne ha prodotte ogni appuntamento.
+    //
+    // Solo qui: sulla pagina Advisor la colonna Consulenze c'e' gia' - e' la
+    // sesta, quella che cambia nome - e sono le sue, dal foglio. Queste sono le
+    // consulenze tenute dagli Advisor sugli appuntamenti che LUI ha procurato,
+    // e stanno fra No Show e Chiusure perche' e' l'ordine in cui si legge
+    // l'imbuto: fissati, disertati, svolti, chiusi.
+    ...(isSetterView
+      ? [
+          { label: "Consulenze", valore: (r: OperatorSummary) => effConsulenzeChiusura(r) },
+          {
+            label: "% Consulenza",
+            // Degli appuntamenti che ha fissato, quanti si sono tenuti. E' il
+            // suo tasso di presentazione, la misura di quanto qualifica bene.
+            valore: (r: OperatorSummary) => tassoPresa(effConsulenzeChiusura(r), effAppuntamenti(r))
+          }
+        ]
+      : []),
     { label: "Chiusure", valore: (r) => effChiusure(r) },
     { label: "% Chiusura", valore: (r) => tassoChiusura(effChiusure(r), effConsulenzeChiusura(r)) },
     { label: "Boom", valore: (r) => effBoom(r) }
@@ -256,11 +276,13 @@ export default function OperatorStatsTable({
 
   const totalTp = tassoPresa(totals.appuntamenti, totals.connessioni);
   // Sulla vista Setter il totale era soppresso perche' il denominatore era
-  // zero. Ora c'e', e si somma dalla stessa fonte delle righe.
-  const totaleSvolte = isSetterView
-    ? sorted.reduce((somma, r) => somma + effConsulenzeChiusura(r), 0)
-    : totals.consulenze;
-  const totalTc = tassoChiusura(totals.chiusure, totaleSvolte);
+  // zero. Ora c'e': sono le consulenze svolte, la stessa somma che la colonna
+  // Consulenze mostra in fondo.
+  const totalTc = tassoChiusura(totals.chiusure, isSetterView ? totals.svolte : totals.consulenze);
+  // Come le altre percentuali del totale: il rapporto fra le somme, non la
+  // media dei rapporti, che darebbe lo stesso peso a chi ha fissato due
+  // appuntamenti e a chi ne ha fissati cento.
+  const totalPc = tassoPresa(totals.svolte, totals.appuntamenti);
   const resaTotale = resaOraria(
     sorted.reduce((s, r) => s + effIncassoChiusure(r), 0),
     totals.consulenze
@@ -337,6 +359,10 @@ export default function OperatorStatsTable({
           {righe.map((r) => {
             const tp = tassoPresa(effAppuntamenti(r), r.connessioni);
             const tc = tassoChiusura(effChiusure(r), effConsulenzeChiusura(r));
+            // Quanti dei suoi appuntamenti si sono tenuti. Il denominatore sono
+            // gli appuntamenti, quindi dipende dal caricamento delle trattative
+            // e non da quello degli incassi.
+            const pc = tassoPresa(effConsulenzeChiusura(r), effAppuntamenti(r));
             return (
               <tr key={r.operatore} className="group hover:bg-slate-50/70 transition-colors">
                 <td
@@ -381,6 +407,28 @@ export default function OperatorStatsTable({
                 >
                   {formatInt(isSetterView ? effNoShow(r) : r.consulenze)}
                 </td>
+                {isSetterView ? (
+                  <>
+                    <td
+                      className="border-r border-white px-2 py-1.5 text-right tabular-nums"
+                      style={{ background: heatBg(effConsulenzeChiusura(r), maxValues.svolte) }}
+                    >
+                      {formatInt(effConsulenzeChiusura(r))}
+                    </td>
+                    <td
+                      className="border-r border-white px-2 py-1.5 text-right font-semibold tabular-nums"
+                      style={{ background: trattativeLoading ? undefined : rateBg(pc) }}
+                    >
+                      {trattativeLoading ? (
+                        <span className="text-slate-400">–</span>
+                      ) : pc !== null ? (
+                        formatPct(pc, 2)
+                      ) : (
+                        <span className="text-slate-400">–</span>
+                      )}
+                    </td>
+                  </>
+                ) : null}
                 <td
                   className="border-r border-white px-2 py-1.5 text-right tabular-nums"
                   style={{ background: hubspotLoading ? undefined : heatBg(effChiusure(r), maxValues.chiusure) }}
@@ -446,6 +494,14 @@ export default function OperatorStatsTable({
               {trattativeLoading ? <span className="font-normal text-slate-400">–</span> : totalTp !== null ? formatPct(totalTp, 2) : <span className="font-normal text-slate-400">–</span>}
             </td>
             <td className="border-r border-white px-2 py-2 text-right tabular-nums">{formatInt(totals.consulenze)}</td>  {/* consulenze or noShow */}
+            {isSetterView ? (
+              <>
+                <td className="border-r border-white px-2 py-2 text-right tabular-nums">{formatInt(totals.svolte)}</td>
+                <td className="border-r border-white px-2 py-2 text-right tabular-nums">
+                  {trattativeLoading ? <span className="font-normal text-slate-400">–</span> : totalPc !== null ? formatPct(totalPc, 2) : <span className="font-normal text-slate-400">–</span>}
+                </td>
+              </>
+            ) : null}
             <td className="border-r border-white px-2 py-2 text-right tabular-nums">{hubspotLoading ? <span className="font-normal text-slate-400">–</span> : formatInt(totals.chiusure)}</td>
             <td className="border-r border-white px-2 py-2 text-right tabular-nums">
               {hubspotLoading ? <span className="font-normal text-slate-400">–</span> : totalTc !== null ? formatPct(totalTc, 2) : <span className="font-normal text-slate-400">–</span>}
