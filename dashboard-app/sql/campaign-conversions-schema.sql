@@ -99,6 +99,18 @@ CREATE TABLE IF NOT EXISTS trattativa (
 -- una tabella che esiste.
 ALTER TABLE trattativa ADD COLUMN IF NOT EXISTS contact_id BIGINT;
 
+-- CHI HA FISSATO L'APPUNTAMENTO, congelato alla data di CREAZIONE della
+-- trattativa: e' il setter di quel momento, non quello di oggi. Stesso motivo
+-- della colonna gemella su `no_show` - vedi il commento piu' sotto - e stessa
+-- regola: il setter, e in mancanza il proprietario.
+--
+-- Qui la data di riferimento e' `creata_ts` e non `svolta_ts`: il merito di
+-- aver fissato l'appuntamento e' di chi lo ha fissato, anche se la consulenza
+-- si svolge settimane dopo e nel frattempo il lead e' passato ad altri.
+ALTER TABLE trattativa ADD COLUMN IF NOT EXISTS setter_id BIGINT;
+
+CREATE INDEX IF NOT EXISTS idx_trattativa_setter ON trattativa (setter_id) WHERE setter_id IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_trattativa_creata ON trattativa (creata_ts);
 CREATE INDEX IF NOT EXISTS idx_trattativa_svolta ON trattativa (svolta_ts) WHERE svolta_ts IS NOT NULL;
 
@@ -120,6 +132,36 @@ CREATE TABLE IF NOT EXISTS no_show (
 );
 
 CREATE INDEX IF NOT EXISTS idx_no_show_ts ON no_show (ts);
+
+-- CHI AVEVA FISSATO L'APPUNTAMENTO DISERTATO.
+--
+-- Sta qui e non su `trattativa` perche' e' un dato CONGELATO ALLA DATA: e' il
+-- setter di quel momento, non quello di oggi. Le due cose divergono - misurato
+-- su luglio: il 3% delle trattative ha cambiato setter dopo il no-show, e per
+-- chi ha lasciato l'azienda i record passano a qualcun altro, cosi' la storia
+-- si riscriverebbe da sola a ogni riassegnazione. Leggendo la cronologia della
+-- proprieta' invece che il valore attuale lo scarto dal vecchio foglio scende
+-- da 139 a 125 su 716 eventi.
+--
+-- Vale la regola del foglio Operatori, che e' quella giusta: il setter, e in
+-- mancanza il proprietario. Un Advisor che si prende l'appuntamento da solo
+-- spesso non compila il campo setter, ma in quel momento il setter e' lui.
+ALTER TABLE no_show ADD COLUMN IF NOT EXISTS setter_id BIGINT;
+
+CREATE INDEX IF NOT EXISTS idx_no_show_setter ON no_show (setter_id) WHERE setter_id IS NOT NULL;
+
+-- I proprietari HubSpot, per dare un nome agli id.
+--
+-- Serve perche' l'API /crm/v3/owners esclude di default gli utenti
+-- DISATTIVATI, e gli ex dipendenti sono una fetta reale dello storico: senza
+-- gli archiviati 76 proprietari su 496, e sette persone del solo luglio
+-- restavano senza nome. Copiarli qui evita di richiamare HubSpot a ogni
+-- caricamento di pagina per tradurre un id in un nome.
+CREATE TABLE IF NOT EXISTS proprietario (
+  id     BIGINT PRIMARY KEY,
+  nome   TEXT NOT NULL,
+  attivo BOOLEAN NOT NULL DEFAULT TRUE
+);
 
 -- Chiamate telefoniche, per ricavare Chiamate e Connessioni per campagna.
 --

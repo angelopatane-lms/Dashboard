@@ -182,6 +182,48 @@ export function ingressiNoShow(storici: Record<string, Voce[]>, idFaseNoShow: st
 }
 
 /**
+ * Chi era il setter a una certa data.
+ *
+ * PERCHE' DALLA CRONOLOGIA E NON DAL VALORE ATTUALE. La proprieta' `setter`
+ * dice chi e' il setter OGGI. Quando una persona lascia l'azienda le sue
+ * pratiche passano a qualcun altro, e leggendo il valore corrente tutto il suo
+ * storico sparisce, attribuito a chi le ha ereditate: misurato su luglio, un
+ * setter con 13 appuntamenti disertati nel vecchio foglio ne risulta zero
+ * leggendo HubSpot oggi. Il 3% delle trattative ha cambiato setter dopo il
+ * no-show. Ricostruendo il valore alla data lo scarto complessivo dal foglio
+ * scende da 139 a 125 su 716 eventi, e quattordici persone su quarantasette si
+ * avvicinano al numero giusto.
+ *
+ * IL RIPIEGO SUL PROPRIETARIO e' la regola del foglio Operatori, ed e' quella
+ * corretta: un Advisor che si prende l'appuntamento da solo spesso non compila
+ * il campo setter, ma in quel momento il setter e' lui.
+ */
+export function setterAllaData(storici: Record<string, Voce[]>, quando: Date): number | null {
+  const valore = (voci: Voce[] | undefined): string => {
+    if (!voci?.length) return "";
+    // HubSpot le restituisce dalla piu' recente alla piu' vecchia.
+    const ordinate = [...voci].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+    let ultimo = "";
+    for (const v of ordinate) {
+      if (new Date(v.timestamp).getTime() > quando.getTime()) break;
+      ultimo = (v.value ?? "").trim();
+    }
+    // Se il primo valore e' stato scritto DOPO la data che ci interessa, e'
+    // comunque il piu' vicino a quel momento: meglio di niente, ed e' il caso
+    // delle trattative create e assegnate nello stesso istante, dove i
+    // millisecondi cadono dalla parte sbagliata.
+    return ultimo || (ordinate[0].value ?? "").trim();
+  };
+
+  const scelto = valore(storici.setter) || valore(storici.hubspot_owner_id);
+  if (!scelto) return null;
+  const n = Number(scelto);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
  * Id delle trattative da processare.
  * - bootstrap    : tutte quelle CREATE da `daIso` in poi
  * - incrementale : solo quelle MODIFICATE da `daIso` in poi, indipendentemente
@@ -336,7 +378,10 @@ export async function preparaContesto(token: string): Promise<ContestoSvolte> {
   // La cronologia serve su dealstage (le transizioni) e motivo (la variante di
   // Ripianificata). fase_precedente NON viene letta: si ricostruisce, vedi
   // primaSvolta().
-  const conStorico = ["dealstage", "motivo"];
+  // dealstage per le transizioni, motivo per la variante di Ripianificata,
+  // setter e hubspot_owner_id per sapere DI CHI era la pratica al momento dei
+  // fatti - non oggi. Vedi setterAllaData().
+  const conStorico = ["dealstage", "motivo", "setter", "hubspot_owner_id"];
 
   // Etichette delle fasi: i criteri confrontano fase_precedente con i nomi
   // ("Da Svolgere", "No Show"...), mentre la cronologia contiene gli ID.
@@ -398,23 +443,28 @@ export async function aggiornaUnaTrattativa(
   const contatti = await leggiContatti(token, [String(r.id)]);
   const campagna = (r.properties?.id_campagna_track ?? "").trim();
   const svolta = primaSvolta(gruppi, r.propertiesWithHistory ?? {}, r.properties ?? {}, etichettaFase);
-  const noShow = ingressiNoShow(r.propertiesWithHistory ?? {}, idFaseNoShow);
+  const setterId = setterAllaData(r.propertiesWithHistory ?? {}, creata);
+  const noShow = ingressiNoShow(r.propertiesWithHistory ?? {}, idFaseNoShow).map((ts) => ({
+    ts,
+    setterId: setterAllaData(r.propertiesWithHistory ?? {}, ts)
+  }));
 
   await risolviIdCampagne([campagna]);
   const campagnaId = campagna ? idCampagne.get(campagna) ?? null : null;
   const db = getDb();
 
   await db.query(
-    `INSERT INTO trattativa (deal_id, campagna_id, creata_ts, svolta_ts, contact_id)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO trattativa (deal_id, campagna_id, creata_ts, svolta_ts, contact_id, setter_id)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (deal_id) DO UPDATE
        SET campagna_id = EXCLUDED.campagna_id,
            creata_ts   = EXCLUDED.creata_ts,
            svolta_ts   = EXCLUDED.svolta_ts,
            -- Se l'associazione non arriva si tiene quella gia' salvata,
-           -- invece di cancellarla con un NULL.
-           contact_id  = COALESCE(EXCLUDED.contact_id, trattativa.contact_id)`,
-    [Number(r.id), campagnaId, creata, svolta, contatti.get(String(r.id)) ?? null]
+           -- invece di cancellarla con un NULL. Idem per il setter.
+           contact_id  = COALESCE(EXCLUDED.contact_id, trattativa.contact_id),
+           setter_id   = COALESCE(EXCLUDED.setter_id, trattativa.setter_id)`,
+    [Number(r.id), campagnaId, creata, svolta, contatti.get(String(r.id)) ?? null, setterId]
   );
 
   // Come nel giro completo: si cancella e si reinserisce, cosi' sparisce anche
@@ -422,10 +472,17 @@ export async function aggiornaUnaTrattativa(
   await db.query(`DELETE FROM no_show WHERE deal_id = $1`, [Number(r.id)]);
   if (noShow.length) {
     await db.query(
-      `INSERT INTO no_show (deal_id, ts, campagna_id)
-       SELECT * FROM UNNEST($1::bigint[], $2::timestamptz[], $3::int[])
-       ON CONFLICT (deal_id, ts) DO UPDATE SET campagna_id = EXCLUDED.campagna_id`,
-      [noShow.map(() => Number(r.id)), noShow, noShow.map(() => campagnaId)]
+      `INSERT INTO no_show (deal_id, ts, campagna_id, setter_id)
+       SELECT * FROM UNNEST($1::bigint[], $2::timestamptz[], $3::int[], $4::bigint[])
+       ON CONFLICT (deal_id, ts) DO UPDATE
+         SET campagna_id = EXCLUDED.campagna_id,
+             setter_id   = EXCLUDED.setter_id`,
+      [
+        noShow.map(() => Number(r.id)),
+        noShow.map((n) => n.ts),
+        noShow.map(() => campagnaId),
+        noShow.map((n) => n.setterId)
+      ]
     );
   }
 
@@ -471,7 +528,8 @@ export async function sincronizzaTrattative(
           campagna: string;
           creata: Date;
           svolta: Date | null;
-          noShow: Date[];
+          setterId: number | null;
+          noShow: Array<{ ts: Date; setterId: number | null }>;
         }> = [];
         for (const r of d.results ?? []) {
           const creata = new Date(r.properties?.createdate ?? "");
@@ -482,7 +540,15 @@ export async function sincronizzaTrattative(
             campagna: (r.properties?.id_campagna_track ?? "").trim(),
             creata,
             svolta: primaSvolta(gruppi, r.propertiesWithHistory ?? {}, r.properties ?? {}, etichettaFase),
-            noShow: ingressiNoShow(r.propertiesWithHistory ?? {}, idFaseNoShow)
+            // Il setter di quando l'appuntamento e' stato fissato.
+            setterId: setterAllaData(r.propertiesWithHistory ?? {}, creata),
+            // E per ogni diserzione, quello di quel giorno: fra il primo
+            // appuntamento e un no-show di due mesi dopo il lead puo' essere
+            // passato di mano.
+            noShow: ingressiNoShow(r.propertiesWithHistory ?? {}, idFaseNoShow).map((ts) => ({
+              ts,
+              setterId: setterAllaData(r.propertiesWithHistory ?? {}, ts)
+            }))
           });
         }
         if (!righe.length) continue;
@@ -490,21 +556,25 @@ export async function sincronizzaTrattative(
         await risolviIdCampagne(righe.map((x) => x.campagna));
 
         await db.query(
-          `INSERT INTO trattativa (deal_id, campagna_id, creata_ts, svolta_ts, contact_id)
-           SELECT * FROM UNNEST($1::bigint[], $2::int[], $3::timestamptz[], $4::timestamptz[], $5::bigint[])
+          `INSERT INTO trattativa (deal_id, campagna_id, creata_ts, svolta_ts, contact_id, setter_id)
+           SELECT * FROM UNNEST($1::bigint[], $2::int[], $3::timestamptz[], $4::timestamptz[], $5::bigint[], $6::bigint[])
            ON CONFLICT (deal_id) DO UPDATE
              SET campagna_id = EXCLUDED.campagna_id,
                  creata_ts   = EXCLUDED.creata_ts,
                  svolta_ts   = EXCLUDED.svolta_ts,
                  -- Se l'associazione non arriva si tiene quella gia' salvata,
-                 -- invece di cancellarla con un NULL.
-                 contact_id  = COALESCE(EXCLUDED.contact_id, trattativa.contact_id)`,
+                 -- invece di cancellarla con un NULL. Stesso ragionamento per
+                 -- il setter: una cronologia vuota non deve azzerare un nome
+                 -- che avevamo gia'.
+                 contact_id  = COALESCE(EXCLUDED.contact_id, trattativa.contact_id),
+                 setter_id   = COALESCE(EXCLUDED.setter_id, trattativa.setter_id)`,
           [
             righe.map((x) => x.dealId),
             righe.map((x) => (x.campagna ? idCampagne.get(x.campagna) ?? null : null)),
             righe.map((x) => x.creata),
             righe.map((x) => x.svolta),
-            righe.map((x) => x.contactId)
+            righe.map((x) => x.contactId),
+            righe.map((x) => x.setterId)
           ]
         );
 
@@ -515,18 +585,26 @@ export async function sincronizzaTrattative(
         await db.query(`DELETE FROM no_show WHERE deal_id = ANY($1::bigint[])`, [dealIds]);
 
         const eventiNs = righe.flatMap((x) =>
-          x.noShow.map((ts) => ({
+          x.noShow.map((n) => ({
             dealId: x.dealId,
-            ts,
-            campagnaId: x.campagna ? idCampagne.get(x.campagna) ?? null : null
+            ts: n.ts,
+            campagnaId: x.campagna ? idCampagne.get(x.campagna) ?? null : null,
+            setterId: n.setterId
           }))
         );
         if (eventiNs.length) {
           await db.query(
-            `INSERT INTO no_show (deal_id, ts, campagna_id)
-             SELECT * FROM UNNEST($1::bigint[], $2::timestamptz[], $3::int[])
-             ON CONFLICT (deal_id, ts) DO UPDATE SET campagna_id = EXCLUDED.campagna_id`,
-            [eventiNs.map((e) => e.dealId), eventiNs.map((e) => e.ts), eventiNs.map((e) => e.campagnaId)]
+            `INSERT INTO no_show (deal_id, ts, campagna_id, setter_id)
+             SELECT * FROM UNNEST($1::bigint[], $2::timestamptz[], $3::int[], $4::bigint[])
+             ON CONFLICT (deal_id, ts) DO UPDATE
+               SET campagna_id = EXCLUDED.campagna_id,
+                   setter_id   = EXCLUDED.setter_id`,
+            [
+              eventiNs.map((e) => e.dealId),
+              eventiNs.map((e) => e.ts),
+              eventiNs.map((e) => e.campagnaId),
+              eventiNs.map((e) => e.setterId)
+            ]
           );
         }
         esito.noShow += eventiNs.length;

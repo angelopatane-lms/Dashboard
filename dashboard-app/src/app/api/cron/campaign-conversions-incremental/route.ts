@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eseguiSync } from "@/lib/campaignConversions/sync";
 import { sincronizzaTrattative } from "@/lib/trattative/sync";
 import { sincronizzaChiamate } from "@/lib/chiamate/sync";
+import { sincronizzaProprietari } from "@/lib/proprietari";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -11,6 +12,12 @@ export const maxDuration = 60;
 //   conversioni -> Lead Generati e Lead Unici
 //   trattative  -> Consulenze
 //   chiamate    -> Chiamate e Connessioni
+//   proprietari -> il nome dietro l'id del setter
+//
+// L'anagrafica dei proprietari cambia una volta al mese, non ogni ora: gira
+// qui perche' costa dieci chiamate e sta dentro lo stesso schema di guasto
+// delle altre, non perche' serva questa frequenza. Se manca, le tabelle per
+// setter mostrano un id invece di un nome - e non ci si accorge del perche'.
 //
 // Le tre sincronizzazioni sono INDIPENDENTI di proposito: se una fallisce le
 // altre devono comunque girare, altrimenti un guasto su HubSpot in un'area
@@ -27,11 +34,12 @@ export async function GET(req: NextRequest) {
   const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
   if (!token) return NextResponse.json({ error: "HUBSPOT_PRIVATE_APP_TOKEN not set" }, { status: 500 });
 
-  const nomi = ["conversioni", "trattative", "chiamate"] as const;
+  const nomi = ["conversioni", "trattative", "chiamate", "proprietari"] as const;
   const esiti = await Promise.allSettled([
     eseguiSync("incrementale", token),
     sincronizzaTrattative(token, "incrementale"),
-    sincronizzaChiamate(token, "incrementale")
+    sincronizzaChiamate(token, "incrementale"),
+    sincronizzaProprietari(token).then((n) => ({ proprietari: n }))
   ]);
 
   const risposta: Record<string, unknown> = {};
