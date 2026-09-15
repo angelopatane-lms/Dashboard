@@ -311,11 +311,14 @@ export default function DashboardEnterprise({
     };
   }, [andamentoPersone, metricaScelta, setterView, conHubspot]);
 
-  const hubspotOverrides = useMemo((): Record<string, { chiusure: number; boom: number }> => {
+  const hubspotOverrides = useMemo((): Record<
+    string,
+    { chiusure: number; boom: number; incassoChiusure: number }
+  > => {
     if (!useHubspot || rawBoomRecords.length === 0) return {};
     const fromMs = new Date(filters.from ?? defaultFrom).getTime();
     const toMs = new Date((filters.to ?? defaultTo) + "T23:59:59.999Z").getTime();
-    const agg: Record<string, { chiusure: number; boom: number }> = {};
+    const agg: Record<string, { chiusure: number; boom: number; incassoChiusure: number }> = {};
     for (const r of rawBoomRecords) {
       if (r.data_di_pagamento_ms < fromMs || r.data_di_pagamento_ms > toMs) continue;
       if (filters.campagna) {
@@ -325,8 +328,17 @@ export default function DashboardEnterprise({
       if (filters.vendita && r.tipo_di_vendita.trim().toLowerCase() !== filters.vendita.trim().toLowerCase()) continue;
       if (filters.prodotto && r.prodotto !== filters.prodotto) continue;
       const key = r.operatore.trim().toLowerCase().replace(/\s+/g, " ");
-      const cur = agg[key] ?? { chiusure: 0, boom: 0 };
-      if (CHIUSURE_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.chiusure += 1;
+      const cur = agg[key] ?? { chiusure: 0, boom: 0, incassoChiusure: 0 };
+      if (CHIUSURE_TIPOLOGIE.has(r.tipologia_di_incasso)) {
+        cur.chiusure += 1;
+        // L'IMPORTO DELLE SOLE CHIUSURE, accanto al conteggio. Serve alla
+        // colonna Resa: le rate e gli upgrade portano denaro su vendite chiuse
+        // mesi prima, spesso da una consulenza di un altro advisor, quindi
+        // dividerli per le ore di questo mese accosta un ricavo a un lavoro che
+        // non lo ha prodotto. Misurato su settembre: le rate sono 20.241 EUR su
+        // 103.424, il 20% - e su una persona sola arrivavano a 9.250.
+        cur.incassoChiusure += r.importo;
+      }
       if (BOOM_TIPOLOGIE.has(r.tipologia_di_incasso)) cur.boom += r.importo;
       agg[key] = cur;
     }

@@ -101,7 +101,7 @@ export default function OperatorStatsTable({
   obiettivi
 }: {
   data: OperatorSummary[];
-  hubspotOverrides?: Record<string, { chiusure: number; boom: number }>;
+  hubspotOverrides?: Record<string, { chiusure: number; boom: number; incassoChiusure: number }>;
   trattativeOverrides?: Record<string, number>;
   precomputedTotals?: { chiusure: number; boom: number };
   hubspotLoading?: boolean;
@@ -120,6 +120,17 @@ export default function OperatorStatsTable({
   const normKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
   const effChiusure = (r: OperatorSummary) => hubspotOverrides?.[normKey(r.operatore)]?.chiusure ?? 0;
   const effBoom = (r: OperatorSummary) => hubspotOverrides?.[normKey(r.operatore)]?.boom ?? 0;
+  /**
+   * L-incasso delle sole CHIUSURE, che e il numeratore della Resa.
+   *
+   * Non si usa Boom perche quello comprende rate e upgrade: denaro che arriva
+   * su una vendita conclusa mesi prima, spesso da una consulenza tenuta da un
+   * altro advisor. Dividerlo per le ore di questo mese accosterebbe un ricavo a
+   * un lavoro che non lo ha prodotto. Misurato su settembre: le rate sono il
+   * 20% dell-incassato, e su una persona sola valevano 9.250 EUR su 21.750.
+   */
+  const effIncassoChiusure = (r: OperatorSummary) =>
+    hubspotOverrides?.[normKey(r.operatore)]?.incassoChiusure ?? 0;
   const effAppuntamenti = (r: OperatorSummary) => trattativeOverrides?.[normKey(r.operatore)] ?? 0;
   const effObiettivo = (r: OperatorSummary): number | null =>
     obiettivi?.[normKey(r.operatore)] ?? null;
@@ -157,7 +168,7 @@ export default function OperatorStatsTable({
       consulenze: Math.max(...data.map((r) => isSetterView ? r.noShow : r.consulenze), 1),
       chiusure: Math.max(...data.map((r) => effChiusure(r)), 1),
       boom: Math.max(...data.map((r) => effBoom(r)), 1),
-      resa: Math.max(...data.map((r) => resaOraria(effBoom(r), r.consulenze) ?? 0), 1)
+      resa: Math.max(...data.map((r) => resaOraria(effIncassoChiusure(r), r.consulenze) ?? 0), 1)
     }),
     [data, hubspotOverrides, trattativeOverrides]
   );
@@ -195,7 +206,7 @@ export default function OperatorStatsTable({
   // non lo chiudono, non e' stato chiesto.
   if (!isSetterView) {
     colonne.push({ label: "Obiettivo", valore: (r) => effObiettivo(r) });
-    colonne.push({ label: "Resa", valore: (r) => resaOraria(effBoom(r), r.consulenze) });
+    colonne.push({ label: "Resa", valore: (r) => resaOraria(effIncassoChiusure(r), r.consulenze) });
   }
 
   // La colonna su cui si sta ordinando. Vuota vuol dire ordine di partenza -
@@ -213,7 +224,10 @@ export default function OperatorStatsTable({
 
   const totalTp = tassoPresa(totals.appuntamenti, totals.connessioni);
   const totalTc = tassoChiusura(totals.chiusure, isSetterView ? 0 : totals.consulenze);
-  const resaTotale = resaOraria(totals.boom, totals.consulenze);
+  const resaTotale = resaOraria(
+    sorted.reduce((s, r) => s + effIncassoChiusure(r), 0),
+    totals.consulenze
+  );
 
   if (!data.length) return null;
 
@@ -363,13 +377,13 @@ export default function OperatorStatsTable({
                     style={{
                       background: hubspotLoading
                         ? undefined
-                        : heatBg(resaOraria(effBoom(r), r.consulenze) ?? 0, maxValues.resa)
+                        : heatBg(resaOraria(effIncassoChiusure(r), r.consulenze) ?? 0, maxValues.resa)
                     }}
                   >
                     {hubspotLoading ? (
                       <span className="text-slate-400">–</span>
-                    ) : resaOraria(effBoom(r), r.consulenze) !== null ? (
-                      formatResa(resaOraria(effBoom(r), r.consulenze) as number)
+                    ) : resaOraria(effIncassoChiusure(r), r.consulenze) !== null ? (
+                      formatResa(resaOraria(effIncassoChiusure(r), r.consulenze) as number)
                     ) : (
                       <span className="text-slate-400">–</span>
                     )}
