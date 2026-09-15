@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import type { AnalisiCall, EventoAgenda, TipoEvento } from "@/app/api/advisor-agenda/route";
 import { chiaveNome } from "@/lib/nomi";
 
@@ -432,6 +432,8 @@ export default function AgendaGiornaliera({
   // e' lui a comandare, e mostrarlo pieno farebbe sembrare che ci sia un filtro
   // attivo quando non c'e'. Si riempie e diventa nero solo quando lo si usa.
   const [dataScelta, setDataScelta] = useState("");
+  /** Il campo data nascosto sotto il pulsante: serve per aprirne il calendario. */
+  const rifData = useRef<HTMLInputElement>(null);
   const [adesso, setAdesso] = useState<number | null>(null);
   useEffect(() => {
     setAdesso(minutiOra());
@@ -552,21 +554,52 @@ export default function AgendaGiornaliera({
               e gli audio compaiono solo sulle giornate in cui qualcuno ha
               registrato, e non sono necessariamente le ultime due. Il tasto
               Oggi resta il modo rapido di tornare al presente. */}
-          <input
-            type="date"
-            value={dataScelta}
-            max={giornoRoma(1)}
-            onChange={(e) => {
-              setDataScelta(e.target.value);
-              if (e.target.value) onGiorno(e.target.value);
-            }}
-            aria-label="Scegli il giorno"
-            className={`rounded-md border px-2 py-1.5 text-xs font-medium shadow-sm transition ${
-              dataScelta
-                ? "border-neutral-700 bg-black text-white [color-scheme:dark]"
-                : "border-slate-200 bg-white text-slate-700 hover:border-neutral-800 hover:text-black"
-            }`}
-          />
+          {/* UN PULSANTE, NON UN CAMPO DI SISTEMA. Accanto a Ieri, Oggi e
+              Domani un campo data nudo scriveva "gg/mm/aaaa", che e' il
+              segnaposto del browser e non dice a cosa serve. Il pulsante porta
+              l'etichetta vera e prende l'aspetto degli altri tre; il campo
+              resta sotto, invisibile ma raggiungibile da tastiera, e apre il
+              calendario di sistema. */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                const campo = rifData.current;
+                if (!campo) return;
+                // showPicker apre il calendario dovunque si prema, invece di
+                // pretendere il click sull'iconcina. Dove non c'e', il ripiego
+                // e' dare il fuoco al campo, che resta utilizzabile.
+                const conPicker = campo as HTMLInputElement & { showPicker?: () => void };
+                try {
+                  if (conPicker.showPicker) conPicker.showPicker();
+                  else campo.focus();
+                } catch {
+                  campo.focus();
+                }
+              }}
+              className={`rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition ${
+                dataScelta
+                  ? "border-neutral-700 bg-black text-white"
+                  : "border-slate-200 bg-white text-slate-700 hover:border-neutral-800 hover:text-black"
+              }`}
+            >
+              {dataScelta
+                ? `${dataScelta.slice(8, 10)}/${dataScelta.slice(5, 7)}/${dataScelta.slice(0, 4)}`
+                : "Data Specifica"}
+            </button>
+            <input
+              ref={rifData}
+              type="date"
+              value={dataScelta}
+              max={giornoRoma(1)}
+              onChange={(e) => {
+                setDataScelta(e.target.value);
+                if (e.target.value) onGiorno(e.target.value);
+              }}
+              aria-label="Scegli il giorno"
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            />
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-4">

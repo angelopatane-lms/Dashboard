@@ -4,6 +4,16 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import type { Filters } from "@/lib/metrics";
 import { VARIANTE_DEFAULT } from "@/lib/campagne";
 import { PERIODO_DEFAULT, periodi, periodoScelto } from "@/lib/periodi";
+
+/**
+ * Il valore di `periodo` quando l'intervallo lo sceglie l'utente.
+ *
+ * Non e' fra i preset di periodi(): serve solo a dire "non sono i preset",
+ * e periodoScelto() non lo trova, quindi ricadrebbe sul predefinito - che e'
+ * il motivo per cui from e to vengono impostati esplicitamente qui accanto
+ * invece di essere ricavati da lui.
+ */
+const DATE_SPECIFICHE = "date_specifiche";
 import { coloriCampo } from "@/lib/campiFiltro";
 
 /**
@@ -95,13 +105,29 @@ function MenuSingolo({
   opzioni,
   scelto,
   attivo,
-  onChange
+  onChange,
+  piede,
+  testoScelto
 }: {
   etichetta: string;
   opzioni: Array<{ label: string; value: string }>;
   scelto: string;
   attivo: boolean;
   onChange: (valore: string) => void;
+  /**
+   * Cosa compare in fondo alla tendina, sotto le voci.
+   *
+   * Serve al periodo, che oltre ai preset accetta un intervallo scelto a mano.
+   * Sta DENTRO lo stesso menu e non in un controllo accanto: sono due modi di
+   * dire la stessa cosa - quale finestra di tempo guardare - e due controlli
+   * separati vorrebbero una logica di esclusione, cioe' due stati che possono
+   * disallinearsi. Qui scegliere un preset abbandona l'intervallo da solo,
+   * perche' e' lo stesso campo.
+   */
+  piede?: (chiudi: () => void) => React.ReactNode;
+  /** Cosa scrivere sul pulsante quando non corrisponde a nessuna voce: per il
+   *  periodo e' l'intervallo scelto a mano. */
+  testoScelto?: string;
 }) {
   const { aperto, setAperto, contenitore } = useTendina();
   const corrente = opzioni.find((o) => o.value === scelto);
@@ -116,7 +142,7 @@ function MenuSingolo({
           attivo
         )}`}
       >
-        <span className="truncate">{corrente?.label ?? ""}</span>
+        <span className="truncate">{testoScelto ?? corrente?.label ?? ""}</span>
         <Freccia />
       </button>
 
@@ -140,6 +166,7 @@ function MenuSingolo({
               {o.label}
             </button>
           ))}
+          {piede ? piede(() => setAperto(false)) : null}
         </div>
       ) : null}
     </div>
@@ -280,7 +307,8 @@ export function FiltersBar({
     attivo: boolean,
     valore: string,
     onChange: (v: string) => void,
-    opzioni: Array<{ label: string; value: string }>
+    opzioni: Array<{ label: string; value: string }>,
+    extra?: { piede?: (chiudi: () => void) => React.ReactNode; testoScelto?: string }
   ) => (
     <MenuSingolo
       etichetta={etichetta}
@@ -288,6 +316,8 @@ export function FiltersBar({
       scelto={valore}
       attivo={attivo}
       onChange={onChange}
+      piede={extra?.piede}
+      testoScelto={extra?.testoScelto}
     />
   );
 
@@ -382,6 +412,50 @@ export function FiltersBar({
   // basterebbero a ritrovarlo: di lunedi' "Oggi" e "Settimana corrente" danno
   // lo stesso intervallo, e il menu non saprebbe quale delle due mostrare.
   const periodoAttuale = filters.periodo ?? PERIODO_DEFAULT;
+
+  /**
+   * L'intervallo scelto a mano, come "01/09 - 15/09".
+   *
+   * Si riconosce da periodo === "date_specifiche": senza un valore proprio non
+   * si distinguerebbe da un preset che per caso copre gli stessi giorni.
+   */
+  const dateSpecifiche = periodoAttuale === DATE_SPECIFICHE;
+  const giorno = (iso: string | undefined) =>
+    iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "";
+  const testoIntervallo =
+    dateSpecifiche && filters.from && filters.to
+      ? `${giorno(filters.from)} - ${giorno(filters.to)}`
+      : dateSpecifiche
+        ? "Date Specifiche"
+        : undefined;
+
+  /** Cambia un estremo dell'intervallo tenendo l'altro. Il periodo passa a
+   *  "date_specifiche", cosi' il preset precedente viene abbandonato: e' lo
+   *  stesso campo, non due stati da tenere allineati. */
+  const cambiaEstremo = (quale: "from" | "to", valore: string) => {
+    if (!valore) return;
+    const altro = quale === "from" ? filters.to : filters.from;
+    const base = altro ?? valore;
+    // Se l'utente sceglie un "dal" successivo all'"al", i due si scambiano
+    // invece di produrre un intervallo vuoto che non mostra niente.
+    const da = quale === "from" ? valore : base;
+    const a = quale === "from" ? base : valore;
+    const [inizio, fine] = da <= a ? [da, a] : [a, da];
+    setFilters({ ...filters, periodo: DATE_SPECIFICHE, from: inizio, to: fine });
+  };
+
+  const campoData = (etichetta: string, valore: string | undefined, quale: "from" | "to") => (
+    <label className="flex flex-1 flex-col gap-1">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">{etichetta}</span>
+      <input
+        type="date"
+        value={valore ?? ""}
+        onChange={(e) => cambiaEstremo(quale, e.target.value)}
+        className="w-full rounded border border-slate-200 px-2 py-1 text-xs text-slate-700 outline-none focus:border-neutral-800"
+      />
+    </label>
+  );
+
   const bloccoPeriodo = menu(
     "Periodo",
     // Sempre nero, come Campagna: un periodo c'e' sempre.
@@ -391,7 +465,21 @@ export function FiltersBar({
       const scelto = periodoScelto(v);
       setFilters({ ...filters, periodo: scelto.value, from: scelto.from, to: scelto.to });
     },
-    periodi().map((p) => ({ label: p.label, value: p.value }))
+    periodi().map((p) => ({ label: p.label, value: p.value })),
+    {
+      testoScelto: testoIntervallo,
+      piede: () => (
+        <div className="mt-1 border-t border-slate-200 px-2 pb-1 pt-2">
+          <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
+            Date Specifiche
+          </div>
+          <div className="flex items-end gap-2">
+            {campoData("Dal", filters.from, "from")}
+            {campoData("Al", filters.to, "to")}
+          </div>
+        </div>
+      )
+    }
   );
 
   // L'ordine cambia con la pagina. Su Campagne si va dal contenitore al
