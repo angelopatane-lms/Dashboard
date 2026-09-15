@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CsvRow } from "@/lib/csv";
 import { applyFilters, computeKpis, type Filters } from "@/lib/metrics";
 import {
@@ -96,6 +96,11 @@ export default function DashboardEnterprise({
   // denominatore di "% Chiusura" sulla sua pagina. Nel foglio Operatori quel
   // campo e' zero per chi fa solo il setter.
   const [svolteSetter, setSvolteSetter] = useState<Record<string, number> | null>(null);
+  // Gli obiettivi di Boom del mese. `meseObiettivo` vale null quando il periodo
+  // scelto copre piu' mesi: in quel caso la colonna mostra la somma e non si
+  // lascia scrivere, perche' non si saprebbe a quale mese attribuire la cifra.
+  const [obiettivi, setObiettivi] = useState<Record<string, number>>({});
+  const [meseObiettivo, setMeseObiettivo] = useState<string | null>(null);
   const fetchedRangeRef = useRef<{ from: string; to: string } | null>(null);
 
   const todayIsoRome = useMemo(
@@ -148,12 +153,62 @@ export default function DashboardEnterprise({
       })
       .catch(console.error);
 
+    fetch(`/api/obiettivi?from=${dal}&to=${al}`)
+      .then((r) => r.json())
+      .then((data: { perPersona?: Record<string, number>; mese?: string | null; error?: string }) => {
+        if (annullato) return;
+        if (data.error) {
+          console.error("[obiettivi]", data.error);
+          return;
+        }
+        setObiettivi(data.perPersona ?? {});
+        setMeseObiettivo(data.mese ?? null);
+      })
+      .catch(console.error);
+
     // Se i filtri cambiano mentre la richiesta e' in volo, la risposta vecchia
     // non deve sovrascrivere quella nuova.
     return () => {
       annullato = true;
     };
   }, [filters.from, filters.to, filters.campagna, defaultFrom, defaultTo]);
+
+  /**
+   * Salva l'obiettivo digitato in una cella.
+   *
+   * AGGIORNA SUBITO LA PAGINA, prima della risposta: chi ha appena scritto un
+   * numero deve vederlo, e la somma in fondo alla colonna deve muoversi con lui.
+   * Se la scrittura fallisce si torna al valore di prima e l'errore finisce in
+   * console - non si lascia a schermo una cifra che il database non ha.
+   */
+  const salvaObiettivo = useCallback(
+    async (persona: string, mese: string, valore: number | null) => {
+      const chiave = persona.trim().toLowerCase().replace(/\s+/g, " ");
+      const precedente = obiettivi;
+      setObiettivi((prima) => {
+        const dopo = { ...prima };
+        if (valore === null || valore === 0) delete dopo[chiave];
+        else dopo[chiave] = valore;
+        return dopo;
+      });
+
+      try {
+        const res = await fetch("/api/obiettivi", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ persona: chiave, mese, valore })
+        });
+        if (!res.ok) {
+          const corpo = await res.json().catch(() => ({}));
+          throw new Error(corpo.error ?? `HTTP ${res.status}`);
+        }
+      } catch (err) {
+        console.error("[obiettivi] non salvato:", err);
+        setObiettivi(precedente);
+      }
+    },
+    [obiettivi]
+  );
 
   useEffect(() => {
     if (!useHubspot) return;
@@ -771,7 +826,7 @@ export default function DashboardEnterprise({
                   Caricamento dei dati in corso...
                 </div>
               ) : (
-              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} />
+              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={salvaObiettivo} />
               )}
             </Card>
           </div>

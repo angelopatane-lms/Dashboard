@@ -163,6 +163,31 @@ CREATE TABLE IF NOT EXISTS proprietario (
   attivo BOOLEAN NOT NULL DEFAULT TRUE
 );
 
+-- L'obiettivo di Boom del mese, per persona.
+--
+-- PERCHE' IN BANCA DATI E NON SU UN FOGLIO. E' l'unico numero della dashboard
+-- che nessun sistema produce: non sta su HubSpot, non lo calcola nessuno, lo
+-- decide una persona il primo del mese. Finora la colonna esisteva ma la sua
+-- fonte non esisteva, quindi mostrava un trattino a tutti. Si digita nella
+-- cella, e questa tabella e' dove finisce.
+--
+-- LA CHIAVE E' IL NOME NORMALIZZATO, non l'id del proprietario HubSpot, perche'
+-- le righe della tabella nascono dal foglio Operatori e sono identificate dal
+-- nome: e' la stessa chiave con cui la pagina accosta foglio e CRM. Se una
+-- persona viene rinominata il suo obiettivo va riscritto - accettabile per un
+-- numero che si tocca una volta al mese, e preferibile a un id che per le
+-- persone del foglio non sempre esiste.
+--
+-- UNO PER MESE: l'obiettivo si fissa il primo giorno e resta fermo. Su un
+-- periodo che copre piu' mesi la pagina ne mostra la somma, e non lascia
+-- scrivere - non si saprebbe a quale mese attribuire il numero digitato.
+CREATE TABLE IF NOT EXISTS obiettivo (
+  persona TEXT        NOT NULL,
+  mese    CHAR(7)     NOT NULL,
+  valore  NUMERIC(12,2) NOT NULL CHECK (valore >= 0),
+  PRIMARY KEY (persona, mese)
+);
+
 -- Chiamate telefoniche, per ricavare Chiamate e Connessioni per campagna.
 --
 -- campagna_id e' risolta AL MOMENTO DEL SYNC, non in lettura: e' la campagna

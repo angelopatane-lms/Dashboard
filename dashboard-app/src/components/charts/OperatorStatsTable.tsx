@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { OperatorSummary } from "@/lib/analytics";
 import { formatInt, formatPct, formatEur } from "@/lib/format";
 import {
@@ -27,6 +27,127 @@ function rateBg(rate: number | null): string {
 
 function tassoPresa(appt: number, conn: number): number | null {
   return conn > 0 ? appt / conn : null;
+}
+
+/**
+ * La cella dell'obiettivo, che si scrive dentro.
+ *
+ * UN COMPONENTE A PARTE, non un <input> dentro la riga, perche' mentre si
+ * digita il valore vive qui: se lo tenesse la tabella, ogni tasto premuto
+ * ridisegnerebbe tutte le righe e il cursore salterebbe. Cosi' la tabella
+ * riceve la cifra una volta sola, quando si esce dalla cella o si preme Invio.
+ *
+ * SI SALVA USCENDO, non a ogni tasto: un obiettivo si digita in una volta, e
+ * salvare a ogni carattere manderebbe otto richieste per scrivere "15000" -
+ * l'ultima delle quali e' l'unica giusta.
+ *
+ * Invio conferma, Esc rimette il valore di prima. Niente pulsante: la colonna
+ * ha la larghezza delle altre e un pulsante non ci starebbe senza stringere
+ * tutto il resto.
+ */
+function CellaObiettivo({
+  valore,
+  mese,
+  persona,
+  salva,
+  formatta
+}: {
+  valore: number | null;
+  mese: string | null;
+  persona: string;
+  salva: (persona: string, mese: string, valore: number | null) => Promise<void> | void;
+  formatta: (n: number) => string;
+}) {
+  const [testo, setTesto] = useState("");
+  const [inModifica, setInModifica] = useState(false);
+  const [salvataggio, setSalvataggio] = useState(false);
+  const campo = useRef<HTMLInputElement>(null);
+
+  // Se il valore cambia da fuori - un altro periodo, un ricaricamento - e non
+  // si sta scrivendo, la cella si allinea. Mentre si scrive no: sovrascrivere
+  // quello che si sta digitando e' il modo piu' rapido di far perdere un numero.
+  useEffect(() => {
+    if (!inModifica) setTesto(valore === null ? "" : String(valore));
+  }, [valore, inModifica]);
+
+  useEffect(() => {
+    if (inModifica) campo.current?.select();
+  }, [inModifica]);
+
+  const conferma = async () => {
+    setInModifica(false);
+    const pulito = testo.trim().replace(/\./g, "").replace(",", ".").replace(/[^\d.]/g, "");
+    const n = pulito === "" ? null : Number(pulito);
+    // Niente da salvare se il numero e' lo stesso, o se non e' un numero.
+    if (n !== null && !Number.isFinite(n)) {
+      setTesto(valore === null ? "" : String(valore));
+      return;
+    }
+    if (n === valore || (n === null && valore === null)) return;
+    if (!mese) return;
+    setSalvataggio(true);
+    try {
+      await salva(persona, mese, n);
+    } finally {
+      setSalvataggio(false);
+    }
+  };
+
+  // Periodo su piu' mesi: si legge la somma e non si scrive.
+  if (!mese) {
+    return (
+      <td
+        className="border-r border-white px-2 py-1.5 text-right tabular-nums text-slate-500"
+        title="Il periodo copre piu' mesi: scegli un mese solo per modificare l'obiettivo"
+      >
+        {valore !== null ? formatta(valore) : <span className="text-slate-400">–</span>}
+      </td>
+    );
+  }
+
+  return (
+    <td className="border-r border-white p-0 text-right tabular-nums">
+      {inModifica ? (
+        <input
+          ref={campo}
+          value={testo}
+          inputMode="decimal"
+          onChange={(e) => setTesto(e.target.value)}
+          onBlur={conferma}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void conferma();
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setTesto(valore === null ? "" : String(valore));
+              setInModifica(false);
+            }
+          }}
+          className="w-full bg-sky-50 px-2 py-1.5 text-right tabular-nums outline-none ring-1 ring-inset ring-sky-400"
+          placeholder="0"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setInModifica(true)}
+          // Sembra una cella, non un pulsante: e' una cella, si puo' solo anche
+          // scrivere. Il tratteggio si vede passandoci sopra e dice che si tocca.
+          className="w-full px-2 py-1.5 text-right tabular-nums hover:bg-sky-50 hover:underline hover:decoration-dotted"
+          title={`Clicca per scrivere l'obiettivo di ${mese}`}
+        >
+          {salvataggio ? (
+            <span className="text-slate-400">...</span>
+          ) : valore !== null ? (
+            formatta(valore)
+          ) : (
+            <span className="text-slate-300">–</span>
+          )}
+        </button>
+      )}
+    </td>
+  );
 }
 
 function tassoChiusura(chius: number, cons: number): number | null {
@@ -95,6 +216,8 @@ export default function OperatorStatsTable({
   hubspotOverrides,
   noShowOverrides,
   svolteOverrides,
+  meseObiettivo,
+  onSalvaObiettivo,
   trattativeOverrides,
   precomputedTotals,
   hubspotLoading,
@@ -139,6 +262,16 @@ export default function OperatorStatsTable({
    *  mese dopo. Il trattino e' voluto: uno zero si leggerebbe come "obiettivo
    *  zero", che e' un'altra cosa da "non ancora fissato". */
   obiettivi?: Record<string, number>;
+  /**
+   * Il mese su cui si sta scrivendo, "AAAA-MM", oppure null.
+   *
+   * Null vuol dire che il periodo scelto copre piu' mesi: la colonna mostra la
+   * somma e non si lascia scrivere, perche' un numero digitato su "luglio piu'
+   * agosto" non si sa a quale dei due appartenga.
+   */
+  meseObiettivo?: string | null;
+  /** Salva la cifra digitata. Senza questa la colonna resta di sola lettura. */
+  onSalvaObiettivo?: (persona: string, mese: string, valore: number | null) => Promise<void> | void;
 }) {
   const isSetterView = operatorLabel === "Setter";
   const normKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
@@ -253,13 +386,19 @@ export default function OperatorStatsTable({
     { label: "Boom", valore: (r) => effBoom(r) }
   ];
 
-  // L'OBIETTIVO E' SOLO DEGLI ADVISOR. E' il traguardo di Boom del mese, che si
-  // fissa il primo giorno e resta fermo: sui setter, che il Boom lo portano ma
-  // non lo chiudono, non e' stato chiesto.
+  // LA RESA SOLO AGLI ADVISOR. E' incasso diviso ore di consulenza, e le ore in
+  // stanza sono le loro: un setter non ne fa nessuna, quindi la colonna
+  // dividerebbe per zero.
   if (!isSetterView) {
-    colonne.push({ label: "Obiettivo", valore: (r) => effObiettivo(r) });
     colonne.push({ label: "Resa", valore: (r) => resaOraria(effIncassoChiusure(r), r.consulenze) });
   }
+
+  // L'OBIETTIVO STA SU ENTRAMBE LE PAGINE, E ULTIMO. E' il traguardo di Boom
+  // del mese - si fissa il primo giorno e resta fermo - e i setter il Boom lo
+  // portano quanto gli Advisor lo chiudono. In fondo perche' e' l'unica colonna
+  // che si scrive invece di leggersi: in mezzo alle altre si cliccherebbe per
+  // sbaglio scorrendo la tabella.
+  colonne.push({ label: "Obiettivo", valore: (r) => effObiettivo(r) });
 
   // La colonna su cui si sta ordinando. Vuota vuol dire ordine di partenza -
   // per Boom, poi per appuntamenti - e non viene ricordata da nessuna parte,
@@ -448,15 +587,6 @@ export default function OperatorStatsTable({
                   {hubspotLoading ? <span className="text-slate-400">–</span> : formatEur(effBoom(r))}
                 </td>
                 {isSetterView ? null : (
-                  <td className="border-r border-white px-2 py-1.5 text-right tabular-nums">
-                    {effObiettivo(r) !== null ? (
-                      formatEur(effObiettivo(r) as number)
-                    ) : (
-                      <span className="text-slate-400">–</span>
-                    )}
-                  </td>
-                )}
-                {isSetterView ? null : (
                   <td
                     className="border-r border-white px-2 py-1.5 text-right tabular-nums"
                     style={{
@@ -469,6 +599,25 @@ export default function OperatorStatsTable({
                       <span className="text-slate-400">–</span>
                     ) : resaOraria(effIncassoChiusure(r), r.consulenze) !== null ? (
                       formatResa(resaOraria(effIncassoChiusure(r), r.consulenze) as number)
+                    ) : (
+                      <span className="text-slate-400">–</span>
+                    )}
+                  </td>
+                )}
+                {onSalvaObiettivo ? (
+                  <CellaObiettivo
+                    valore={effObiettivo(r)}
+                    mese={meseObiettivo ?? null}
+                    persona={r.operatore}
+                    salva={onSalvaObiettivo}
+                    formatta={formatEur}
+                  />
+                ) : (
+                  // Senza chi la salvi resta una colonna di lettura: meglio di
+                  // una cella che accetta un numero e lo butta via.
+                  <td className="border-r border-white px-2 py-1.5 text-right tabular-nums">
+                    {effObiettivo(r) !== null ? (
+                      formatEur(effObiettivo(r) as number)
                     ) : (
                       <span className="text-slate-400">–</span>
                     )}
@@ -509,15 +658,6 @@ export default function OperatorStatsTable({
             <td className="border-r border-white px-2 py-2 text-right tabular-nums">{hubspotLoading ? <span className="font-normal text-slate-400">–</span> : formatEur(totals.boom)}</td>
             {isSetterView ? null : (
               <td className="border-r border-white px-2 py-2 text-right tabular-nums">
-                {totals.obiettivo !== null ? (
-                  formatEur(totals.obiettivo)
-                ) : (
-                  <span className="font-normal text-slate-400">–</span>
-                )}
-              </td>
-            )}
-            {isSetterView ? null : (
-              <td className="border-r border-white px-2 py-2 text-right tabular-nums">
                 {/* La resa del totale NON e' la media delle rese: e' l'incasso
                     di tutti diviso le ore di tutti. La media delle righe darebbe
                     lo stesso peso a chi ha fatto due consulenze e a chi ne ha
@@ -529,6 +669,13 @@ export default function OperatorStatsTable({
                 )}
               </td>
             )}
+            <td className="border-r border-white px-2 py-2 text-right tabular-nums">
+              {totals.obiettivo !== null ? (
+                formatEur(totals.obiettivo)
+              ) : (
+                <span className="font-normal text-slate-400">–</span>
+              )}
+            </td>
           </tr>
         </tfoot>
       </table>
