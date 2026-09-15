@@ -19,6 +19,7 @@ import {
   type Riunione
 } from "@/lib/abbinamento";
 import { leggiFrasi, leggiNomiCitati, leggiTrascrizioni, linkTrascrizione } from "@/lib/fireflies";
+import { gettoneTrascrizione } from "@/lib/gettoneTrascrizione";
 
 const HUBSPOT = "https://api.hubapi.com";
 const MIN = 60_000;
@@ -33,6 +34,34 @@ const FINESTRA_TRATTATIVA = 15 * MIN;
 const TOLLERANZA_STESSA_CONSULENZA = 30 * MIN;
 
 const attesa = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * L'indirizzo che finisce sulla scheda del contatto.
+ *
+ * NON E' LA PAGINA DI FIREFLIES, ed e' una scelta obbligata. Quel campo lo
+ * legge l'applicazione che produce l'analisi della call, e lo fa SCARICANDO
+ * un file: il flusso Zapier ci scriveva un indirizzo di download generato dal
+ * connettore Fireflies, un .docx firmato e valido sei ore. Da quando quel
+ * flusso e' spento abbiamo scritto la pagina - stabile e adatta a chi la apre
+ * per leggerla - e da una pagina quell'applicazione non ricava niente: dal 14
+ * settembre le analisi si sono fermate.
+ *
+ * Qui si torna a un file, ma servito da noi: stesso formato, stesso modo di
+ * consumarlo, e un indirizzo che non scade piu' dopo sei ore - che era anche
+ * il motivo per cui certe analisi non venivano mai prodotte.
+ *
+ * LA NOSTRA AGENDA NON PASSA DA QUI: legge l'identificativo dal database e
+ * ricava la pagina e l'audio per conto suo. Questo campo serve solo a quella
+ * applicazione.
+ */
+function indirizzoTrascrizione(id: string): string {
+  const segreto = process.env.FIREFLIES_WEBHOOK_SECRET;
+  // Senza segreto non si puo' firmare: si ripiega sulla pagina, che almeno
+  // resta apribile da una persona.
+  if (!segreto) return linkTrascrizione(id);
+  const base = process.env.APP_URL ?? "https://dashboard-smoky-eight-94.vercel.app";
+  return `${base}/api/trascrizione/${id}.docx?t=${gettoneTrascrizione(id, segreto)}`;
+}
 
 export type EsitoSync = {
   periodo: { da: string; a: string };
@@ -403,7 +432,7 @@ export async function sincronizzaTrascrizioni(opzioni: {
       }
 
       const proprieta: Record<string, string> = {
-        link_trascrizione_fireflies: `${linkTrascrizione(x.registrazione.id)} [${quando}]`
+        link_trascrizione_fireflies: `${indirizzoTrascrizione(x.registrazione.id)} [${quando}]`
       };
       const audio = audioDi.get(x.registrazione.id);
       if (audio) proprieta.link_audio_fireflies = `${audio} [${quando}]`;

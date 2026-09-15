@@ -244,6 +244,9 @@ function idTrascrizione(grezzo: string | null | undefined): string | undefined {
     return new URL(v).pathname
       .split("/")
       .filter(Boolean)
+      // L'estensione si toglie: da quando il collegamento punta al documento
+      // che serviamo noi, l'ultimo pezzo e' "<identificativo>.docx".
+      .map((p) => p.replace(/\.(docx|txt)$/i, ""))
       .find((p) => /^[0-9A-Z]{20,32}$/.test(p));
   } catch {
     return undefined;
