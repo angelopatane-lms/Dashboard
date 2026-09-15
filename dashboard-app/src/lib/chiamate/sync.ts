@@ -44,6 +44,15 @@ export type OpzioniChiamate = {
 // ferma e lo si dichiara, invece di farsi uccidere a meta'.
 const MAX_INCREMENTALE = 1200;
 
+/**
+ * La chiave del segnalibro dell'incrementale, separata da quella del bootstrap.
+ *
+ * Servono due chiavi e non una: il bootstrap cancella la sua quando finisce, e
+ * con una chiave sola la cancellazione di un bootstrap farebbe ripartire
+ * l'incrementale dall'inizio della finestra, rifacendo lavoro gia' fatto.
+ */
+const SEGNALIBRO_INCREMENTALE = "chiamate-inc";
+
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -184,13 +193,33 @@ export async function sincronizzaChiamate(
     rows: [log]
   } = await db.query(`INSERT INTO sync_log (tipo) VALUES ('chiamate') RETURNING id`);
 
-  // Il bootstrap dura un'ora: se si interrompe deve riprendere dall'ultimo
-  // blocco salvato. L'incrementale e' breve e riparte sempre da capo.
-  let daId = 0;
-  if (tipo === "bootstrap") {
-    const { rows } = await db.query(`SELECT ultimo_id FROM sync_checkpoint WHERE tipo = 'chiamate'`);
-    daId = rows[0] ? Number(rows[0].ultimo_id) : 0;
-  }
+  // ENTRAMBI RIPRENDONO DA DOVE ERANO ARRIVATI.
+  //
+  // Il bootstrap lo faceva gia', perche' dura un'ora e puo' interrompersi.
+  // L'incrementale invece ripartiva sempre da capo, e li' c'era un meccanismo a
+  // cricchetto: la finestra parte dall'ultima esecuzione RIUSCITA, quindi un
+  // giro troncato la lasciava ferma, il giro dopo guardava un periodo piu'
+  // lungo e si troncava anche lui. Ogni fallimento rendeva il successivo piu'
+  // probabile, e il tetto di 1200 sta sotto il volume di una giornata normale
+  // (1.250-1.350 chiamate): bastava UNA esecuzione saltata perche' il recupero
+  // diventasse impossibile per sempre. Successo davvero, dal 12 settembre: tre
+  // giorni di chiamate mai entrati, 18 tentativi tutti falliti.
+  //
+  // Con il segnalibro un giro troncato non e' piu' un vicolo cieco: il
+  // successivo riparte dall'ultimo id salvato dentro la STESSA finestra e ne
+  // mangia altri 1200, finche' la finestra si esaurisce e il giro riesce. La
+  // ricerca ordina per id crescente e filtra su id maggiore, quindi riprendere
+  // da un id salta esattamente quello che era gia' stato fatto.
+  const chiaveSegnalibro = tipo === "bootstrap" ? "chiamate" : SEGNALIBRO_INCREMENTALE;
+  const { rows: segnalibro } = await db.query(
+    `SELECT ultimo_id FROM sync_checkpoint WHERE tipo = $1`,
+    [chiaveSegnalibro]
+  );
+  const daId = segnalibro[0] ? Number(segnalibro[0].ultimo_id) : 0;
+  /** L'id piu' alto processato in questo giro: finisce nel messaggio del giro
+   *  troncato, cosi' dal log si vede che il recupero avanza di volta in volta
+   *  invece di girare a vuoto. */
+  let raggiunto = daId;
 
   const esito: EsitoChiamate = {
     chiamate: 0,
@@ -238,16 +267,15 @@ export async function sincronizzaChiamate(
       esito.senzaCampagna += campagne.filter((c) => c === null).length;
 
       const ultimoId = Number(blocco[blocco.length - 1].id);
-      if (tipo === "bootstrap") {
-        await db.query(
-          `INSERT INTO sync_checkpoint (tipo, ultimo_id, contatti, eventi, aggiornato_at)
-           VALUES ('chiamate', $1, $2, $3, now())
-           ON CONFLICT (tipo) DO UPDATE
-             SET ultimo_id = EXCLUDED.ultimo_id, contatti = EXCLUDED.contatti,
-                 eventi = EXCLUDED.eventi, aggiornato_at = now()`,
-          [ultimoId, esito.chiamate, esito.connesse]
-        );
-      }
+      raggiunto = ultimoId;
+      await db.query(
+        `INSERT INTO sync_checkpoint (tipo, ultimo_id, contatti, eventi, aggiornato_at)
+         VALUES ($1, $2, $3, $4, now())
+         ON CONFLICT (tipo) DO UPDATE
+           SET ultimo_id = EXCLUDED.ultimo_id, contatti = EXCLUDED.contatti,
+               eventi = EXCLUDED.eventi, aggiornato_at = now()`,
+        [chiaveSegnalibro, ultimoId, esito.chiamate, esito.connesse]
+      );
 
       opzioni.onProgresso?.({ ...esito, ultimoId });
 
@@ -257,7 +285,12 @@ export async function sincronizzaChiamate(
       }
     }
 
-    if (tipo === "bootstrap") await db.query(`DELETE FROM sync_checkpoint WHERE tipo = 'chiamate'`);
+    // Il segnalibro si cancella solo quando la finestra e' stata percorsa
+    // tutta: se il giro e' stato troncato deve restare, ed e' proprio li' che
+    // serve.
+    if (!esito.troncato) {
+      await db.query(`DELETE FROM sync_checkpoint WHERE tipo = $1`, [chiaveSegnalibro]);
+    }
 
     await db.query(
       `UPDATE sync_log SET finito_at = now(), contatti = $2, eventi = $3, esito = $4, messaggio = $5 WHERE id = $1`,
@@ -269,7 +302,7 @@ export async function sincronizzaChiamate(
         // finestra del giro successivo, lasciando un buco permanente.
         esito.troncato ? "errore" : "ok",
         esito.troncato
-          ? `Troncato al tetto di ${MAX_INCREMENTALE}: finestra troppo ampia. Rilanciare "npm run bootstrap:chiamate".`
+          ? `Troncato al tetto di ${MAX_INCREMENTALE}: riprende dall'id ${raggiunto} al prossimo giro.`
           : null
       ]
     );
