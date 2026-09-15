@@ -475,7 +475,27 @@ async function sondaContatto(token: string, id: string): Promise<Record<string, 
     if (!res.ok) return { id, stato: res.status };
     const d = await res.json();
     const v = String(d.properties?.link_trascrizione_fireflies ?? "").trim();
-    return { id, stato: 200, campoPieno: Boolean(v), lunghezza: v.length, risolto: Boolean(idTrascrizione(v)) };
+
+    // LA STESSA LETTURA, MA A BLOCCHI. E' l'unica differenza rimasta fra questa
+    // sonda, che il campo lo vede, e la lettura di giornata, che lo trova vuoto
+    // su tutti. Se qui il campo torna e li' no, la causa e' nella forma della
+    // richiesta e non nei permessi.
+    const b = await fetch(`${HUBSPOT_API}/crm/v3/objects/contacts/batch/read`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ properties: ["link_trascrizione_fireflies"], inputs: [{ id }] })
+    });
+    const bj = b.ok ? await b.json() : null;
+    const bv = String(bj?.results?.[0]?.properties?.link_trascrizione_fireflies ?? "").trim();
+
+    return {
+      id,
+      stato: 200,
+      campoPieno: Boolean(v),
+      lunghezza: v.length,
+      risolto: Boolean(idTrascrizione(v)),
+      aBlocchi: { stato: b.status, risultati: bj?.results?.length ?? 0, campoPieno: Boolean(bv), lunghezza: bv.length }
+    };
   } catch (e) {
     return { id, errore: e instanceof Error ? e.message.slice(0, 120) : "?" };
   }
