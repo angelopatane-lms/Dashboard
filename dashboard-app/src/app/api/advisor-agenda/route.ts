@@ -999,7 +999,7 @@ export async function GET(req: NextRequest) {
             headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
             body: JSON.stringify({
               properties: ["link_trascrizione_fireflies"],
-              inputs: diGiornata.slice(0, 10).map((id) => ({ id: String(id) }))
+              inputs: diGiornata.map((id) => ({ id: String(id) }))
             })
           });
           if (!res.ok) return { stato: res.status, testo: (await res.text()).slice(0, 200) };
@@ -1009,10 +1009,12 @@ export async function GET(req: NextRequest) {
           );
           return {
             stato: 200,
-            inviati: Math.min(diGiornata.length, 10),
+            inviati: diGiornata.length,
             risultati: (d.results ?? []).length,
             conCampo: pieni.length,
-            primo: pieni[0]?.id ?? null
+            primo: pieni[0]?.id ?? null,
+            contieneLia: diGiornata.map(String).includes("38673359080"),
+            primiIds: diGiornata.slice(0, 6).map(String)
           };
         } catch (e) {
           return { errore: e instanceof Error ? e.message.slice(0, 150) : "?" };
