@@ -445,8 +445,8 @@ export function FiltersBar({
   };
 
   const campoData = (etichetta: string, valore: string | undefined, quale: "from" | "to") => (
-    <label className="flex flex-1 items-center gap-1.5">
-      <span className="text-xs text-slate-500">{etichetta}</span>
+    <label className="flex flex-1 flex-col gap-1">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">{etichetta}</span>
       {/* FONDO GRIGIO, NON BIANCO. Dentro una tendina bianca un campo bianco
           con un filo di bordo chiaro non si vede: sembrava che sotto le voci
           non ci fosse niente. Il grigio lo stacca dal foglio, come fanno i
@@ -477,8 +477,8 @@ export function FiltersBar({
           {/* STESSO CORPO DELLE ALTRE VOCI. Scritta in maiuscoletto minuto
               sembrava un'etichetta di servizio, mentre e' una scelta come le
               altre: cambia solo il modo di esprimerla. */}
-          <div className="px-2 py-1.5 text-sm text-slate-700">Date Specifiche</div>
-          <div className="flex flex-col gap-1.5 px-2 pb-1">
+          <div className="px-2 py-1.5 text-sm">Date Specifiche</div>
+          <div className="flex items-end gap-2 px-2 pb-1">
             {campoData("Dal", filters.from, "from")}
             {campoData("Al", filters.to, "to")}
           </div>
