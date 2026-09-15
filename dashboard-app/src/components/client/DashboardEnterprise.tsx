@@ -88,6 +88,14 @@ export default function DashboardEnterprise({
   const [vendite, setVendite] = useState<Array<{ label: string; value: string }>>([]);
   const [rawBoomRecords, setRawBoomRecords] = useState<RawBoomRecord[]>([]);
   const [rawDealRecords, setRawDealRecords] = useState<RawDealRecord[] | null>(null);
+  // I no show per setter, dal nostro database e non dal foglio Operatori: la
+  // colonna del foglio e' ferma a zero dal 19 agosto 2026, vedi il commento in
+  // src/app/api/setter-trattative/route.ts.
+  const [noShowSetter, setNoShowSetter] = useState<Record<string, number> | null>(null);
+  // Le consulenze svolte nate dagli appuntamenti di quel setter: il
+  // denominatore di "% Chiusura" sulla sua pagina. Nel foglio Operatori quel
+  // campo e' zero per chi fa solo il setter.
+  const [svolteSetter, setSvolteSetter] = useState<Record<string, number> | null>(null);
   const fetchedRangeRef = useRef<{ from: string; to: string } | null>(null);
 
   const todayIsoRome = useMemo(
@@ -107,6 +115,45 @@ export default function DashboardEnterprise({
       })
       .catch(console.error);
   }, [useHubspot]);
+
+  // I NO SHOW PER SETTER, in un effetto a parte.
+  //
+  // Non dentro quello di HubSpot per due motivi: quello si ferma se la finestra
+  // richiesta e' gia' contenuta in una scaricata prima (`fetchedRangeRef`), e
+  // questa query invece dipende anche dalla campagna scelta, che quel controllo
+  // non guarda. Ed e' una query al nostro database, non a HubSpot: costa
+  // millisecondi, quindi non ha bisogno di quella cache.
+  useEffect(() => {
+    const dal = filters.from ?? defaultFrom;
+    const al = filters.to ?? defaultTo;
+    let annullato = false;
+
+    fetch(
+      `/api/setter-trattative?from=${dal}&to=${al}` +
+        (filters.campagna ? `&campagna=${encodeURIComponent(filters.campagna)}` : "")
+    )
+      .then((r) => r.json())
+      .then((data: {
+        perSetter?: Record<string, number>;
+        svoltePerSetter?: Record<string, number>;
+        error?: string;
+      }) => {
+        if (annullato) return;
+        if (data.error) {
+          console.error("[setter-trattative]", data.error);
+          return;
+        }
+        setNoShowSetter(data.perSetter ?? {});
+        setSvolteSetter(data.svoltePerSetter ?? {});
+      })
+      .catch(console.error);
+
+    // Se i filtri cambiano mentre la richiesta e' in volo, la risposta vecchia
+    // non deve sovrascrivere quella nuova.
+    return () => {
+      annullato = true;
+    };
+  }, [filters.from, filters.to, filters.campagna, defaultFrom, defaultTo]);
 
   useEffect(() => {
     if (!useHubspot) return;
@@ -271,7 +318,7 @@ export default function DashboardEnterprise({
   useEffect(() => {
     if (!finestraStorica) return;
     let annullato = false;
-    fetch(`/api/advisor-andamento?from=${finestraStorica.from}&to=${finestraStorica.to}`)
+    fetch(`/api/advisor-andamento?from=${finestraStorica.from}&to=${finestraStorica.to}&vista=${setterView ? "setter" : "advisor"}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d: { righe?: AdvisorAndamentoRow[] }) => {
         if (annullato) return;
@@ -286,7 +333,7 @@ export default function DashboardEnterprise({
     return () => {
       annullato = true;
     };
-  }, [finestraStorica]);
+  }, [finestraStorica, setterView]);
 
   const conHubspot = daHubspot !== null && !hubspotFallito;
 
@@ -327,7 +374,17 @@ export default function DashboardEnterprise({
       }
       if (filters.vendita && r.tipo_di_vendita.trim().toLowerCase() !== filters.vendita.trim().toLowerCase()) continue;
       if (filters.prodotto && r.prodotto !== filters.prodotto) continue;
-      const key = r.operatore.trim().toLowerCase().replace(/\s+/g, " ");
+      // CHI SI PRENDE L'INCASSO DIPENDE DALLA PAGINA. Sulla pagina Advisor e'
+      // chi ha venduto, il proprietario. Sulla pagina Setter e' chi ha
+      // procurato l'appuntamento: sono due persone diverse nel 39% degli
+      // incassi, quindi tenere il proprietario anche qui attribuiva a ogni
+      // setter le vendite di un Advisor con lo stesso nome - cioe' quasi
+      // sempre niente, e a qualcuno numeri non suoi.
+      const attribuito = setterView ? r.setter : r.operatore;
+      // Senza attribuzione il record si salta: un incasso di cui non sappiamo
+      // chi ha fissato l'appuntamento non appartiene a nessuna riga.
+      if (!attribuito) continue;
+      const key = attribuito.trim().toLowerCase().replace(/\s+/g, " ");
       const cur = agg[key] ?? { chiusure: 0, boom: 0, incassoChiusure: 0 };
       if (CHIUSURE_TIPOLOGIE.has(r.tipologia_di_incasso)) {
         cur.chiusure += 1;
@@ -343,7 +400,7 @@ export default function DashboardEnterprise({
       agg[key] = cur;
     }
     return agg;
-  }, [useHubspot, rawBoomRecords, filters, defaultFrom, defaultTo]);
+  }, [useHubspot, rawBoomRecords, filters, defaultFrom, defaultTo, setterView]);
 
   const trattativeOverrides = useMemo((): Record<string, number> | null => {
     if (!useHubspot || rawDealRecords === null) return null;
@@ -399,10 +456,29 @@ export default function DashboardEnterprise({
     () => (kpis.connessioni ? kpis.appuntamenti / kpis.connessioni : 0),
     [kpis]
   );
-  const noShowPct = useMemo(
-    () => (kpis.appuntamenti ? kpis.noShow / kpis.appuntamenti : 0),
-    [kpis]
-  );
+  /**
+   * Il totale dei no show del periodo, dal database.
+   *
+   * La colonna del foglio - `kpis.noShow` - e' ferma a zero dal 19 agosto 2026,
+   * quindi qui mostrava zero e nella barra degli stati lead la fetta "No Show"
+   * spariva. Il filtro campagna lo applica la rotta; quello per operatore va
+   * applicato qui, perche' la rotta restituisce l'azienda intera.
+   *
+   * Vale null finche' la risposta non arriva, cosi' chi lo usa sa di dover
+   * ripiegare sul foglio invece di mostrare uno zero che sembra un dato.
+   */
+  const noShowDb = useMemo((): number | null => {
+    if (!noShowSetter) return null;
+    const chiave = (x: string) => x.trim().toLowerCase().replace(/\s+/g, " ");
+    const scelto = (filters.operatore ?? "").trim();
+    if (scelto) return noShowSetter[chiave(scelto)] ?? 0;
+    return Object.values(noShowSetter).reduce((somma, n) => somma + n, 0);
+  }, [noShowSetter, filters.operatore]);
+
+  const noShowPct = useMemo(() => {
+    const disertati = noShowDb ?? kpis.noShow;
+    return kpis.appuntamenti ? disertati / kpis.appuntamenti : 0;
+  }, [kpis, noShowDb]);
 
   const reactivityPct = useMemo(() => {
     if (kpis.chiamate === 0) return 0;
@@ -444,6 +520,11 @@ export default function DashboardEnterprise({
       }
     );
 
+    // La fetta dei disertati viene dal database quando c'e': quella del foglio
+    // e' a zero, e una barra a cui manca una fetta ridistribuisce le
+    // percentuali su tutte le altre, che diventano tutte sbagliate.
+    const disertati = noShowDb ?? totals.noShow;
+
     const total =
       totals.nuovi +
       totals.nonRisposti +
@@ -452,7 +533,7 @@ export default function DashboardEnterprise({
       totals.daRichiamare +
       totals.bin +
       totals.appuntamenti +
-      totals.noShow;
+      disertati;
 
     const toPct = (n: number) => (total > 0 ? n / total : 0);
 
@@ -464,9 +545,9 @@ export default function DashboardEnterprise({
       { label: "Da\u00A0Richiamare", value: toPct(totals.daRichiamare), color: "#22c55e" },
       { label: "BIN", value: toPct(totals.bin), color: "#ef4444" },
       { label: "Appuntamenti", value: toPct(totals.appuntamenti), color: "#14b8a6" },
-      { label: "No Show", value: toPct(totals.noShow), color: "#94a3b8" }
+      { label: "No Show", value: toPct(disertati), color: "#94a3b8" }
     ];
-  }, [operatoriNorm]);
+  }, [operatoriNorm, noShowDb]);
 
   const campaignAnomalies = useMemo(() => {
     const toMs = (iso: string) => new Date(iso).getTime();
@@ -690,7 +771,7 @@ export default function DashboardEnterprise({
                   Caricamento dei dati in corso...
                 </div>
               ) : (
-              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} />
+              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} />
               )}
             </Card>
           </div>

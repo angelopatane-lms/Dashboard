@@ -93,6 +93,8 @@ const LARGHEZZA_NUMERI = larghezzaColonnaNumeri(INTESTAZIONI_NUMERI);
 export default function OperatorStatsTable({
   data,
   hubspotOverrides,
+  noShowOverrides,
+  svolteOverrides,
   trattativeOverrides,
   precomputedTotals,
   hubspotLoading,
@@ -102,6 +104,28 @@ export default function OperatorStatsTable({
 }: {
   data: OperatorSummary[];
   hubspotOverrides?: Record<string, { chiusure: number; boom: number; incassoChiusure: number }>;
+  /**
+   * Gli appuntamenti disertati per setter, dal database.
+   *
+   * Sostituisce la colonna "No Show" del foglio Operatori, che e' ferma a zero
+   * dal 19 agosto 2026: lo script di Apps Script che la riempiva cerca un
+   * valore HubSpot rinominato nel frattempo. Il foglio perde anche giorni
+   * interi quando il trigger giornaliero non parte, e non li recupera mai.
+   *
+   * Chiave: nome del setter minuscolo e con gli spazi normalizzati, la stessa
+   * di hubspotOverrides.
+   */
+  noShowOverrides?: Record<string, number>;
+  /**
+   * Le consulenze svolte nate dagli appuntamenti di quel setter, dal database.
+   *
+   * Serve al denominatore di "% Chiusura" sulla pagina Setter. La colonna
+   * Consulenze del foglio Operatori non va bene: attribuisce la consulenza
+   * all'Advisor che la tiene, quindi per chi fa solo il setter vale zero -
+   * misurato a settembre, otto persone con appuntamenti e zero consulenze, fra
+   * cui chi ne aveva fissati 102 - e la percentuale diventava un trattino.
+   */
+  svolteOverrides?: Record<string, number>;
   trattativeOverrides?: Record<string, number>;
   precomputedTotals?: { chiusure: number; boom: number };
   hubspotLoading?: boolean;
@@ -118,6 +142,14 @@ export default function OperatorStatsTable({
 }) {
   const isSetterView = operatorLabel === "Setter";
   const normKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+  // Il foglio resta il ripiego: se il database non risponde la colonna mostra
+  // il vecchio numero invece di azzerarsi, e per i mesi in cui il foglio era
+  // ancora buono i due valori sono confrontabili.
+  const effNoShow = (r: OperatorSummary) => noShowOverrides?.[normKey(r.operatore)] ?? r.noShow;
+  // Sulla pagina Setter il denominatore sono le consulenze che i SUOI
+  // appuntamenti hanno prodotto; su quella Advisor restano le sue, dal foglio.
+  const effConsulenzeChiusura = (r: OperatorSummary) =>
+    isSetterView ? svolteOverrides?.[normKey(r.operatore)] ?? 0 : r.consulenze;
   const effChiusure = (r: OperatorSummary) => hubspotOverrides?.[normKey(r.operatore)]?.chiusure ?? 0;
   const effBoom = (r: OperatorSummary) => hubspotOverrides?.[normKey(r.operatore)]?.boom ?? 0;
   /**
@@ -142,7 +174,7 @@ export default function OperatorStatsTable({
         chiamate: acc.chiamate + r.chiamate,
         connessioni: acc.connessioni + r.connessioni,
         appuntamenti: acc.appuntamenti + effAppuntamenti(r),
-        consulenze: acc.consulenze + (isSetterView ? r.noShow : r.consulenze),
+        consulenze: acc.consulenze + (isSetterView ? effNoShow(r) : r.consulenze),
         chiusure: acc.chiusure + effChiusure(r),
         boom: acc.boom + effBoom(r),
         obiettivo: acc.obiettivo + (effObiettivo(r) ?? 0)
@@ -157,7 +189,7 @@ export default function OperatorStatsTable({
       chiusure: precomputedTotals?.chiusure ?? base.chiusure,
       boom: precomputedTotals?.boom ?? base.boom
     };
-  }, [data, hubspotOverrides, trattativeOverrides, precomputedTotals, obiettivi]);
+  }, [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, precomputedTotals, obiettivi]);
 
   const maxValues = useMemo(
     () => ({
@@ -165,18 +197,18 @@ export default function OperatorStatsTable({
       chiamate: Math.max(...data.map((r) => r.chiamate), 1),
       connessioni: Math.max(...data.map((r) => r.connessioni), 1),
       appuntamenti: Math.max(...data.map((r) => effAppuntamenti(r)), 1),
-      consulenze: Math.max(...data.map((r) => isSetterView ? r.noShow : r.consulenze), 1),
+      consulenze: Math.max(...data.map((r) => isSetterView ? effNoShow(r) : r.consulenze), 1),
       chiusure: Math.max(...data.map((r) => effChiusure(r)), 1),
       boom: Math.max(...data.map((r) => effBoom(r)), 1),
       resa: Math.max(...data.map((r) => resaOraria(effIncassoChiusure(r), r.consulenze) ?? 0), 1)
     }),
-    [data, hubspotOverrides, trattativeOverrides]
+    [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides]
   );
 
 
   const sorted = useMemo(
     () => [...data].sort((a, b) => effBoom(b) - effBoom(a) || effAppuntamenti(b) - effAppuntamenti(a)),
-    [data, hubspotOverrides, trattativeOverrides]
+    [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides]
   );
 
   /**
@@ -194,10 +226,10 @@ export default function OperatorStatsTable({
     { label: "% Appuntamento", valore: (r) => tassoPresa(effAppuntamenti(r), r.connessioni) },
     {
       label: isSetterView ? "No Show" : "Consulenze",
-      valore: (r) => (isSetterView ? r.noShow : r.consulenze)
+      valore: (r) => (isSetterView ? effNoShow(r) : r.consulenze)
     },
     { label: "Chiusure", valore: (r) => effChiusure(r) },
-    { label: "% Chiusura", valore: (r) => tassoChiusura(effChiusure(r), r.consulenze) },
+    { label: "% Chiusura", valore: (r) => tassoChiusura(effChiusure(r), effConsulenzeChiusura(r)) },
     { label: "Boom", valore: (r) => effBoom(r) }
   ];
 
@@ -223,7 +255,12 @@ export default function OperatorStatsTable({
     : sorted;
 
   const totalTp = tassoPresa(totals.appuntamenti, totals.connessioni);
-  const totalTc = tassoChiusura(totals.chiusure, isSetterView ? 0 : totals.consulenze);
+  // Sulla vista Setter il totale era soppresso perche' il denominatore era
+  // zero. Ora c'e', e si somma dalla stessa fonte delle righe.
+  const totaleSvolte = isSetterView
+    ? sorted.reduce((somma, r) => somma + effConsulenzeChiusura(r), 0)
+    : totals.consulenze;
+  const totalTc = tassoChiusura(totals.chiusure, totaleSvolte);
   const resaTotale = resaOraria(
     sorted.reduce((s, r) => s + effIncassoChiusure(r), 0),
     totals.consulenze
@@ -299,7 +336,7 @@ export default function OperatorStatsTable({
         <tbody className="divide-y divide-slate-100">
           {righe.map((r) => {
             const tp = tassoPresa(effAppuntamenti(r), r.connessioni);
-            const tc = tassoChiusura(effChiusure(r), r.consulenze);
+            const tc = tassoChiusura(effChiusure(r), effConsulenzeChiusura(r));
             return (
               <tr key={r.operatore} className="group hover:bg-slate-50/70 transition-colors">
                 <td
@@ -340,9 +377,9 @@ export default function OperatorStatsTable({
                 </td>
                 <td
                   className="border-r border-white px-2 py-1.5 text-right tabular-nums"
-                  style={{ background: heatBg(isSetterView ? r.noShow : r.consulenze, maxValues.consulenze) }}
+                  style={{ background: heatBg(isSetterView ? effNoShow(r) : r.consulenze, maxValues.consulenze) }}
                 >
-                  {formatInt(isSetterView ? r.noShow : r.consulenze)}
+                  {formatInt(isSetterView ? effNoShow(r) : r.consulenze)}
                 </td>
                 <td
                   className="border-r border-white px-2 py-1.5 text-right tabular-nums"

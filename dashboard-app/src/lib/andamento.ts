@@ -334,8 +334,8 @@ export function righeAdvisor(norm: OperatoriNormalized[]): RigaAdvisor[] {
 /**
  * Unisce le righe del foglio con quelle lette da HubSpot.
  *
- * APPUNTAMENTI, CHIUSURE E BOOM ARRIVANO DA HUBSPOT, esattamente come nella
- * tabella qui sopra: li' sono "override" che coprono il foglio, e sul grafico
+ * APPUNTAMENTI, CHIUSURE, BOOM E NO SHOW NON ARRIVANO DAL FOGLIO, esattamente
+ * come nella tabella qui sopra: li' sono "override" che coprono il foglio, e sul grafico
  * devono esserlo altrettanto, se no la stessa persona avrebbe due numeri
  * diversi a mezzo schermo di distanza.
  *
@@ -348,13 +348,24 @@ export function righeAdvisor(norm: OperatoriNormalized[]): RigaAdvisor[] {
  */
 export function unisciAdvisor(
   daFoglio: RigaAdvisor[],
-  daHubspot: Array<{ mese: string; operatore: string; appuntamenti: number; chiusure: number; boom: number }>
+  daHubspot: Array<{
+    mese: string;
+    operatore: string;
+    appuntamenti: number;
+    chiusure: number;
+    boom: number;
+    noShow: number;
+  }>
 ): RigaAdvisor[] {
   const chiave = (mese: string, nome: string) =>
     `${mese}|${nome.trim().toLowerCase().replace(/\s+/g, " ")}`;
 
+  // Anche il no show si azzera prima: quello del foglio e' fermo a zero dal 19
+  // agosto 2026 e per i mesi precedenti conta un'altra cosa (le consulenze
+  // segnate a vuoto, non gli ingressi in fase No Show). Sommarli darebbe un
+  // numero che non e' ne' l'uno ne' l'altro.
   const per = new Map<string, RigaAdvisor>();
-  for (const r of daFoglio) per.set(chiave(r.mese, r.gruppo), { ...r, appuntamenti: 0 });
+  for (const r of daFoglio) per.set(chiave(r.mese, r.gruppo), { ...r, appuntamenti: 0, noShow: 0 });
 
   for (const h of daHubspot) {
     const r = per.get(chiave(h.mese, h.operatore));
@@ -362,6 +373,7 @@ export function unisciAdvisor(
     r.appuntamenti += h.appuntamenti;
     r.chiusure += h.chiusure;
     r.boom += h.boom;
+    r.noShow += h.noShow;
   }
 
   return Array.from(per.values());
