@@ -988,6 +988,36 @@ export async function GET(req: NextRequest) {
       contattiLetti,
       contattiConCampo,
       portale: await portaleCollegato(token),
+      // LA CHIAMATA VERA, RIFATTA QUI. La sonda su un contatto solo vede il
+      // campo, la lettura di giornata no: l'unica differenza rimasta e' la
+      // lista. Questa la rifa' identica, con gli stessi identificativi, e dice
+      // quanti tornano col campo pieno.
+      provaGiornata: await (async () => {
+        try {
+          const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/contacts/batch/read`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              properties: ["link_trascrizione_fireflies"],
+              inputs: diGiornata.slice(0, 100).map((id) => ({ id: String(id) }))
+            })
+          });
+          if (!res.ok) return { stato: res.status, testo: (await res.text()).slice(0, 200) };
+          const d = await res.json();
+          const pieni = (d.results ?? []).filter((r: { properties?: Record<string, string | null> }) =>
+            (r.properties?.link_trascrizione_fireflies ?? "").trim()
+          );
+          return {
+            stato: 200,
+            inviati: Math.min(diGiornata.length, 100),
+            risultati: (d.results ?? []).length,
+            conCampo: pieni.length,
+            primo: pieni[0]?.id ?? null
+          };
+        } catch (e) {
+          return { errore: e instanceof Error ? e.message.slice(0, 150) : "?" };
+        }
+      })(),
       ...(req.nextUrl.searchParams.get("sonda")
         ? {
             sonda: {
