@@ -88,10 +88,6 @@ export default function DashboardEnterprise({
   const [vendite, setVendite] = useState<Array<{ label: string; value: string }>>([]);
   const [rawBoomRecords, setRawBoomRecords] = useState<RawBoomRecord[]>([]);
   const [rawDealRecords, setRawDealRecords] = useState<RawDealRecord[] | null>(null);
-  /** Ore di consulenza per advisor, per la colonna Resa. Restano assenti se la
-   *  lettura non risponde: la colonna mostra un trattino invece di un numero
-   *  inventato. */
-  const [oreAdvisor, setOreAdvisor] = useState<Record<string, number> | undefined>(undefined);
   const fetchedRangeRef = useRef<{ from: string; to: string } | null>(null);
 
   const todayIsoRome = useMemo(
@@ -121,19 +117,6 @@ export default function DashboardEnterprise({
 
     setDealsLoading(true);
     setBoomLoading(true);
-
-    // Le ore viaggiano per conto loro: servono a una colonna sola, e se
-    // tardano non devono trattenere il resto della tabella.
-    fetch(`/api/advisor-ore?from=${currentFrom}&to=${currentTo}`)
-      .then((r) => r.json())
-      .then((d: { ore?: Record<string, number>; error?: string }) => {
-        if (d.error) {
-          console.error("[advisor-ore]", d.error);
-          return;
-        }
-        setOreAdvisor(d.ore ?? {});
-      })
-      .catch(console.error);
 
     fetch(`/api/hubspot-deals?from=${currentFrom}&to=${currentTo}`)
       .then((r) => r.json())
@@ -695,7 +678,7 @@ export default function DashboardEnterprise({
                   Caricamento dei dati in corso...
                 </div>
               ) : (
-              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} ore={useHubspot ? oreAdvisor : undefined} />
+              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} />
               )}
             </Card>
           </div>

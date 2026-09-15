@@ -77,10 +77,20 @@ export async function registraPresenze(
     const p = chiEraInCall(frasi, x.daSec, x.aSec, x.riunione.contattoNome);
 
     try {
+      // LA DURATA SI SALVA ANCHE SE OGGI NON LA USA NESSUNO. La colonna Resa
+      // stima le ore a 45 minuti per consulenza, perche' le registrazioni
+      // coprono solo un terzo delle consulenze e su un terzo non si costruisce
+      // un denominatore. Il giorno in cui le postazioni saranno tutte a posto
+      // si passera' alle durate vere - e a quel punto serviranno i mesi
+      // precedenti, non solo quelli successivi. La durata e' gia' dentro la
+      // risposta che leggiamo: conservarla ora costa una colonna, ricostruirla
+      // dopo sarebbe impossibile.
+      const durata = x.aSec > x.daSec ? (x.aSec - x.daSec) / 60 : x.registrazione.durataMin;
+
       await db.query(
         `INSERT INTO presenza_call
-           (riunione_id, contatto_id, trascrizione, esito, motivo, voci, quota_secondo, inizio_ts, aggiornato_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+           (riunione_id, contatto_id, trascrizione, esito, motivo, voci, quota_secondo, inizio_ts, durata_min, aggiornato_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
          ON CONFLICT (riunione_id) DO UPDATE
            SET contatto_id = EXCLUDED.contatto_id,
                trascrizione = EXCLUDED.trascrizione,
@@ -89,6 +99,7 @@ export async function registraPresenze(
                voci = EXCLUDED.voci,
                quota_secondo = EXCLUDED.quota_secondo,
                inizio_ts = EXCLUDED.inizio_ts,
+               durata_min = EXCLUDED.durata_min,
                aggiornato_at = now()`,
         [
           x.riunione.id,
@@ -98,7 +109,8 @@ export async function registraPresenze(
           p.motivo,
           p.voci,
           p.quotaSecondo,
-          new Date(x.riunione.inizio)
+          new Date(x.riunione.inizio),
+          Math.round(durata * 10) / 10
         ]
       );
       esito.nuove++;

@@ -34,20 +34,38 @@ function tassoChiusura(chius: number, cons: number): number | null {
 }
 
 /**
+ * Quanto dura una consulenza, in minuti.
+ *
+ * MISURATO, NON DECISO: 76 call registrate negli ultimi 21 giorni danno media
+ * 45 minuti e mediana 46. La distribuzione e' larga - deviazione standard 26
+ * minuti, il 26% sotto i venti e il 17% sopra i settanta - quindi questo numero
+ * descrive bene il totale di un periodo e male la singola consulenza. Per una
+ * colonna che confronta persone su decine di consulenze e' il totale che conta.
+ *
+ * PERCHE' NON LA DURATA DELLO SLOT PRENOTATO, che sembra il dato ovvio ed e'
+ * quello che questa colonna usava fino a stamattina: gli slot non dicono quanto
+ * e' durata la call. Uno slot da 30 minuti produce call di 48 minuti in media,
+ * uno da 60 ne produce di 44 - cioe' la consulenza dura tre quarti d'ora
+ * qualunque cosa dica il calendario. Contare gli slot sottostimava del 59% le
+ * ore di chi prenota mezz'ora e le sovrastimava del 27% per chi prenota un'ora,
+ * e quella distorsione cadeva esattamente lungo il confronto fra advisor che la
+ * colonna esiste per fare.
+ *
+ * QUANDO LE REGISTRAZIONI COPRIRANNO TUTTI GLI ADVISOR questa costante va
+ * sostituita dalla durata vera, che nel frattempo viene gia' salvata in
+ * presenza_call.durata_min: sara' un cambio di denominatore, non di colonna.
+ */
+const MINUTI_PER_CONSULENZA = 45;
+
+/**
  * Quanto incassa un advisor per ogni ora di consulenza.
  *
- * LE ORE SONO QUELLE PRENOTATE, non quelle parlate. La durata vera della call
- * la sapremmo da Fireflies, ma oggi solo il 31% delle consulenze svolte lascia
- * una registrazione: la colonna direbbe che chi non registra rende
- * all'infinito. Lo slot c'e' per tutti e sbaglia allo stesso modo per tutti,
- * che su un confronto fra persone conta piu' della precisione assoluta.
- *
- * E NON SI CONTANO LE CONSULENZE PER UNA DURATA FISSA: gli slot medi vanno da
- * 30 a 60 minuti a seconda dell'advisor, quindi una durata unica sbaglierebbe
- * del doppio da una persona all'altra.
+ * Le ore sono stimate dal numero di consulenze, non misurate una per una: vedi
+ * MINUTI_PER_CONSULENZA per il perche' e per la misura che lo giustifica.
  */
-function resaOraria(incasso: number, ore: number | undefined): number | null {
-  return ore && ore > 0 ? incasso / ore : null;
+function resaOraria(incasso: number, consulenze: number): number | null {
+  const ore = (consulenze * MINUTI_PER_CONSULENZA) / 60;
+  return ore > 0 ? incasso / ore : null;
 }
 
 /** Come si legge in cella: "1.240 €/h". L'unita' sta qui e non
@@ -80,7 +98,6 @@ export default function OperatorStatsTable({
   hubspotLoading,
   trattativeLoading,
   operatorLabel = "Advisor",
-  ore,
   obiettivi
 }: {
   data: OperatorSummary[];
@@ -90,9 +107,6 @@ export default function OperatorStatsTable({
   hubspotLoading?: boolean;
   trattativeLoading?: boolean;
   operatorLabel?: string;
-  /** Ore di consulenza per advisor, con la stessa chiave di nome degli altri
-   *  scavalchi. Assente finche' la lettura non e' arrivata. */
-  ore?: Record<string, number>;
   /** L'obiettivo di Boom del mese, per persona, con la stessa chiave di nome
    *  degli altri valori che arrivano da fuori.
    *
@@ -134,12 +148,6 @@ export default function OperatorStatsTable({
     };
   }, [data, hubspotOverrides, trattativeOverrides, precomputedTotals, obiettivi]);
 
-  // La chiave di nome e' la stessa con cui arrivano incasso e appuntamenti: se
-  // le due normalizzazioni divergessero le righe non si incontrerebbero e la
-  // colonna resterebbe vuota senza dire perche'.
-  const oreDi = (r: OperatorSummary): number | undefined =>
-    ore?.[r.operatore.trim().toLowerCase().replace(/\s+/g, " ")];
-
   const maxValues = useMemo(
     () => ({
       assegnati: Math.max(...data.map((r) => r.assegnati), 1),
@@ -149,9 +157,9 @@ export default function OperatorStatsTable({
       consulenze: Math.max(...data.map((r) => isSetterView ? r.noShow : r.consulenze), 1),
       chiusure: Math.max(...data.map((r) => effChiusure(r)), 1),
       boom: Math.max(...data.map((r) => effBoom(r)), 1),
-      resa: Math.max(...data.map((r) => resaOraria(effBoom(r), oreDi(r)) ?? 0), 1)
+      resa: Math.max(...data.map((r) => resaOraria(effBoom(r), r.consulenze) ?? 0), 1)
     }),
-    [data, hubspotOverrides, trattativeOverrides, ore]
+    [data, hubspotOverrides, trattativeOverrides]
   );
 
 
@@ -187,7 +195,7 @@ export default function OperatorStatsTable({
   // non lo chiudono, non e' stato chiesto.
   if (!isSetterView) {
     colonne.push({ label: "Obiettivo", valore: (r) => effObiettivo(r) });
-    colonne.push({ label: "Resa", valore: (r) => resaOraria(effBoom(r), oreDi(r)) });
+    colonne.push({ label: "Resa", valore: (r) => resaOraria(effBoom(r), r.consulenze) });
   }
 
   // La colonna su cui si sta ordinando. Vuota vuol dire ordine di partenza -
@@ -205,8 +213,7 @@ export default function OperatorStatsTable({
 
   const totalTp = tassoPresa(totals.appuntamenti, totals.connessioni);
   const totalTc = tassoChiusura(totals.chiusure, isSetterView ? 0 : totals.consulenze);
-  const oreTotali = sorted.reduce((s, r) => s + (oreDi(r) ?? 0), 0);
-  const resaTotale = resaOraria(totals.boom, oreTotali);
+  const resaTotale = resaOraria(totals.boom, totals.consulenze);
 
   if (!data.length) return null;
 
@@ -356,13 +363,13 @@ export default function OperatorStatsTable({
                     style={{
                       background: hubspotLoading
                         ? undefined
-                        : heatBg(resaOraria(effBoom(r), oreDi(r)) ?? 0, maxValues.resa)
+                        : heatBg(resaOraria(effBoom(r), r.consulenze) ?? 0, maxValues.resa)
                     }}
                   >
                     {hubspotLoading ? (
                       <span className="text-slate-400">–</span>
-                    ) : resaOraria(effBoom(r), oreDi(r)) !== null ? (
-                      formatResa(resaOraria(effBoom(r), oreDi(r)) as number)
+                    ) : resaOraria(effBoom(r), r.consulenze) !== null ? (
+                      formatResa(resaOraria(effBoom(r), r.consulenze) as number)
                     ) : (
                       <span className="text-slate-400">–</span>
                     )}
