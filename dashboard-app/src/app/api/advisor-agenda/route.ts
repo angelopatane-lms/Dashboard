@@ -771,10 +771,10 @@ async function contattiConConsulenza(dalle: number, alle: number): Promise<Set<n
  * che deve ancora tenersi - risultava gia' svolta. Con `call_ts` si sa quando
  * la call e' stata fatta davvero, e fuori da quel giorno l'esito non si applica.
  *
- * LA TRASCRIZIONE INVECE RESTA SEMPRE. E' della riunione, non del giorno: se
- * l'appuntamento e' stato tenuto una volta e poi ripianificato, quella
- * registrazione riguarda le stesse persone e vale la pena poterla riaprire da
- * entrambe le card.
+ * E LA TRASCRIZIONE SEGUE LA STESSA REGOLA. Una registrazione appartiene al
+ * giorno in cui e' stata fatta: mostrarla anche sulla card dell'appuntamento
+ * ripianificato farebbe sembrare gia' registrata una consulenza che deve
+ * ancora tenersi.
  */
 async function presenzeDelleRiunioni(
   ids: string[],
@@ -806,7 +806,7 @@ async function presenzeDelleRiunioni(
           String(x.riunione_id),
           {
             esito: nelGiorno ? String(x.esito) : "",
-            trascrizione: String(x.trascrizione ?? "")
+            trascrizione: nelGiorno ? String(x.trascrizione ?? "") : ""
           }
         ];
       }
@@ -1453,8 +1453,16 @@ export async function GET(req: NextRequest) {
       // - il campo ce l'aveva. Su ieri invece ne tornavano sette su trentasei.
       // Non ho una spiegazione di quel comportamento; ho pero' un dato nostro
       // che non ne ha bisogno.
+      // IL RIPIEGO SUL CONTATTO VALE SOLO PER LE FASCE GIA' PASSATE. Sul
+      // contatto c'e' l'ultima registrazione fatta, senza distinzione di
+      // giorno: su un appuntamento che deve ancora tenersi mostrerebbe la
+      // registrazione di quello precedente, e la card sembrerebbe gia' svolta.
+      const inizioSlotPassato =
+        Number.isFinite(Date.parse(p.hs_meeting_start_time ?? "")) &&
+        Date.parse(p.hs_meeting_start_time ?? "") <= Date.now();
       const idTrascrizioneSua =
-        presenze.get(r.id)?.trascrizione || suoi.map((c) => trascrizioni.get(c)).find(Boolean);
+        presenze.get(r.id)?.trascrizione ||
+        (inizioSlotPassato ? suoi.map((c) => trascrizioni.get(c)).find(Boolean) : undefined);
 
       eventi.push({
         operatore,

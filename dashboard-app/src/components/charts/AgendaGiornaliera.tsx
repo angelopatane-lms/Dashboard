@@ -68,6 +68,26 @@ const COLORI: Record<
 };
 
 /**
+ * LE DUE CARD CHE PARLANO DI UN ALTRO GIORNO.
+ *
+ * Non sono stati dell'appuntamento - una ripianificata puo' essere svolta o
+ * disertata come qualunque altra - ma su queste due il fatto che la card
+ * riguardi un altro giorno conta piu' dello stato: sono poche, e chi scorre la
+ * colonna deve accorgersene subito. Quindi qui il colore lo decidono loro, e lo
+ * stato resta scritto nella scheda che si apre cliccando.
+ *
+ * Arancione e viola perche' non sono in uso da nessun'altra parte
+ * dell'agenda: azzurro, verde, grigio e bianco sono gia' i quattro stati.
+ */
+const COLORI_ALTRO_GIORNO: Record<
+  "ripianificata" | "nonPianificata",
+  { fondo: string; testo: string; secondario: string; bordo?: string }
+> = {
+  ripianificata: { fondo: "#fdba74", testo: "#7c2d12", secondario: "#9a3412" },
+  nonPianificata: { fondo: "#d8b4fe", testo: "#581c87", secondario: "#6b21a8" }
+};
+
+/**
  * La media aziendale del voto complessivo dell'advisor, misurata su 600 analisi.
  *
  * Sta accanto al voto perche' un numero da solo non si interpreta: senza un
@@ -677,11 +697,14 @@ export default function AgendaGiornaliera({
               <span className="text-xs font-medium text-slate-700">{v.label}</span>
             </div>
           ))}
-          {/* Questa voce serve: la freccia non si spiega da se', e chi la vede
-              deve capire che quella card esiste anche in un altro giorno - se
-              no sembra un doppione da segnalare. */}
+          {/* Quadratini come per gli stati, perche' ora e' un colore pieno e non
+              piu' un segno: la freccia resta sulla card, dove porta anche la
+              data dell'altro giorno. */}
           <div className="flex items-center gap-2">
-            <span className="inline-block w-3 text-center text-xs font-semibold leading-3 text-slate-700">↷</span>
+            <span
+              className="inline-block h-3 w-3 rounded-[3px]"
+              style={{ background: COLORI_ALTRO_GIORNO.ripianificata.fondo }}
+            />
             <span className="text-xs font-medium text-slate-700">Ripianificato</span>
           </div>
 
@@ -691,7 +714,10 @@ export default function AgendaGiornaliera({
               Una freccia di un altro disegno si sarebbe letta come un'altra
               cosa, e sarebbe stata piu' piccola. */}
           <div className="flex items-center gap-2">
-            <span className="inline-block w-3 text-center text-xs font-semibold leading-3 text-slate-700">↶</span>
+            <span
+              className="inline-block h-3 w-3 rounded-[3px]"
+              style={{ background: COLORI_ALTRO_GIORNO.nonPianificata.fondo }}
+            />
             <span className="text-xs font-medium text-slate-700">Non Pianificato</span>
           </div>
 
@@ -799,7 +825,11 @@ export default function AgendaGiornaliera({
                   style={{ width: larghezzaCol }}
                 >
                   {c.eventi.map((e, i) => {
-                    const colore = COLORI[e.tipo];
+                    const colore = e.appuntamentoDel
+                      ? COLORI_ALTRO_GIORNO.nonPianificata
+                      : e.ripianificata
+                        ? COLORI_ALTRO_GIORNO.ripianificata
+                        : COLORI[e.tipo];
                     const largo = (larghezzaCol - 6) / c.corsie;
                     const alto = Math.max(y(e.fineMin) - y(e.inizioMin) - 2, 14);
                     // SI APRE SOLO QUELLO CHE HA DENTRO QUALCOSA. Una card che
