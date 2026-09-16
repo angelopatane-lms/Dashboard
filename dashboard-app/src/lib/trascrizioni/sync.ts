@@ -103,6 +103,131 @@ const stanzaDa = (p: Record<string, string | null>): string | null =>
     /meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})/
   )?.[1] ?? null;
 
+/**
+ * Quanto puo' tardare uno spostamento e valere ancora per la fascia di prima.
+ *
+ * Ventiquattro ore coprono i casi reali con margine: misurati due, uno spostato
+ * tre minuti prima che arrivasse il webhook e uno sedici ore dopo, il mattino
+ * seguente. Si contano dall'ORARIO DELL'APPUNTAMENTO e non da adesso: cosi' la
+ * regola dice "una riunione spostata entro un giorno dalla sua fascia
+ * appartiene ancora a quella fascia", e il webhook - che gira di continuo - e
+ * il giro notturno vedono la stessa cosa.
+ */
+const SPOSTAMENTO_TOLLERATO_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Le riunioni che ERANO nel periodo e sono state spostate altrove.
+ *
+ * PERCHE' SENZA DI QUESTE SI PERDONO REGISTRAZIONI. L'abbinamento cerca le
+ * riunioni per orario ATTUALE. Quando un advisor riaggancia e subito
+ * ripianifica, la riunione si sposta prima che Fireflies consegni la
+ * trascrizione, e quella registrazione non trova piu' nessuna fascia a cui
+ * appartenere: resta orfana per sempre, perche' anche il giro notturno cerca
+ * allo stesso modo.
+ *
+ * Successo davvero il 15 settembre, su due call di seguito della stessa
+ * persona: la riunione delle 15:00 spostata alle 16:09 e il webhook arrivato
+ * alle 16:12 - persa per tre minuti - e quella delle 16:00 spostata alle 17:28
+ * con la trascrizione consegnata da Fireflies solo il mattino dopo. Colpisce
+ * proprio chi usa di piu' la ripianificazione.
+ *
+ * SPOSTATA DOPO L'INIZIO della fascia: se succede prima, quella fascia e' stata
+ * liberata e non c'e' nessuna call da agganciare.
+ */
+async function riunioniSpostateDa(token: string, da: Date, a: Date): Promise<Oggetto[]> {
+  // I valori della cronologia sono date ISO, non millisecondi: Number() su
+  // "2026-09-15T13:00:00Z" da' NaN e la riga verrebbe scartata in silenzio.
+  const quando = (v: unknown): number => {
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 1e11) return n;
+    return Date.parse(String(v));
+  };
+
+  const candidati: string[] = [];
+  let dopo: string | undefined;
+  do {
+    const d = await hubspot<Pagina<Oggetto>>(token, "/crm/v3/objects/meetings/search", {
+      filterGroups: [
+        {
+          filters: [
+            // Toccata da quando comincia il periodo: una riunione che era li' e
+            // non c'e' piu' e' per forza stata modificata da allora.
+            { propertyName: "hs_lastmodifieddate", operator: "GTE", value: String(da.getTime()) },
+            // Oggi sta dopo il periodo. Se stesse dentro la troverebbe gia'
+            // leggiRiunioni().
+            { propertyName: "hs_meeting_start_time", operator: "GTE", value: String(a.getTime()) },
+            // Nata prima della fine del periodo: una riunione creata dopo non
+            // puo' esserci stata dentro. Non e' un'euristica, e toglie di mezzo
+            // tutto quello che e' stato fissato nel frattempo.
+            { propertyName: "hs_createdate", operator: "LTE", value: String(a.getTime()) }
+          ]
+        }
+      ],
+      properties: ["hs_meeting_start_time"],
+      limit: 100,
+      ...(dopo ? { after: dopo } : {})
+    });
+    candidati.push(...(d.results ?? []).map((r) => String(r.id)));
+    dopo = d.paging?.next?.after;
+    await attesa(160);
+  } while (dopo);
+
+  if (!candidati.length) return [];
+
+  const out: Oggetto[] = [];
+  for (let i = 0; i < candidati.length; i += 50) {
+    const d = await hubspot<{
+      results?: Array<Oggetto & { propertiesWithHistory?: Record<string, Array<{ value: string; timestamp: string }>> }>;
+    }>(token, "/crm/v3/objects/meetings/batch/read", {
+      properties: [
+        "hs_meeting_location",
+        "hs_video_conference_url",
+        "hs_meeting_start_time",
+        "hs_meeting_end_time",
+        "hs_createdate",
+        "hubspot_owner_id"
+      ],
+      propertiesWithHistory: ["hs_meeting_start_time", "hs_meeting_end_time"],
+      inputs: candidati.slice(i, i + 50).map((id) => ({ id }))
+    });
+
+    for (const r of d.results ?? []) {
+      const storia = r.propertiesWithHistory?.hs_meeting_start_time ?? [];
+      if (storia.length < 2) continue;
+      const ordinata = [...storia].sort((x, y) => Date.parse(x.timestamp) - Date.parse(y.timestamp));
+
+      for (let k = 0; k + 1 < ordinata.length; k++) {
+        const inizio = quando(ordinata[k].value);
+        const spostata = Date.parse(ordinata[k + 1].timestamp);
+        if (!Number.isFinite(inizio) || !Number.isFinite(spostata)) continue;
+        if (inizio < da.getTime() || inizio >= a.getTime()) continue;
+        if (spostata < inizio || spostata > inizio + SPOSTAMENTO_TOLLERATO_MS) continue;
+
+        const fineStoria = r.propertiesWithHistory?.hs_meeting_end_time ?? [];
+        const fineOrdinata = [...fineStoria].sort((x, y) => Date.parse(x.timestamp) - Date.parse(y.timestamp));
+        const fine = quando(fineOrdinata[k]?.value);
+
+        // La riunione torna nell'elenco con l'orario di allora: da qui in poi
+        // vale per tutto come una qualunque del periodo.
+        out.push({
+          id: String(r.id),
+          properties: {
+            ...r.properties,
+            hs_meeting_start_time: new Date(inizio).toISOString(),
+            hs_meeting_end_time: new Date(
+              Number.isFinite(fine) && fine > inizio ? fine : inizio + 30 * 60 * 1000
+            ).toISOString()
+          }
+        });
+        break;
+      }
+    }
+    await attesa(130);
+  }
+
+  return out;
+}
+
 async function leggiRiunioni(token: string, da: Date, a: Date): Promise<Oggetto[]> {
   const out: Oggetto[] = [];
   let dopo: string | undefined;
@@ -234,7 +359,21 @@ const appuntamentoDi = (valore: string | null | undefined): number => {
 
 /** Le riunioni del periodo, arricchite con l'advisor effettivo e il contatto. */
 async function riunioniArricchite(token: string, da: Date, a: Date): Promise<Riunione[]> {
-  const grezze = await leggiRiunioni(token, da, a);
+  const [inFinestra, spostate] = await Promise.all([
+    leggiRiunioni(token, da, a),
+    riunioniSpostateDa(token, da, a).catch((e) => {
+      console.warn("[trascrizioni] riunioni spostate non leggibili:", e instanceof Error ? e.message : e);
+      return [] as Oggetto[];
+    })
+  ]);
+  // Le spostate non possono essere gia' nell'elenco - la ricerca le prende
+  // proprio perche' oggi stanno fuori dal periodo - ma il controllo costa
+  // niente e protegge da una finestra che si sovrappone.
+  const gia = new Set(inFinestra.map((r) => r.id));
+  const grezze = [...inFinestra, ...spostate.filter((r) => !gia.has(r.id))];
+  if (spostate.length) {
+    console.log(`[trascrizioni] ${spostate.length} riunioni recuperate dopo uno spostamento`);
+  }
   const contattiDi = await associazioni(token, "meetings", "contacts", grezze.map((r) => r.id));
   const idContatti = [...new Set([...contattiDi.values()].flat())];
   const [anagrafica, trattativeDi] = await Promise.all([
