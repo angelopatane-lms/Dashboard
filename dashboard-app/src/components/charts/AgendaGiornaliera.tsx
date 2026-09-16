@@ -60,24 +60,20 @@ const COLORI: Record<TipoEvento, { fondo: string; testo: string; secondario: str
 };
 
 /**
- * BIANCA CON IL CONTORNO, la consulenza non pianificata.
+ * LE DUE FRECCE, E NESSUN COLORE PROPRIO.
  *
- * Una ripianificata tiene il colore del suo stato - grigia se il cliente non si
- * e' presentato, verde se la consulenza si e' tenuta - e si riconosce dalla
- * freccia: e' ordinaria amministrazione, e il giorno nuovo resta azzurro come
- * qualunque appuntamento da fare.
+ * Sia la ripianificata sia quella assente su CRM tengono il colore del loro
+ * stato - verde se la consulenza si e' tenuta, grigia se il cliente non si e'
+ * presentato - perche' e' quello che dicono davvero. A distinguerle e' la
+ * freccia, che porta anche la data dell'altro giorno:
  *
- * Questa invece e' una consulenza tenuta in un giorno in cui il CRM non
- * prevedeva niente. Il bianco dice esattamente quello: nel piano della giornata
- * quella fascia non c'era. Il contorno riprende il grigio del no show, cosi' si
- * vede che la card c'e' senza darle il peso di una fascia pianificata.
+ *   ↷  ripianificata   la card esiste anche piu' avanti
+ *   ↶  assente su CRM    l'appuntamento sta indietro
+ *
+ * Le due frecce sono l'una lo speculare dell'altra perche' le due cose sono
+ * opposte, e stanno nella stessa famiglia di simboli: stessa dimensione, verso
+ * contrario.
  */
-const COLORE_NON_PIANIFICATA = {
-  fondo: "#ffffff",
-  testo: "#64748b",
-  secondario: "#94a3b8",
-  bordo: "#cbd5e1"
-};
 
 /**
  * La media aziendale del voto complessivo dell'advisor, misurata su 600 analisi.
@@ -694,17 +690,11 @@ export default function AgendaGiornaliera({
               Una freccia di un altro disegno si sarebbe letta come un'altra
               cosa, e sarebbe stata piu' piccola. */}
           <div className="flex items-center gap-2">
-            <span
-              className="inline-block h-3 w-3 rounded-[3px]"
-              style={{
-                background: COLORE_NON_PIANIFICATA.fondo,
-                border: `1px solid ${COLORE_NON_PIANIFICATA.bordo}`
-              }}
-            />
-            <span className="text-xs font-medium text-slate-700">Non Pianificato</span>
+            <span className="inline-block w-3 text-center text-xs font-semibold leading-3 text-slate-700">↶</span>
+            <span className="text-xs font-medium text-slate-700">Assente su CRM</span>
           </div>
 
-          {/* Non e' un colore ma un segno: le quattro tinte dicono lo stato
+          {/* Non e' un colore ma un segno: le tre tinte dicono lo stato
               dell'appuntamento, e una call ricevuta da un altro advisor resta
               comunque fissata o svolta. Dare a questa casistica un quinto
               colore cancellerebbe quell'informazione. */}
@@ -808,7 +798,7 @@ export default function AgendaGiornaliera({
                   style={{ width: larghezzaCol }}
                 >
                   {c.eventi.map((e, i) => {
-                    const colore = e.appuntamentoDel ? COLORE_NON_PIANIFICATA : COLORI[e.tipo];
+                    const colore = COLORI[e.tipo];
                     const largo = (larghezzaCol - 6) / c.corsie;
                     const alto = Math.max(y(e.fineMin) - y(e.inizioMin) - 2, 14);
                     // SI APRE SOLO QUELLO CHE HA DENTRO QUALCOSA. Una card che
@@ -848,12 +838,6 @@ export default function AgendaGiornaliera({
                           width: largo - 1,
                           height: alto,
                           background: colore.fondo,
-                          // Il contorno va PRIMA dei bordi laterali: overbooking
-                          // e creazione manuale devono poterlo sovrascrivere sul
-                          // loro lato, non il contrario.
-                          ...(e.appuntamentoDel
-                            ? { border: `1px solid ${COLORE_NON_PIANIFICATA.bordo}` }
-                            : {}),
                           padding: "2px 6px",
                           boxSizing: "border-box",
                           // La barra a destra dice che l'appuntamento era di un altro e
