@@ -590,13 +590,25 @@ async function portaleCollegato(token: string): Promise<string> {
   }
 }
 
-async function trascrizioniDeiContatti(token: string, contatti: number[]): Promise<Map<number, string>> {
+/** La data fra parentesi quadre nel campo del contatto: dice a QUALE
+ *  appuntamento appartiene quella registrazione. Senza, una registrazione
+ *  finirebbe su qualunque card passata dello stesso cliente. */
+function appuntamentoDelLink(valore: string | null | undefined): number {
+  const dentro = String(valore ?? "").match(/\[([^\]]+)\]/)?.[1]?.trim();
+  const t = dentro ? Date.parse(dentro) : NaN;
+  return Number.isFinite(t) ? t : NaN;
+}
+
+async function trascrizioniDeiContatti(
+  token: string,
+  contatti: number[]
+): Promise<Map<number, { id: string; appuntamento: number }>> {
   ultimoErrore = null;
   contattiLetti = 0;
   contattiConCampo = 0;
   // Il valore della mappa e' l'IDENTIFICATIVO della trascrizione: da quello si
   // ricavano sia l'indirizzo della pagina sia, con una chiamata, il file audio.
-  const out = new Map<number, string>();
+  const out = new Map<number, { id: string; appuntamento: number }>();
   if (!contatti.length) return out;
 
   for (let i = 0; i < contatti.length; i += 100) {
@@ -624,7 +636,12 @@ async function trascrizioniDeiContatti(token: string, contatti: number[]): Promi
       if ((r.properties?.link_trascrizione_fireflies ?? "").trim()) contattiConCampo += 1;
       const trascrizione = idTrascrizione(r.properties?.link_trascrizione_fireflies);
       const id = Number(r.id);
-      if (trascrizione && Number.isFinite(id)) out.set(id, trascrizione);
+      if (trascrizione && Number.isFinite(id)) {
+        out.set(id, {
+          id: trascrizione,
+          appuntamento: appuntamentoDelLink(r.properties?.link_trascrizione_fireflies)
+        });
+      }
     }
   }
   return out;
@@ -780,7 +797,7 @@ async function presenzeDelleRiunioni(
   ids: string[],
   dalle: number,
   alle: number
-): Promise<Map<string, { esito: string; trascrizione: string }>> {
+): Promise<Map<string, { esito: string; trascrizione: string; nelGiorno: boolean }>> {
   if (!ids.length) return new Map();
   const r = await getDb().query(
     `SELECT riunione_id, esito, trascrizione, call_ts, inizio_ts
@@ -806,7 +823,8 @@ async function presenzeDelleRiunioni(
           String(x.riunione_id),
           {
             esito: nelGiorno ? String(x.esito) : "",
-            trascrizione: nelGiorno ? String(x.trascrizione ?? "") : ""
+            trascrizione: nelGiorno ? String(x.trascrizione ?? "") : "",
+            nelGiorno
           }
         ];
       }
@@ -1310,7 +1328,7 @@ export async function GET(req: NextRequest) {
       }),
       presenzeDelleRiunioni(grezzi.map((r) => r.id), dalle, alle).catch((err) => {
         console.error("[advisor-agenda] presenze", err instanceof Error ? err.message : err);
-        return new Map<string, { esito: string; trascrizione: string }>();
+        return new Map<string, { esito: string; trascrizione: string; nelGiorno: boolean }>();
       })
     ]);
 
@@ -1338,7 +1356,7 @@ export async function GET(req: NextRequest) {
       }),
       trascrizioniDeiContatti(token, diGiornata).catch((err) => {
         console.error("[advisor-agenda] trascrizioni", err instanceof Error ? err.message : err);
-        return new Map<number, string>();
+        return new Map<number, { id: string; appuntamento: number }>();
       })
     ]);
 
@@ -1416,7 +1434,16 @@ export async function GET(req: NextRequest) {
         if (tipo !== "svolta") svolteTrovate += 1;
         tipo = "svolta";
       } else if (presenza === "solo-advisor") {
-        tipo = "annullato";
+        // SOLO L'ADVISOR IN CALL E' UN NO SHOW, non un annullamento. Lui c'era
+        // e ha aspettato - a volte tredici minuti, e la registrazione lo
+        // dimostra - mentre il cliente non si e' presentato. L'annullamento e'
+        // un'altra cosa: la fascia liberata in anticipo, senza che nessuno
+        // entrasse in stanza.
+        //
+        // Finche' lo stato grigio era uno solo qui andava bene. Separando
+        // annullato da no show questa riga era rimasta indietro, e faceva
+        // risultare annullate proprio le diserzioni di cui abbiamo la prova.
+        tipo = "no_show";
       } else {
         // ANNULLATO O NO SHOW, secondo quando la diserzione e' stata segnata
         // rispetto a questo giorno. Si guardano le diserzioni di tutti i
@@ -1460,9 +1487,34 @@ export async function GET(req: NextRequest) {
       const inizioSlotPassato =
         Number.isFinite(Date.parse(p.hs_meeting_start_time ?? "")) &&
         Date.parse(p.hs_meeting_start_time ?? "") <= Date.now();
-      const idTrascrizioneSua =
-        presenze.get(r.id)?.trascrizione ||
-        (inizioSlotPassato ? suoi.map((c) => trascrizioni.get(c)).find(Boolean) : undefined);
+
+      // QUANDO SAPPIAMO GIA' DOV'E' LA REGISTRAZIONE, il contatto non si guarda.
+      // La sua proprieta' porta l'ULTIMA registrazione fatta, con la data
+      // dell'appuntamento a cui appartiene: su una riunione che ha una riga di
+      // presenza sappiamo gia' in che giorno la call e' avvenuta, e se non e'
+      // questo la registrazione non va mostrata qui. Senza questo controllo la
+      // consulenza tenuta il 15 ricompariva sulla card del 12, che e' proprio
+      // il giorno in cui il cliente non si e' presentato.
+      const suaPresenza = presenze.get(r.id);
+      const idTrascrizioneSua = suaPresenza
+        ? suaPresenza.nelGiorno
+          ? suaPresenza.trascrizione || undefined
+          : undefined
+        : inizioSlotPassato
+          ? suoi
+              .map((c) => trascrizioni.get(c))
+              .find(
+                (t): t is { id: string; appuntamento: number } =>
+                  Boolean(t) &&
+                  // La registrazione deve appartenere a QUESTO appuntamento.
+                  // Il campo del contatto porta l'ultima fatta: senza questo
+                  // controllo la consulenza del 16 ricompariva sulla card del
+                  // 12 dello stesso cliente, che quel giorno non si era
+                  // presentato.
+                  Math.abs((t as { appuntamento: number }).appuntamento -
+                    Date.parse(p.hs_meeting_start_time ?? "")) < 60 * 60 * 1000
+              )?.id
+          : undefined;
 
       eventi.push({
         operatore,
