@@ -51,41 +51,27 @@ function larghezzaColonna(nomi: string[]): number {
  * quattro fondi diversi un grigio fisso funzionerebbe su una tinta e
  * sfarfallerebbe sulle altre.
  */
-const COLORI: Record<
-  TipoEvento,
-  { fondo: string; testo: string; secondario: string; bordo?: string }
-> = {
+const COLORI: Record<TipoEvento, { fondo: string; testo: string; secondario: string }> = {
   appuntamento: { fondo: "#7dd3fc", testo: "#0c4a6e", secondario: "#075985" },
   svolta: { fondo: "#6ee7b7", testo: "#064e3b", secondario: "#065f46" },
-  // IL NO SHOW TIENE IL GRIGIO PIENO, che e' il colore con cui lo si e' sempre
-  // letto in questa agenda. L'ANNULLATO E' BIANCO CON UN CONTORNO SOTTILE: la
-  // fascia era libera, quindi la card non deve avere il peso visivo di una
-  // occupata - si vede che c'e', e basta. Il contorno riprende lo stesso grigio
-  // del no show, cosi' i due si leggono come due gradi della stessa cosa
-  // invece che come due colori slegati.
-  no_show: { fondo: "#cbd5e1", testo: "#475569", secondario: "#64748b" },
-  annullato: { fondo: "#ffffff", testo: "#64748b", secondario: "#94a3b8", bordo: "#cbd5e1" }
+  // Il grigio del no show e' il colore con cui lo si e' sempre letto in questa
+  // agenda.
+  no_show: { fondo: "#cbd5e1", testo: "#475569", secondario: "#64748b" }
 };
 
 /**
- * LE DUE CARD CHE PARLANO DI UN ALTRO GIORNO.
+ * IL VIOLA DELLE CONSULENZE NON PIANIFICATE.
  *
- * Non sono stati dell'appuntamento - una ripianificata puo' essere svolta o
- * disertata come qualunque altra - ma su queste due il fatto che la card
- * riguardi un altro giorno conta piu' dello stato: sono poche, e chi scorre la
- * colonna deve accorgersene subito. Quindi qui il colore lo decidono loro, e lo
- * stato resta scritto nella scheda che si apre cliccando.
+ * Una ripianificata tiene il colore del suo stato - grigia se il cliente non si
+ * e' presentato, verde se la consulenza si e' tenuta - e si riconosce dalla
+ * freccia: e' ordinaria amministrazione, e il giorno nuovo resta azzurro come
+ * qualunque appuntamento da fare.
  *
- * Arancione e viola perche' non sono in uso da nessun'altra parte
- * dell'agenda: azzurro, verde, grigio e bianco sono gia' i quattro stati.
+ * Una consulenza tenuta senza che l'appuntamento fosse spostato al giorno
+ * giusto invece e' un'anomalia, e merita un colore suo. Viola perche' non e' in
+ * uso altrove: azzurro, verde e grigio sono i tre stati.
  */
-const COLORI_ALTRO_GIORNO: Record<
-  "ripianificata" | "nonPianificata",
-  { fondo: string; testo: string; secondario: string; bordo?: string }
-> = {
-  ripianificata: { fondo: "#fdba74", testo: "#7c2d12", secondario: "#9a3412" },
-  nonPianificata: { fondo: "#d8b4fe", testo: "#581c87", secondario: "#6b21a8" }
-};
+const COLORE_NON_PIANIFICATA = { fondo: "#d8b4fe", testo: "#581c87", secondario: "#6b21a8" };
 
 /**
  * La media aziendale del voto complessivo dell'advisor, misurata su 600 analisi.
@@ -180,7 +166,6 @@ const COLORE_MANUALE = "#b91c1c";
 
 const LEGENDA: Array<{ tipo: TipoEvento; label: string }> = [
   { tipo: "appuntamento", label: "Fissato" },
-  { tipo: "annullato", label: "Annullato" },
   { tipo: "svolta", label: "Svolto" },
   { tipo: "no_show", label: "No Show" }
 ];
@@ -364,7 +349,7 @@ function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: (
                     background:
                       evento.presenza === "presentato"
                         ? COLORI.svolta.fondo
-                        : COLORI.annullato.fondo
+                        : COLORI.no_show.fondo
                   }}
                 />
                 {evento.presenza === "presentato"
@@ -685,15 +670,7 @@ export default function AgendaGiornaliera({
         <div className="flex flex-wrap items-center justify-center gap-4">
           {LEGENDA.map((v) => (
             <div key={v.tipo} className="flex items-center gap-2">
-              {/* Il quadratino porta anche il contorno, se lo stato ce l'ha:
-                  un quadratino bianco senza bordo sarebbe invisibile. */}
-              <span
-                className="inline-block h-3 w-3 rounded-[3px]"
-                style={{
-                  background: COLORI[v.tipo].fondo,
-                  ...(COLORI[v.tipo].bordo ? { border: `1px solid ${COLORI[v.tipo].bordo}` } : {})
-                }}
-              />
+              <span className="inline-block h-3 w-3 rounded-[3px]" style={{ background: COLORI[v.tipo].fondo }} />
               <span className="text-xs font-medium text-slate-700">{v.label}</span>
             </div>
           ))}
@@ -701,10 +678,7 @@ export default function AgendaGiornaliera({
               piu' un segno: la freccia resta sulla card, dove porta anche la
               data dell'altro giorno. */}
           <div className="flex items-center gap-2">
-            <span
-              className="inline-block h-3 w-3 rounded-[3px]"
-              style={{ background: COLORI_ALTRO_GIORNO.ripianificata.fondo }}
-            />
+            <span className="inline-block w-3 text-center text-xs font-semibold leading-3 text-slate-700">↷</span>
             <span className="text-xs font-medium text-slate-700">Ripianificato</span>
           </div>
 
@@ -716,7 +690,7 @@ export default function AgendaGiornaliera({
           <div className="flex items-center gap-2">
             <span
               className="inline-block h-3 w-3 rounded-[3px]"
-              style={{ background: COLORI_ALTRO_GIORNO.nonPianificata.fondo }}
+              style={{ background: COLORE_NON_PIANIFICATA.fondo }}
             />
             <span className="text-xs font-medium text-slate-700">Non Pianificato</span>
           </div>
@@ -825,11 +799,7 @@ export default function AgendaGiornaliera({
                   style={{ width: larghezzaCol }}
                 >
                   {c.eventi.map((e, i) => {
-                    const colore = e.appuntamentoDel
-                      ? COLORI_ALTRO_GIORNO.nonPianificata
-                      : e.ripianificata
-                        ? COLORI_ALTRO_GIORNO.ripianificata
-                        : COLORI[e.tipo];
+                    const colore = e.appuntamentoDel ? COLORE_NON_PIANIFICATA : COLORI[e.tipo];
                     const largo = (larghezzaCol - 6) / c.corsie;
                     const alto = Math.max(y(e.fineMin) - y(e.inizioMin) - 2, 14);
                     // SI APRE SOLO QUELLO CHE HA DENTRO QUALCOSA. Una card che
@@ -869,10 +839,6 @@ export default function AgendaGiornaliera({
                           width: largo - 1,
                           height: alto,
                           background: colore.fondo,
-                          // Il contorno va PRIMA dei due bordi laterali:
-                          // overbooking e creazione manuale devono poterlo
-                          // sovrascrivere sul loro lato, non il contrario.
-                          ...(colore.bordo ? { border: `1px solid ${colore.bordo}` } : {}),
                           padding: "2px 6px",
                           boxSizing: "border-box",
                           // La barra a destra dice che l'appuntamento era di un altro e
@@ -898,7 +864,7 @@ export default function AgendaGiornaliera({
                           style={{
                             color: colore.testo,
                             textDecoration:
-                              e.tipo === "annullato" || e.tipo === "no_show" ? "line-through" : undefined
+                              e.tipo === "no_show" ? "line-through" : undefined
                           }}
                         >
                           {e.titolo}

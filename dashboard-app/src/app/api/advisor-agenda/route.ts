@@ -41,19 +41,19 @@ const HUBSPOT_API = "https://api.hubapi.com";
 
 /** Il tipo decide il colore, e lo decidono i dati: e' l'esito del meeting. */
 /**
- * ANNULLATO E NO SHOW SONO DUE COSE DIVERSE, e la differenza e' quando la
- * diserzione viene segnata rispetto al giorno dell'appuntamento.
+ * NON C'E' UNO STATO "ANNULLATO", e non e' una dimenticanza.
  *
- * Segnata il giorno stesso - o piu' tardi, quando l'advisor registra la mattina
- * dopo - vuol dire che la fascia e' stata occupata e il cliente non si e'
- * presentato: e' un no show, e pesa sull'advisor che ha aspettato e sul setter
- * che ha qualificato male. Segnata PRIMA, il cliente ha disdetto in anticipo e
- * la fascia si e' liberata: e' un annullamento, e non e' la stessa cosa.
+ * Quando un cliente disdice, l'evento viene tolto da Google Calendar e
+ * l'integrazione cancella la riunione su HubSpot: non resta traccia, e in
+ * agenda non c'e' nessuna card da colorare. Verificato con una prova diretta.
  *
- * Misurato sulle 440 riunioni del 1-15 settembre: 195 no show veri, 18
- * annullati in anticipo, 20 registrati in ritardo.
+ * L'unico segnale possibile sarebbe hs_meeting_outcome = CANCELED, ma quel
+ * campo non lo mantiene nessuno: su 542 riunioni di settembre, 494 sono ferme
+ * a SCHEDULED e le quattro CANCELED sono tre record di prova piu' una messa a
+ * mano dal telefono. Uno stato che si accende una volta in tre mesi non aiuta
+ * a leggere una giornata.
  */
-export type TipoEvento = "appuntamento" | "svolta" | "annullato" | "no_show";
+export type TipoEvento = "appuntamento" | "svolta" | "no_show";
 
 /**
  * L'analisi della call, quando c'e'.
@@ -213,10 +213,10 @@ function oraRoma(iso: string): { testo: string; minuti: number } | null {
 function tipoDa(esito: string | null | undefined): TipoEvento {
   const e = (esito ?? "").trim().toUpperCase();
   if (e === "COMPLETED") return "svolta";
-  // L'esito sulla riunione e' quasi sempre vuoto - misurato, 4 CANCELED e 1
-  // NO_SHOW su 440 - ma quando c'e' dice gia' quale dei due e'.
-  if (e === "CANCELED") return "annullato";
-  if (e === "NO_SHOW") return "no_show";
+  // L'esito sulla riunione e' quasi sempre vuoto. Quando c'e', CANCELED e
+  // NO_SHOW dicono la stessa cosa a chi legge l'agenda: quella fascia non ha
+  // prodotto una consulenza.
+  if (e === "CANCELED" || e === "NO_SHOW") return "no_show";
   return "appuntamento";
 }
 
@@ -855,8 +855,8 @@ const DISERZIONE_MAX_DOPO_MS = 3 * 24 * 60 * 60 * 1000;
  *
  * Prima si restituiva un semplice elenco di contatti con un no show nel giorno
  * guardato, e bastava perche' lo stato era uno solo. Ora servono le date: la
- * differenza fra annullato e no show e' proprio quando la diserzione e' stata
- * segnata rispetto al giorno dell'appuntamento.
+ * differenza fra una fascia sprecata e una andata a buon fine sta proprio nel
+ * quando la diserzione e' stata segnata rispetto al giorno dell'appuntamento.
  *
  * La finestra e' larga anche perche' cosi' si vedono le disdette anticipate,
  * che prima sfuggivano del tutto: segnate giorni prima, non cadevano nel
@@ -904,10 +904,9 @@ function giornoRoma(ms: number): string {
  * della prima; Ketty Celante lo stesso; e sugli altri la riunione precedente
  * non esiste piu' ma la diserzione e' li' a dire che c'era.
  *
- * Quando il cliente disdice il giorno stesso vale No Show: la fascia era
- * occupata e non si riempie piu'. L'annullamento vero - la disdetta con
- * anticipo - resta l'esito CANCELED sulla riunione, che e' un'affermazione
- * esplicita invece che una deduzione dalle date.
+ * Quando il cliente disdice il giorno stesso vale comunque No Show: la fascia
+ * era occupata e non si riempie piu'. La disdetta con anticipo invece non
+ * arriva fin qui: cancella l'evento, e con esso la riunione.
  *
  * Fra piu' diserzioni si prende la PIU' VICINA: un cliente che diserta, viene
  * ripianificato e diserta di nuovo ha due eventi, e ciascuna card prende il suo.
@@ -915,7 +914,7 @@ function giornoRoma(ms: number): string {
 function statoDiserzione(
   eventi: number[],
   inizioAppuntamento: number
-): "annullato" | "no_show" | null {
+): "no_show" | null {
   if (!eventi.length || !Number.isFinite(inizioAppuntamento)) return null;
 
   // Dalla mezzanotte del giorno dell'appuntamento in poi. Prima di allora la
@@ -1440,8 +1439,8 @@ export async function GET(req: NextRequest) {
         // entrasse in stanza.
         //
         // Finche' lo stato grigio era uno solo qui andava bene. Separando
-        // annullato da no show questa riga era rimasta indietro, e faceva
-        // risultare annullate proprio le diserzioni di cui abbiamo la prova.
+        // gli stati questa riga era rimasta indietro, e faceva risultare
+        // annullate proprio le diserzioni di cui abbiamo la prova.
         tipo = "no_show";
       } else {
         // ANNULLATO O NO SHOW, secondo quando la diserzione e' stata segnata
@@ -1568,7 +1567,7 @@ export async function GET(req: NextRequest) {
       `[advisor-agenda] ${giorno}: ${eventi.length} eventi, ${new Set(eventi.map((e) => e.operatore)).size} persone, ` +
         `${eventi.filter((e) => e.tipo === "svolta").length} svolte (${svolteTrovate} dalle trattative), ` +
         `${eventi.filter((e) => e.tipo === "no_show").length} no show, ` +
-        `${eventi.filter((e) => e.tipo === "annullato").length} annullate, ` +
+
         `${eventi.filter((e) => e.analisi).length} con analisi, ` +
         `${eventi.filter((e) => e.trascrizione).length} con trascrizione, ` +
         `${eventi.filter((e) => e.audio).length} con audio, ` +
