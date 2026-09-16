@@ -60,18 +60,24 @@ const COLORI: Record<TipoEvento, { fondo: string; testo: string; secondario: str
 };
 
 /**
- * IL VIOLA DELLE CONSULENZE NON PIANIFICATE.
+ * BIANCA CON IL CONTORNO, la consulenza non pianificata.
  *
  * Una ripianificata tiene il colore del suo stato - grigia se il cliente non si
  * e' presentato, verde se la consulenza si e' tenuta - e si riconosce dalla
  * freccia: e' ordinaria amministrazione, e il giorno nuovo resta azzurro come
  * qualunque appuntamento da fare.
  *
- * Una consulenza tenuta senza che l'appuntamento fosse spostato al giorno
- * giusto invece e' un'anomalia, e merita un colore suo. Viola perche' non e' in
- * uso altrove: azzurro, verde e grigio sono i tre stati.
+ * Questa invece e' una consulenza tenuta in un giorno in cui il CRM non
+ * prevedeva niente. Il bianco dice esattamente quello: nel piano della giornata
+ * quella fascia non c'era. Il contorno riprende il grigio del no show, cosi' si
+ * vede che la card c'e' senza darle il peso di una fascia pianificata.
  */
-const COLORE_NON_PIANIFICATA = { fondo: "#d8b4fe", testo: "#581c87", secondario: "#6b21a8" };
+const COLORE_NON_PIANIFICATA = {
+  fondo: "#ffffff",
+  testo: "#64748b",
+  secondario: "#94a3b8",
+  bordo: "#cbd5e1"
+};
 
 /**
  * La media aziendale del voto complessivo dell'advisor, misurata su 600 analisi.
@@ -690,7 +696,10 @@ export default function AgendaGiornaliera({
           <div className="flex items-center gap-2">
             <span
               className="inline-block h-3 w-3 rounded-[3px]"
-              style={{ background: COLORE_NON_PIANIFICATA.fondo }}
+              style={{
+                background: COLORE_NON_PIANIFICATA.fondo,
+                border: `1px solid ${COLORE_NON_PIANIFICATA.bordo}`
+              }}
             />
             <span className="text-xs font-medium text-slate-700">Non Pianificato</span>
           </div>
@@ -839,6 +848,12 @@ export default function AgendaGiornaliera({
                           width: largo - 1,
                           height: alto,
                           background: colore.fondo,
+                          // Il contorno va PRIMA dei bordi laterali: overbooking
+                          // e creazione manuale devono poterlo sovrascrivere sul
+                          // loro lato, non il contrario.
+                          ...(e.appuntamentoDel
+                            ? { border: `1px solid ${COLORE_NON_PIANIFICATA.bordo}` }
+                            : {}),
                           padding: "2px 6px",
                           boxSizing: "border-box",
                           // La barra a destra dice che l'appuntamento era di un altro e
