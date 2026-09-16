@@ -650,6 +650,14 @@ export default function AgendaGiornaliera({
             <span className="text-xs font-medium text-slate-700">Ripianificato</span>
           </div>
 
+          {/* Il verso opposto della freccia, ed e' il verso giusto: qui la
+              consulenza si e' tenuta in QUESTO giorno mentre l'appuntamento sta
+              indietro, non il contrario. */}
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-3 text-center text-xs font-semibold leading-3 text-slate-700">⤺</span>
+            <span className="text-xs font-medium text-slate-700">Appuntamento di un altro giorno</span>
+          </div>
+
           {/* Non e' un colore ma un segno: le quattro tinte dicono lo stato
               dell'appuntamento, e una call ricevuta da un altro advisor resta
               comunque fissata o svolta. Dare a questa casistica un quinto
@@ -785,6 +793,7 @@ export default function AgendaGiornaliera({
                           `${e.prenotatoPer ? ` · prenotato per ${e.prenotatoPer}` : ""}` +
                           `${e.manuale ? " · creato a mano" : ""}` +
                           `${e.ripianificata ? ` · ripianificata al ${e.ripianificata}, la card c'e' anche li'` : ""}` +
+                          `${e.appuntamentoDel ? ` · consulenza tenuta qui, appuntamento fissato per il ${e.appuntamentoDel}` : ""}` +
                           `${apribile ? " · clicca per il dettaglio" : ""}`
                         }
                         style={{
@@ -837,6 +846,7 @@ export default function AgendaGiornaliera({
                                 sovrascriverebbe. Cosi' invece si legge anche
                                 DOVE e' finita, che e' l'informazione utile. */}
                             {e.ripianificata ? ` · ↷ ${e.ripianificata}` : ""}
+                            {e.appuntamentoDel ? ` · ⤺ ${e.appuntamentoDel}` : ""}
                           </div>
                         ) : null}
                         {/* UN SOLO SEGNO: il punto nell'angolo dice che c'e'

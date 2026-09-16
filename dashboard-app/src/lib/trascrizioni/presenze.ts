@@ -41,11 +41,19 @@ export async function registraPresenze(
   // al minuto. La chiave comprende la trascrizione: se a un appuntamento viene
   // abbinata una registrazione diversa, si ricalcola.
   const gia = await db.query(
-    `SELECT riunione_id, trascrizione FROM presenza_call WHERE riunione_id = ANY($1::text[])`,
+    `SELECT riunione_id, trascrizione, call_ts FROM presenza_call WHERE riunione_id = ANY($1::text[])`,
     [abbinamenti.map((x) => x.riunione.id)]
   );
-  const fatte = new Set(gia.rows.map((r: { riunione_id: string; trascrizione: string }) =>
-    `${r.riunione_id}|${r.trascrizione}`));
+  // SI SALTA SOLO CIO' CHE E' COMPLETO. La colonna call_ts - quando la call si
+  // e' tenuta davvero - e' arrivata dopo, e le righe scritte prima ce l'hanno
+  // vuota: saltandole per il solo fatto di esistere non si riempirebbero mai.
+  // Cosi' invece il primo giro che le incontra le sistema, e dal secondo in poi
+  // le salta come tutte le altre.
+  const fatte = new Set(
+    gia.rows
+      .filter((r: { call_ts: Date | null }) => r.call_ts !== null)
+      .map((r: { riunione_id: string; trascrizione: string }) => `${r.riunione_id}|${r.trascrizione}`)
+  );
 
   const frasiDi = new Map<string, Frase[]>();
   for (const r of registrazioni) if (r.frasi) frasiDi.set(r.id, r.frasi);
@@ -89,8 +97,8 @@ export async function registraPresenze(
 
       await db.query(
         `INSERT INTO presenza_call
-           (riunione_id, contatto_id, trascrizione, esito, motivo, voci, quota_secondo, inizio_ts, durata_min, aggiornato_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+           (riunione_id, contatto_id, trascrizione, esito, motivo, voci, quota_secondo, inizio_ts, durata_min, call_ts, aggiornato_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
          ON CONFLICT (riunione_id) DO UPDATE
            SET contatto_id = EXCLUDED.contatto_id,
                trascrizione = EXCLUDED.trascrizione,
@@ -100,6 +108,7 @@ export async function registraPresenze(
                quota_secondo = EXCLUDED.quota_secondo,
                inizio_ts = EXCLUDED.inizio_ts,
                durata_min = EXCLUDED.durata_min,
+               call_ts = EXCLUDED.call_ts,
                aggiornato_at = now()`,
         [
           x.riunione.id,
@@ -110,7 +119,11 @@ export async function registraPresenze(
           p.voci,
           p.quotaSecondo,
           new Date(x.riunione.inizio),
-          Math.round(durata * 10) / 10
+          Math.round(durata * 10) / 10,
+          // Quando la call si e' tenuta davvero: quasi sempre coincide con
+          // l'appuntamento, ma non quando la consulenza e' stata rimandata
+          // senza spostare la data in calendario.
+          new Date(x.registrazione.inizio)
         ]
       );
       esito.nuove++;

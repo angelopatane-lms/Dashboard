@@ -157,6 +157,22 @@ CREATE INDEX IF NOT EXISTS idx_no_show_setter ON no_show (setter_id) WHERE sette
 -- gli archiviati 76 proprietari su 496, e sette persone del solo luglio
 -- restavano senza nome. Copiarli qui evita di richiamare HubSpot a ogni
 -- caricamento di pagina per tradurre un id in un nome.
+-- QUANDO LA CALL E' AVVENUTA DAVVERO, che non sempre e' l'orario
+-- dell'appuntamento.
+--
+-- `inizio_ts` porta l'orario dell'appuntamento, ed e' quello giusto per quasi
+-- tutto. Ma una consulenza puo' tenersi in un giorno diverso da quello fissato
+-- senza che nessuno sposti l'appuntamento: l'advisor rimanda, si risentono tre
+-- giorni dopo nella stessa stanza, e in calendario resta la data vecchia.
+-- Misurato su settembre: tre casi, fino a 87 minuti di consulenza.
+--
+-- Serve all'agenda per mostrare la card anche nel giorno in cui la persona ha
+-- lavorato davvero, che e' quello che si guarda per capire com'e' andata la
+-- giornata.
+ALTER TABLE presenza_call ADD COLUMN IF NOT EXISTS call_ts TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_presenza_call_ts ON presenza_call (call_ts) WHERE call_ts IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS proprietario (
   id     BIGINT PRIMARY KEY,
   nome   TEXT NOT NULL,

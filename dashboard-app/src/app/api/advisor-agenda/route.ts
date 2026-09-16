@@ -121,6 +121,16 @@ export type EventoAgenda = {
    * che e' stato fatto.
    */
   ripianificata?: string;
+  /**
+   * Quando la call si e' tenuta in questo giorno ma l'APPUNTAMENTO e' fissato
+   * altrove. Contiene la data dell'appuntamento.
+   *
+   * Succede quando l'advisor rimanda la consulenza e si risentono giorni dopo
+   * nella stessa stanza, senza spostare la data in calendario: la card
+   * comparirebbe solo nel giorno vuoto, e il giorno in cui si e' lavorato
+   * davvero non mostrerebbe niente.
+   */
+  appuntamentoDel?: string;
   /** L'indirizzo della trascrizione su Fireflies, quando si riesce a ricavarlo. */
   trascrizione?: string;
   /** Il file audio della call, da ascoltare direttamente. */
@@ -1047,6 +1057,49 @@ async function riunioniSpostate(
   return out;
 }
 
+/**
+ * Le consulenze SVOLTE in questo giorno il cui appuntamento sta altrove.
+ *
+ * `presenza_call.call_ts` dice quando la registrazione e' avvenuta, mentre
+ * `inizio_ts` porta l'orario dell'appuntamento. Quando i due cadono in giorni
+ * diversi vuol dire che la consulenza e' stata rimandata senza spostare la data
+ * in calendario - l'advisor e il cliente si risentono giorni dopo nella stessa
+ * stanza - e il giorno in cui si e' lavorato davvero resterebbe vuoto.
+ *
+ * Misurato su settembre: tre casi, uno da 87 minuti.
+ */
+async function callDiAltriGiorni(
+  dalle: number,
+  alle: number
+): Promise<Map<string, { inizio: number; fine: number; appuntamento: number }>> {
+  const out = new Map<string, { inizio: number; fine: number; appuntamento: number }>();
+  const { rows } = await getDb().query<{
+    riunione_id: string;
+    call_ts: string;
+    inizio_ts: string;
+    durata_min: string | null;
+  }>(
+    `SELECT riunione_id::text AS riunione_id, call_ts, inizio_ts, durata_min::text AS durata_min
+       FROM presenza_call
+      WHERE call_ts >= $1::timestamptz
+        AND call_ts <  $2::timestamptz
+        AND (inizio_ts < $1::timestamptz OR inizio_ts >= $2::timestamptz)`,
+    [new Date(dalle).toISOString(), new Date(alle).toISOString()]
+  );
+  for (const r of rows) {
+    const inizio = new Date(r.call_ts).getTime();
+    const appuntamento = new Date(r.inizio_ts).getTime();
+    if (!Number.isFinite(inizio) || !Number.isFinite(appuntamento)) continue;
+    const durata = Number(r.durata_min);
+    out.set(String(r.riunione_id), {
+      inizio,
+      fine: inizio + (Number.isFinite(durata) && durata > 0 ? durata : 30) * 60 * 1000,
+      appuntamento
+    });
+  }
+  return out;
+}
+
 const DURATA_MEMORIA_MS = 60 * 1000;
 let memoria: { chiave: string; scade: number; corpo: unknown } | null = null;
 
@@ -1122,6 +1175,52 @@ export async function GET(req: NextRequest) {
     // stessa trattativa, stesso stato - ma con l'orario di allora. La card
     // resta anche nel giorno nuovo: e' la stessa riunione vista due volte.
     const spostate = await promessaSpostate;
+
+    // LE CONSULENZE TENUTE OGGI CON L'APPUNTAMENTO ALTROVE. Stessa idea delle
+    // ripianificate, ma il segnale e' diverso: li' lo dice la cronologia
+    // dell'orario, qui lo dice la registrazione. Vedi callDiAltriGiorni().
+    const altrove = await callDiAltriGiorni(dalle, alle).catch((err) => {
+      console.error("[advisor-agenda] call di altri giorni", err instanceof Error ? err.message : err);
+      return new Map<string, { inizio: number; fine: number; appuntamento: number }>();
+    });
+
+    if (altrove.size) {
+      const gia = new Set(grezzi.map((r) => r.id));
+      const daLeggere = [...altrove.keys()].filter((id) => !gia.has(id));
+      for (let i = 0; i < daLeggere.length; i += 50) {
+        const res2 = await fetch(`${HUBSPOT_API}/crm/v3/objects/meetings/batch/read`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            properties: [
+              "hs_meeting_title",
+              "hs_meeting_start_time",
+              "hs_meeting_end_time",
+              "hubspot_owner_id",
+              "hs_meeting_outcome",
+              "hs_createdate"
+            ],
+            inputs: daLeggere.slice(i, i + 50).map((id) => ({ id }))
+          })
+        });
+        if (!res2.ok) break;
+        const d2 = await res2.json();
+        for (const r of d2.results ?? []) {
+          const q = altrove.get(String(r.id));
+          if (!q) continue;
+          grezzi.push({
+            id: String(r.id),
+            properties: {
+              ...(r.properties ?? {}),
+              // L'orario della CALL, non quello dell'appuntamento: la card va
+              // nella fascia in cui la persona ha lavorato.
+              hs_meeting_start_time: new Date(q.inizio).toISOString(),
+              hs_meeting_end_time: new Date(q.fine).toISOString()
+            }
+          });
+        }
+      }
+    }
 
     if (spostate.size) {
       const gia = new Set(grezzi.map((r) => r.id));
@@ -1306,6 +1405,15 @@ export async function GET(req: NextRequest) {
         ...(analisiSua ? { analisi: analisiSua } : {}),
         ...(idTrascrizioneSua ? { trascrizione: linkTrascrizione(idTrascrizioneSua) } : {}),
         ...(prenotatoPer ? { prenotatoPer } : {}),
+        ...(altrove.has(r.id)
+          ? {
+              appuntamentoDel: new Date(altrove.get(r.id)!.appuntamento).toLocaleDateString("it-IT", {
+                timeZone: "Europe/Rome",
+                day: "2-digit",
+                month: "2-digit"
+              })
+            }
+          : {}),
         ...(spostate.has(r.id)
           ? {
               ripianificata: new Date(spostate.get(r.id)!.nuovoInizio).toLocaleDateString("it-IT", {
