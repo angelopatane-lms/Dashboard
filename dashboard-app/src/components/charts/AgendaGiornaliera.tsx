@@ -54,7 +54,13 @@ function larghezzaColonna(nomi: string[]): number {
 const COLORI: Record<TipoEvento, { fondo: string; testo: string; secondario: string }> = {
   appuntamento: { fondo: "#7dd3fc", testo: "#0c4a6e", secondario: "#075985" },
   svolta: { fondo: "#6ee7b7", testo: "#064e3b", secondario: "#065f46" },
-  annullato: { fondo: "#cbd5e1", testo: "#475569", secondario: "#64748b" }
+  // GRIGIO L'ANNULLATO, AMBRA IL NO SHOW. Il grigio dice "non e' successo
+  // niente", ed e' giusto per una disdetta arrivata in anticipo: la fascia si
+  // e' liberata. Un no show invece e' una fascia sprecata, e deve saltare
+  // all'occhio scorrendo la colonna - ma non in rosso, che qui e' gia' preso
+  // dalla linea dell'ora e dal segno delle riunioni create a mano.
+  annullato: { fondo: "#cbd5e1", testo: "#475569", secondario: "#64748b" },
+  no_show: { fondo: "#fdba74", testo: "#7c2d12", secondario: "#9a3412" }
 };
 
 /**
@@ -151,7 +157,8 @@ const COLORE_MANUALE = "#b91c1c";
 const LEGENDA: Array<{ tipo: TipoEvento; label: string }> = [
   { tipo: "appuntamento", label: "Fissato" },
   { tipo: "svolta", label: "Svolto" },
-  { tipo: "annullato", label: "Annullato / No Show" }
+  { tipo: "no_show", label: "No Show" },
+  { tipo: "annullato", label: "Annullato" }
 ];
 
 /** Ora di Roma adesso, in minuti dalla mezzanotte. */
@@ -798,7 +805,8 @@ export default function AgendaGiornaliera({
                           className="truncate text-xs font-semibold leading-[14px]"
                           style={{
                             color: colore.testo,
-                            textDecoration: e.tipo === "annullato" ? "line-through" : undefined
+                            textDecoration:
+                              e.tipo === "annullato" || e.tipo === "no_show" ? "line-through" : undefined
                           }}
                         >
                           {e.titolo}

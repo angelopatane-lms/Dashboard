@@ -40,7 +40,20 @@ export const maxDuration = 60;
 const HUBSPOT_API = "https://api.hubapi.com";
 
 /** Il tipo decide il colore, e lo decidono i dati: e' l'esito del meeting. */
-export type TipoEvento = "appuntamento" | "svolta" | "annullato";
+/**
+ * ANNULLATO E NO SHOW SONO DUE COSE DIVERSE, e la differenza e' quando la
+ * diserzione viene segnata rispetto al giorno dell'appuntamento.
+ *
+ * Segnata il giorno stesso - o piu' tardi, quando l'advisor registra la mattina
+ * dopo - vuol dire che la fascia e' stata occupata e il cliente non si e'
+ * presentato: e' un no show, e pesa sull'advisor che ha aspettato e sul setter
+ * che ha qualificato male. Segnata PRIMA, il cliente ha disdetto in anticipo e
+ * la fascia si e' liberata: e' un annullamento, e non e' la stessa cosa.
+ *
+ * Misurato sulle 440 riunioni del 1-15 settembre: 195 no show veri, 18
+ * annullati in anticipo, 20 registrati in ritardo.
+ */
+export type TipoEvento = "appuntamento" | "svolta" | "annullato" | "no_show";
 
 /**
  * L'analisi della call, quando c'e'.
@@ -190,7 +203,10 @@ function oraRoma(iso: string): { testo: string; minuti: number } | null {
 function tipoDa(esito: string | null | undefined): TipoEvento {
   const e = (esito ?? "").trim().toUpperCase();
   if (e === "COMPLETED") return "svolta";
-  if (e === "CANCELED" || e === "NO_SHOW") return "annullato";
+  // L'esito sulla riunione e' quasi sempre vuoto - misurato, 4 CANCELED e 1
+  // NO_SHOW su 440 - ma quando c'e' dice gia' quale dei due e'.
+  if (e === "CANCELED") return "annullato";
+  if (e === "NO_SHOW") return "no_show";
   return "appuntamento";
 }
 
@@ -735,18 +751,102 @@ async function presenzeDelleRiunioni(
   );
 }
 
-async function contattiConNoShow(dalle: number, alle: number): Promise<Set<number>> {
-  const r = await getDb().query(
-    `SELECT DISTINCT COALESCE(a.nuovo_id, t.contact_id) AS id
+/** Quanto si legge dal database attorno al giorno guardato. Larga: serve solo
+ *  ad avere in mano gli eventi, la scelta di quale vale la fa statoDiserzione(). */
+const FINESTRA_DISERZIONI_MS = 45 * 24 * 60 * 60 * 1000;
+
+/**
+ * Quanto lontano puo' stare una diserzione per riferirsi ANCORA a questo
+ * appuntamento.
+ *
+ * PRIMA: una disdetta anticipata arriva qualche giorno prima, non settimane.
+ * Senza un limite si pescava il no show di un appuntamento PRECEDENTE dello
+ * stesso contatto - visto un caso reale con trentotto giorni di distanza, che
+ * avrebbe fatto risultare annullato un appuntamento andato benissimo. Quello
+ * vecchio ha gia' la sua card nel suo giorno.
+ *
+ * DOPO: l'advisor registra la sera stessa o la mattina dopo. Tre giorni
+ * coprono anche il fine settimana.
+ */
+const DISERZIONE_MAX_PRIMA_MS = 14 * 24 * 60 * 60 * 1000;
+const DISERZIONE_MAX_DOPO_MS = 3 * 24 * 60 * 60 * 1000;
+
+/**
+ * Le diserzioni dei contatti di giornata, CON LA LORO DATA.
+ *
+ * Prima si restituiva un semplice elenco di contatti con un no show nel giorno
+ * guardato, e bastava perche' lo stato era uno solo. Ora servono le date: la
+ * differenza fra annullato e no show e' proprio quando la diserzione e' stata
+ * segnata rispetto al giorno dell'appuntamento.
+ *
+ * La finestra e' larga anche perche' cosi' si vedono le disdette anticipate,
+ * che prima sfuggivano del tutto: segnate giorni prima, non cadevano nel
+ * giorno guardato e la card restava azzurra come se l'appuntamento fosse
+ * ancora da fare.
+ */
+async function diserzioniDeiContatti(dalle: number, alle: number): Promise<Map<number, number[]>> {
+  const out = new Map<number, number[]>();
+  const r = await getDb().query<{ id: string; ts: string }>(
+    `SELECT COALESCE(a.nuovo_id, t.contact_id) AS id, n.ts
        FROM no_show n
        JOIN trattativa t ON t.deal_id = n.deal_id
        LEFT JOIN alias_contatto a ON a.vecchio_id = t.contact_id
       WHERE t.contact_id IS NOT NULL
         AND n.ts >= $1::timestamptz
         AND n.ts <  $2::timestamptz`,
-    [new Date(dalle).toISOString(), new Date(alle).toISOString()]
+    [
+      new Date(dalle - FINESTRA_DISERZIONI_MS).toISOString(),
+      new Date(alle + FINESTRA_DISERZIONI_MS).toISOString()
+    ]
   );
-  return new Set(r.rows.map((x: { id: number }) => Number(x.id)).filter(Number.isFinite));
+  for (const x of r.rows) {
+    const id = Number(x.id);
+    if (!Number.isFinite(id)) continue;
+    const t = new Date(x.ts).getTime();
+    if (!Number.isFinite(t)) continue;
+    if (!out.has(id)) out.set(id, []);
+    out.get(id)!.push(t);
+  }
+  return out;
+}
+
+/** Il giorno di Roma di un istante, come "AAAA-MM-GG". */
+function giornoRoma(ms: number): string {
+  return new Date(ms).toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
+}
+
+/**
+ * Lo stato di un appuntamento disertato: annullato o no show.
+ *
+ * Si prende la diserzione PIU' VICINA all'appuntamento, non la prima trovata:
+ * un contatto che diserta, viene ripianificato e diserta di nuovo ha due
+ * eventi, e ciascuna card deve prendere il suo.
+ *
+ * Restituisce null quando non c'e' nessuna diserzione collegata: allora la card
+ * resta quello che era, e non si conclude niente.
+ */
+function statoDiserzione(
+  eventi: number[],
+  inizioAppuntamento: number
+): "annullato" | "no_show" | null {
+  if (!eventi.length || !Number.isFinite(inizioAppuntamento)) return null;
+
+  const vicini = eventi.filter(
+    (t) =>
+      t >= inizioAppuntamento - DISERZIONE_MAX_PRIMA_MS &&
+      t <= inizioAppuntamento + DISERZIONE_MAX_DOPO_MS
+  );
+  if (!vicini.length) return null;
+
+  const vicino = vicini.reduce(
+    (migliore, t) => (Math.abs(t - inizioAppuntamento) < Math.abs(migliore - inizioAppuntamento) ? t : migliore),
+    vicini[0]
+  );
+  // Segnata prima del giorno dell'appuntamento: il cliente ha disdetto e la
+  // fascia si e' liberata. Lo stesso giorno o dopo: la fascia e' stata
+  // occupata e il cliente non e' venuto, anche se l'advisor lo ha registrato
+  // la mattina seguente.
+  return giornoRoma(vicino) < giornoRoma(inizioAppuntamento) ? "annullato" : "no_show";
 }
 
 /**
@@ -1041,9 +1141,9 @@ export async function GET(req: NextRequest) {
         console.error("[advisor-agenda] consulenze", err instanceof Error ? err.message : err);
         return new Set<number>();
       }),
-      contattiConNoShow(dalle, alle).catch((err) => {
+      diserzioniDeiContatti(dalle, alle).catch((err) => {
         console.error("[advisor-agenda] no show", err instanceof Error ? err.message : err);
-        return new Set<number>();
+        return new Map<number, number[]>();
       }),
       presenzeDelleRiunioni(grezzi.map((r) => r.id)).catch((err) => {
         console.error("[advisor-agenda] presenze", err instanceof Error ? err.message : err);
@@ -1154,8 +1254,13 @@ export async function GET(req: NextRequest) {
         tipo = "svolta";
       } else if (presenza === "solo-advisor") {
         tipo = "annullato";
-      } else if (suoiContatti.some((c) => disertati.has(c))) {
-        tipo = "annullato";
+      } else {
+        // ANNULLATO O NO SHOW, secondo quando la diserzione e' stata segnata
+        // rispetto a questo giorno. Si guardano le diserzioni di tutti i
+        // contatti della riunione e si prende la piu' vicina all'orario.
+        const eventi = suoiContatti.flatMap((c) => disertati.get(c) ?? []);
+        const esito = statoDiserzione(eventi, Date.parse(p.hs_meeting_start_time ?? ""));
+        if (esito) tipo = esito;
       }
 
       const suoi = contatti.get(r.id) ?? [];
@@ -1222,7 +1327,8 @@ export async function GET(req: NextRequest) {
     console.log(
       `[advisor-agenda] ${giorno}: ${eventi.length} eventi, ${new Set(eventi.map((e) => e.operatore)).size} persone, ` +
         `${eventi.filter((e) => e.tipo === "svolta").length} svolte (${svolteTrovate} dalle trattative), ` +
-        `${eventi.filter((e) => e.tipo === "annullato").length} disertate, ` +
+        `${eventi.filter((e) => e.tipo === "no_show").length} no show, ` +
+        `${eventi.filter((e) => e.tipo === "annullato").length} annullate, ` +
         `${eventi.filter((e) => e.analisi).length} con analisi, ` +
         `${eventi.filter((e) => e.trascrizione).length} con trascrizione, ` +
         `${eventi.filter((e) => e.audio).length} con audio, ` +
