@@ -60,19 +60,21 @@ const COLORI: Record<TipoEvento, { fondo: string; testo: string; secondario: str
 };
 
 /**
- * LE DUE FRECCE, E NESSUN COLORE PROPRIO.
+ * QUELLO CHE STA FUORI DAL PIANO, E QUELLO CHE SI E' SPOSTATO.
  *
- * Sia la ripianificata sia quella assente su CRM tengono il colore del loro
+ * Nessuna delle due casistiche ha un colore proprio: tengono le tre tinte dello
  * stato - verde se la consulenza si e' tenuta, grigia se il cliente non si e'
- * presentato - perche' e' quello che dicono davvero. A distinguerle e' la
- * freccia, che porta anche la data dell'altro giorno:
+ * presentato - perche' e' quello che dicono davvero, e un quarto colore
+ * cancellerebbe proprio quell'informazione.
  *
- *   ↷  ripianificata   la card esiste anche piu' avanti
- *   ↶  assente su CRM    l'appuntamento sta indietro
+ *   ↷ 17/09   ripianificata: la card esiste anche piu' avanti
+ *   ⊘ 12/09   assente su CRM, card tratteggiata: qui non c'era niente in
+ *             programma, l'appuntamento sta ancora il 12
  *
- * Le due frecce sono l'una lo speculare dell'altra perche' le due cose sono
- * opposte, e stanno nella stessa famiglia di simboli: stessa dimensione, verso
- * contrario.
+ * La ripianificata e' ordinaria amministrazione, e le basta la freccia con la
+ * data. L'altra e' un buco nel CRM - una consulenza tenuta in una fascia che il
+ * CRM non prevedeva - e il tratteggio lo dice a colpo d'occhio su tutta
+ * l'agenda, senza dover leggere la legenda.
  */
 
 /**
@@ -267,6 +269,39 @@ function IconaAudio({ colore }: { colore: string }) {
       {/* due onde invece di una: si legge come suono anche in piccolo */}
       <path d="M10.2 6.1a2.7 2.7 0 0 1 0 3.8" />
       <path d="M12.2 4.3a5.2 5.2 0 0 1 0 7.4" />
+    </svg>
+  );
+}
+
+/**
+ * IL CERCHIO SBARRATO: "qui l'appuntamento non c'e'".
+ *
+ * NON UNA X, che in un'agenda vuol dire disdetto - ed e' esattamente la
+ * casistica che abbiamo appena smesso di mostrare: chi ha usato questa pagina
+ * per settimane leggerebbe "annullato" su una consulenza che invece si e'
+ * tenuta. Il cerchio sbarrato e' il segno del divieto, e dice assenza: la
+ * fascia non e' sul CRM. La data che lo segue e' dove l'appuntamento sta
+ * davvero.
+ *
+ * DIECI PIXEL perche' sta dentro una riga da undici, in mezzo all'orario:
+ * cerchio e sbarra restano leggibili anche a questa misura, dove un calendario
+ * disegnato diventerebbe una macchia.
+ */
+function IconaFuoriPiano({ colore }: { colore: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width={10}
+      height={10}
+      fill="none"
+      stroke={colore}
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      aria-hidden="true"
+      style={{ display: "inline-block", verticalAlign: "-1px" }}
+    >
+      <circle cx="8" cy="8" r="6.2" />
+      <path d="M4.2 11.8 11.8 4.2" />
     </svg>
   );
 }
@@ -690,7 +725,10 @@ export default function AgendaGiornaliera({
               Una freccia di un altro disegno si sarebbe letta come un'altra
               cosa, e sarebbe stata piu' piccola. */}
           <div className="flex items-center gap-2">
-            <span className="inline-block w-3 text-center text-xs font-semibold leading-3 text-slate-700">↶</span>
+            <span
+              className="inline-block h-3 w-3 rounded-[3px]"
+              style={{ border: "1px dashed #64748b" }}
+            />
             <span className="text-xs font-medium text-slate-700">Assente su CRM</span>
           </div>
 
@@ -829,7 +867,7 @@ export default function AgendaGiornaliera({
                           `${e.prenotatoPer ? ` · prenotato per ${e.prenotatoPer}` : ""}` +
                           `${e.manuale ? " · creato a mano" : ""}` +
                           `${e.ripianificata ? ` · ripianificata al ${e.ripianificata}, la card c'e' anche li'` : ""}` +
-                          `${e.appuntamentoDel ? ` · consulenza tenuta qui, appuntamento fissato per il ${e.appuntamentoDel}` : ""}` +
+                          `${e.appuntamentoDel ? ` · qui sul CRM non c'era nessun appuntamento: quello del ${e.appuntamentoDel} non e' stato spostato` : ""}` +
                           `${apribile ? " · clicca per il dettaglio" : ""}`
                         }
                         style={{
@@ -838,6 +876,18 @@ export default function AgendaGiornaliera({
                           width: largo - 1,
                           height: alto,
                           background: colore.fondo,
+                          // IL TRATTEGGIO DICE "QUESTA FASCIA NON E' NEL
+                          // PIANO", e lo dice da lontano, senza bisogno della
+                          // legenda: e' il modo in cui qualunque agenda
+                          // distingue una cosa provvisoria da una prevista. Il
+                          // colore resta quello dello stato, quindi verde e
+                          // grigio continuano a significare svolta e no show.
+                          // Sta PRIMA dei bordi laterali di overbooking e
+                          // creazione manuale: quelli devono poterlo
+                          // sovrascrivere sul loro lato, non il contrario.
+                          ...(e.appuntamentoDel
+                            ? { border: `1px dashed ${colore.secondario}` }
+                            : {}),
                           padding: "2px 6px",
                           boxSizing: "border-box",
                           // La barra a destra dice che l'appuntamento era di un altro e
@@ -878,7 +928,13 @@ export default function AgendaGiornaliera({
                                 sovrascriverebbe. Cosi' invece si legge anche
                                 DOVE e' finita, che e' l'informazione utile. */}
                             {e.ripianificata ? ` · ↷ ${e.ripianificata}` : ""}
-                            {e.appuntamentoDel ? ` · ↶ ${e.appuntamentoDel}` : ""}
+                            {e.appuntamentoDel ? (
+                              <>
+                                {" · "}
+                                <IconaFuoriPiano colore={colore.secondario} />
+                                {` ${e.appuntamentoDel}`}
+                              </>
+                            ) : null}
                           </div>
                         ) : null}
                         {/* UN SOLO SEGNO: il punto nell'angolo dice che c'e'
