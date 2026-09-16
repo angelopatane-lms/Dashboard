@@ -905,9 +905,20 @@ type RiunioneSpostata = {
  * non a fine ora. Spostata PRIMA dell'inizio invece la fascia e' stata liberata
  * in anticipo, e in quel giorno non deve comparire niente.
  *
- * SOLO SUI GIORNI PASSATI. Su oggi e sul futuro non c'e' niente da recuperare,
- * e l'agenda di oggi e' quella che si apre di continuo: le due chiamate in piu'
- * si pagano solo quando si va a guardare indietro.
+ * ANCHE SU OGGI, e su oggi conta piu' che altrove. Un advisor che riaggancia e
+ * ripianifica subito fa sparire dall'agenda di giornata una call appena tenuta:
+ * visto il 16 settembre, riunione delle 10:00 spostata alle 10:44 dopo una call
+ * di quarantotto minuti, e la colonna dell'advisor tornata vuota mentre lui
+ * aveva appena lavorato. E' la vista che si guarda tutto il giorno, quindi e'
+ * li' che il buco si nota.
+ *
+ * Su oggi costa anche meno: il filtro sulla data di modifica prende solo le
+ * riunioni toccate dalla mezzanotte, che sono poche. Sul FUTURO invece non
+ * gira: una fascia che deve ancora cominciare non puo' essere stata occupata.
+ *
+ * Le fasce non ancora iniziate restano fuori da sole, senza bisogno di un
+ * controllo apposta: si recupera solo cio' che e' stato spostato DOPO l'inizio,
+ * e una fascia futura quell'istante non l'ha ancora raggiunto.
  *
  * Si cercano fra le riunioni MODIFICATE da quel giorno in poi e che oggi stanno
  * dopo di esso: una riunione che era li' e non c'e' piu' e' per forza stata
@@ -1066,7 +1077,7 @@ export async function GET(req: NextRequest) {
     // - gli servono solo le due date - e cosi' i due viaggi a HubSpot si
     // sovrappongono invece di sommarsi. Su un giorno passato erano una decina
     // di secondi buoni.
-    const promessaSpostate = alle <= Date.now()
+    const promessaSpostate = dalle <= Date.now()
       ? riunioniSpostate(token, dalle, alle).catch((err) => {
           console.error("[advisor-agenda] ripianificate", err instanceof Error ? err.message : err);
           return new Map<string, RiunioneSpostata>();
