@@ -642,6 +642,14 @@ export default function AgendaGiornaliera({
               riunione nasce ancora a mano e' comodo riconoscerla aprendola, ma in
               legenda occupava una voce per un caso che tende a zero. */}
 
+          {/* Questa voce serve: la freccia non si spiega da se', e chi la vede
+              deve capire che quella card esiste anche in un altro giorno - se
+              no sembra un doppione da segnalare. */}
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-3 text-center text-xs font-semibold leading-3 text-slate-700">↷</span>
+            <span className="text-xs font-medium text-slate-700">Ripianificato</span>
+          </div>
+
           {lineaOra !== null ? (
             <div className="flex items-center gap-2">
               <span className="inline-block h-0.5 w-[18px]" style={{ background: "#e11d48" }} />
@@ -757,6 +765,7 @@ export default function AgendaGiornaliera({
                           `${e.inizio}${e.fine ? ` – ${e.fine}` : ""} · ${e.titolo}` +
                           `${e.prenotatoPer ? ` · prenotato per ${e.prenotatoPer}` : ""}` +
                           `${e.manuale ? " · creato a mano" : ""}` +
+                          `${e.ripianificata ? ` · ripianificata al ${e.ripianificata}, la card c'e' anche li'` : ""}` +
                           `${apribile ? " · clicca per il dettaglio" : ""}`
                         }
                         style={{
@@ -795,9 +804,15 @@ export default function AgendaGiornaliera({
                           {e.titolo}
                         </div>
                         {alto >= 30 ? (
-                          <div className="text-[11px] leading-[14px]" style={{ color: colore.secondario }}>
+                          <div className="truncate text-[11px] leading-[14px]" style={{ color: colore.secondario }}>
                             {e.inizio}
                             {e.fine ? ` – ${e.fine}` : ""}
+                            {/* LA FRECCIA E LA DATA, non un terzo bordo: i due
+                                lati della card sono gia' presi da overbooking e
+                                creazione manuale, e un terzo segno colorato si
+                                sovrascriverebbe. Cosi' invece si legge anche
+                                DOVE e' finita, che e' l'informazione utile. */}
+                            {e.ripianificata ? ` · ↷ ${e.ripianificata}` : ""}
                           </div>
                         ) : null}
                         {/* UN SOLO SEGNO: il punto nell'angolo dice che c'e'

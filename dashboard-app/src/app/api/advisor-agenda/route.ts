@@ -33,6 +33,9 @@ import { getDb } from "@/lib/db";
  */
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
+// Un giorno passato fa due giri su HubSpot invece di uno: il tetto di base
+// non basta piu' quando la rete e' lenta.
+export const maxDuration = 60;
 
 const HUBSPOT_API = "https://api.hubapi.com";
 
@@ -95,6 +98,16 @@ export type EventoAgenda = {
   tipo: TipoEvento;
   /** Presente solo per gli appuntamenti di cui esiste l'analisi della call. */
   analisi?: AnalisiCall;
+  /**
+   * Quando la riunione e' stata spostata altrove DOPO che questa fascia era
+   * gia' iniziata. Contiene la nuova data, da mostrare sulla card.
+   *
+   * La card resta anche nel giorno nuovo: e' la stessa riunione vista due
+   * volte, una nel momento in cui la fascia e' stata occupata e una in quello
+   * in cui si terra'. Toglierla da qui farebbe sparire dal passato del lavoro
+   * che e' stato fatto.
+   */
+  ripianificata?: string;
   /** L'indirizzo della trascrizione su Fireflies, quando si riesce a ricavarlo. */
   trascrizione?: string;
   /** Il file audio della call, da ascoltare direttamente. */
@@ -765,6 +778,164 @@ async function leggiProprietari(token: string): Promise<Record<string, string>> 
   return map;
 }
 
+type RiunioneSpostata = {
+  /** L'orario che aveva in questo giorno. */
+  inizio: number;
+  fine: number;
+  /** Dove si trova adesso, per scriverlo sulla card. */
+  nuovoInizio: number;
+  properties: Record<string, string | null>;
+};
+
+/**
+ * Le riunioni che ERANO in questo giorno e sono state spostate altrove.
+ *
+ * PERCHE' SERVONO. L'agenda mette ogni card sull'orario ATTUALE della riunione.
+ * Quando un advisor ripianifica, la riunione si sposta e la card la segue: il
+ * giorno in cui ha lavorato resta vuoto, e il giorno nuovo mostra un
+ * appuntamento "da fare" che in realta' e' gia' stato tenuto una volta.
+ * Misurato sul periodo 1 settembre - 15 ottobre: 522 riunioni, 54 con un
+ * cambio d'orario, 19 spostate dopo l'inizio della fascia - undici di una
+ * persona sola. Sono due o tre call al giorno che sparivano dal passato.
+ *
+ * DOPO L'INIZIO, NON DOPO LA FINE. Se la riunione viene spostata quando la sua
+ * fascia e' gia' cominciata, quella fascia e' stata occupata: l'advisor era li'.
+ * Vale sia per la ripianificata dopo una trattativa - la call si e' tenuta -
+ * sia per quella dopo un no show, che si segna dopo dieci minuti di attesa e
+ * non a fine ora. Spostata PRIMA dell'inizio invece la fascia e' stata liberata
+ * in anticipo, e in quel giorno non deve comparire niente.
+ *
+ * SOLO SUI GIORNI PASSATI. Su oggi e sul futuro non c'e' niente da recuperare,
+ * e l'agenda di oggi e' quella che si apre di continuo: le due chiamate in piu'
+ * si pagano solo quando si va a guardare indietro.
+ *
+ * Si cercano fra le riunioni MODIFICATE da quel giorno in poi e che oggi stanno
+ * dopo di esso: una riunione che era li' e non c'e' piu' e' per forza stata
+ * toccata da allora. Chi viene spostato all'indietro sfugge - non e' mai
+ * capitato nel campione - e in cambio la ricerca resta stretta.
+ */
+async function riunioniSpostate(
+  token: string,
+  dalle: number,
+  alle: number
+): Promise<Map<string, RiunioneSpostata>> {
+  const out = new Map<string, RiunioneSpostata>();
+  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+  // I valori della cronologia arrivano come date ISO, non come millisecondi:
+  // Number() su "2026-09-15T13:00:00Z" da' NaN, e la riga verrebbe scartata in
+  // silenzio.
+  const quando = (v: unknown): number => {
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 1e11) return n;
+    return Date.parse(String(v));
+  };
+
+  const candidati: string[] = [];
+  let after: string | undefined;
+  do {
+    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/meetings/search`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        filterGroups: [
+          {
+            filters: [
+              // Modificata da quel giorno in poi: una riunione che era li' e
+              // non c'e' piu' e' per forza stata toccata da allora.
+              { propertyName: "hs_lastmodifieddate", operator: "GTE", value: String(dalle) },
+              // Oggi sta dopo quel giorno: se stesse dentro sarebbe gia'
+              // nell'elenco principale.
+              { propertyName: "hs_meeting_start_time", operator: "GTE", value: String(alle) },
+              // CREATA PRIMA DELLA FINE DI QUEL GIORNO. Non e' un'euristica: una
+              // riunione nata dopo non puo' essere stata in quel giorno. Toglie
+              // di mezzo tutto cio' che e' stato fissato nel frattempo, che su
+              // una settimana e' la maggior parte.
+              { propertyName: "hs_createdate", operator: "LTE", value: String(alle) }
+            ]
+          }
+        ],
+        properties: ["hs_meeting_start_time"],
+        limit: 100,
+        ...(after ? { after } : {})
+      })
+    });
+    if (!res.ok) return out;
+    const data = await res.json();
+    candidati.push(...(data.results ?? []).map((r: { id: string }) => String(r.id)));
+    after = data.paging?.next?.after;
+  } while (after);
+
+  if (!candidati.length) return out;
+
+  for (let i = 0; i < candidati.length; i += 50) {
+    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/meetings/batch/read`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        // Le stesse proprieta' della ricerca principale: cosi' la riunione
+        // recuperata entra nell'elenco gia' completa, senza una seconda
+        // lettura solo per titolo e proprietario.
+        properties: [
+          "hs_meeting_title",
+          "hs_meeting_start_time",
+          "hs_meeting_end_time",
+          "hubspot_owner_id",
+          "hs_meeting_outcome",
+          "hs_createdate"
+        ],
+        propertiesWithHistory: ["hs_meeting_start_time", "hs_meeting_end_time"],
+        inputs: candidati.slice(i, i + 50).map((id) => ({ id }))
+      })
+    });
+    if (!res.ok) return out;
+    const data = await res.json();
+
+    for (const r of data.results ?? []) {
+      const storia = (r.propertiesWithHistory?.hs_meeting_start_time ?? []) as Array<{
+        value: string;
+        timestamp: string;
+      }>;
+      if (storia.length < 2) continue;
+
+      // Dalla piu' vecchia alla piu' recente: ogni voce e' un valore, e la voce
+      // successiva dice quando quel valore e' stato sostituito.
+      const ordinata = [...storia].sort(
+        (a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp)
+      );
+
+      for (let k = 0; k + 1 < ordinata.length; k++) {
+        const inizio = quando(ordinata[k].value);
+        const sostituito = Date.parse(ordinata[k + 1].timestamp);
+        if (!Number.isFinite(inizio) || !Number.isFinite(sostituito)) continue;
+        if (inizio < dalle || inizio >= alle) continue;
+        if (sostituito < inizio) continue;
+
+        const fineStoria = (r.propertiesWithHistory?.hs_meeting_end_time ?? []) as Array<{
+          value: string;
+          timestamp: string;
+        }>;
+        const fineOrdinata = [...fineStoria].sort(
+          (a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp)
+        );
+        // La fine di allora sta nella stessa posizione della cronologia: le due
+        // proprieta' cambiano insieme. Se manca si da' mezz'ora, come fa il
+        // resto della rotta per le riunioni senza fine.
+        const fine = quando(fineOrdinata[k]?.value);
+        out.set(String(r.id), {
+          inizio,
+          fine: Number.isFinite(fine) && fine > inizio ? fine : inizio + 30 * 60 * 1000,
+          nuovoInizio: quando(r.properties?.hs_meeting_start_time),
+          properties: r.properties ?? {}
+        });
+        break;
+      }
+    }
+  }
+
+  return out;
+}
+
 const DURATA_MEMORIA_MS = 60 * 1000;
 let memoria: { chiave: string; scade: number; corpo: unknown } | null = null;
 
@@ -790,6 +961,17 @@ export async function GET(req: NextRequest) {
 
     const dalle = istanteRoma(giorno, 0, 0);
     const alle = dalle + 24 * 60 * 60 * 1000;
+
+    // IL RECUPERO PARTE SUBITO, non dopo: non dipende dalla ricerca principale
+    // - gli servono solo le due date - e cosi' i due viaggi a HubSpot si
+    // sovrappongono invece di sommarsi. Su un giorno passato erano una decina
+    // di secondi buoni.
+    const promessaSpostate = alle <= Date.now()
+      ? riunioniSpostate(token, dalle, alle).catch((err) => {
+          console.error("[advisor-agenda] ripianificate", err instanceof Error ? err.message : err);
+          return new Map<string, RiunioneSpostata>();
+        })
+      : Promise.resolve(new Map<string, RiunioneSpostata>());
 
     const grezzi: Array<{ id: string; properties: Record<string, string | null> }> = [];
     let after: string | undefined;
@@ -823,6 +1005,29 @@ export async function GET(req: NextRequest) {
       grezzi.push(...(data.results ?? []));
       after = data.paging?.next?.after;
     } while (after);
+
+    // LE RIPIANIFICATE, rimesse nella fascia che avevano occupato. Entrano
+    // nell'elenco come tutte le altre - stesso id, quindi stessi contatti,
+    // stessa trattativa, stesso stato - ma con l'orario di allora. La card
+    // resta anche nel giorno nuovo: e' la stessa riunione vista due volte.
+    const spostate = await promessaSpostate;
+
+    if (spostate.size) {
+      const gia = new Set(grezzi.map((r) => r.id));
+      for (const [id, q] of spostate) {
+        if (gia.has(id)) continue;
+        grezzi.push({
+          id,
+          properties: {
+            ...q.properties,
+            // L'orario e' quello di allora: e' la fascia che questa persona ha
+            // occupato, ed e' il posto in cui la card deve tornare.
+            hs_meeting_start_time: new Date(q.inizio).toISOString(),
+            hs_meeting_end_time: new Date(q.fine).toISOString()
+          }
+        });
+      }
+    }
 
     // Le due letture che dicono quali appuntamenti si sono davvero svolti.
     // Se una delle due non risponde, gli appuntamenti restano "fissati": e'
@@ -985,6 +1190,15 @@ export async function GET(req: NextRequest) {
         ...(analisiSua ? { analisi: analisiSua } : {}),
         ...(idTrascrizioneSua ? { trascrizione: linkTrascrizione(idTrascrizioneSua) } : {}),
         ...(prenotatoPer ? { prenotatoPer } : {}),
+        ...(spostate.has(r.id)
+          ? {
+              ripianificata: new Date(spostate.get(r.id)!.nuovoInizio).toLocaleDateString("it-IT", {
+                timeZone: "Europe/Rome",
+                day: "2-digit",
+                month: "2-digit"
+              })
+            }
+          : {}),
         ...(creataAMano(p.hs_meeting_outcome) ? { manuale: true } : {}),
         ...(presenza ? { presenza: presenza as "presentato" | "solo-advisor" | "non-si-sa" } : {})
       });
