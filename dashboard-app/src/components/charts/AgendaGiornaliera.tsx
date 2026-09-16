@@ -208,23 +208,58 @@ function inCorsie(eventi: EventoAgenda[]): { eventi: EventoInCorsia[]; corsie: n
   return { eventi: out, corsie: Math.max(1, fineDiCorsia.length) };
 }
 
-/** Il quadratino con la freccia: "questo si apre altrove". */
+/**
+ * QUATTORDICI PIXEL, non di piu'.
+ *
+ * Il pulsante che le contiene ha testo da dodici, che occupa una riga da
+ * sedici: un'icona fino a quel limite si vede bene e non fa crescere il
+ * pulsante di un pixel. Oltre, il pulsante si allarga e la fila si scompone.
+ */
+const LATO_ICONA = 14;
+
+/** Il foglio scritto: "qui c'e' la trascrizione". Prima era la freccia del
+ *  collegamento esterno, che diceva dove porta il click invece di dire cosa
+ *  si trova. */
 function IconaTrascrizione({ colore }: { colore: string }) {
   return (
-    <svg viewBox="0 0 12 12" width="9" height="9" fill="none" stroke={colore} strokeWidth="1.6" aria-hidden="true">
-      <path d="M4.5 1.5h6v6" strokeLinecap="round" />
-      <path d="M10.5 1.5 5 7" strokeLinecap="round" />
-      <path d="M9 7.5v3h-7.5V3h3" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      viewBox="0 0 16 16"
+      width={LATO_ICONA}
+      height={LATO_ICONA}
+      fill="none"
+      stroke={colore}
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {/* il foglio con l'angolo piegato */}
+      <path d="M9.2 1.8H4.4a1.2 1.2 0 0 0-1.2 1.2v10a1.2 1.2 0 0 0 1.2 1.2h7.2a1.2 1.2 0 0 0 1.2-1.2V5.4z" />
+      <path d="M9.2 1.8v3.6h3.6" />
+      {/* le righe di testo, l'ultima piu' corta come in una pagina vera */}
+      <path d="M5.6 8.2h4.8M5.6 10.6h4.8M5.6 13h2.8" />
     </svg>
   );
 }
 
-/** L'altoparlante: "questa call si puo' ascoltare". */
+/** L'altoparlante con le onde: "questa call si puo' ascoltare". */
 function IconaAudio({ colore }: { colore: string }) {
   return (
-    <svg viewBox="0 0 12 12" width="10" height="10" fill="none" stroke={colore} strokeWidth="1.5" aria-hidden="true">
-      <path d="M2 4.5h1.8L6 2.5v7L3.8 7.5H2z" strokeLinejoin="round" />
-      <path d="M8 4.2a2.4 2.4 0 0 1 0 3.6" strokeLinecap="round" />
+    <svg
+      viewBox="0 0 16 16"
+      width={LATO_ICONA}
+      height={LATO_ICONA}
+      fill="none"
+      stroke={colore}
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2 6.2h2.4L7.6 3.4v9.2L4.4 9.8H2z" />
+      {/* due onde invece di una: si legge come suono anche in piccolo */}
+      <path d="M10.2 6.1a2.7 2.7 0 0 1 0 3.8" />
+      <path d="M12.2 4.3a5.2 5.2 0 0 1 0 7.4" />
     </svg>
   );
 }
@@ -650,12 +685,14 @@ export default function AgendaGiornaliera({
             <span className="text-xs font-medium text-slate-700">Ripianificato</span>
           </div>
 
-          {/* Il verso opposto della freccia, ed e' il verso giusto: qui la
-              consulenza si e' tenuta in QUESTO giorno mentre l'appuntamento sta
-              indietro, non il contrario. */}
+          {/* LO SPECULARE ESATTO di quella di Ripianificato - stessa famiglia,
+              stessa dimensione, verso opposto - perche' le due cose sono
+              opposte: li' la card va avanti, qui l'appuntamento sta indietro.
+              Una freccia di un altro disegno si sarebbe letta come un'altra
+              cosa, e sarebbe stata piu' piccola. */}
           <div className="flex items-center gap-2">
-            <span className="inline-block w-3 text-center text-xs font-semibold leading-3 text-slate-700">⤺</span>
-            <span className="text-xs font-medium text-slate-700">Appuntamento di un altro giorno</span>
+            <span className="inline-block w-3 text-center text-xs font-semibold leading-3 text-slate-700">↶</span>
+            <span className="text-xs font-medium text-slate-700">Non Dichiarati</span>
           </div>
 
           {/* Non e' un colore ma un segno: le quattro tinte dicono lo stato
@@ -846,7 +883,7 @@ export default function AgendaGiornaliera({
                                 sovrascriverebbe. Cosi' invece si legge anche
                                 DOVE e' finita, che e' l'informazione utile. */}
                             {e.ripianificata ? ` · ↷ ${e.ripianificata}` : ""}
-                            {e.appuntamentoDel ? ` · ⤺ ${e.appuntamentoDel}` : ""}
+                            {e.appuntamentoDel ? ` · ↶ ${e.appuntamentoDel}` : ""}
                           </div>
                         ) : null}
                         {/* UN SOLO SEGNO: il punto nell'angolo dice che c'e'
