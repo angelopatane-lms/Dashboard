@@ -55,6 +55,11 @@ const attesa = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * ricava la pagina e l'audio per conto suo. Questo campo serve solo a quella
  * applicazione.
  */
+/** Il formato che l'applicazione dell'analisi sa scaricare: il nostro .docx. */
+function eScaricabile(valore: string | undefined | null): boolean {
+  return /\/api\/trascrizione\/[0-9A-Z]+\.docx/i.test(String(valore ?? ""));
+}
+
 function indirizzoTrascrizione(id: string): string {
   const segreto = process.env.FIREFLIES_WEBHOOK_SECRET;
   // Senza segreto non si puo' firmare: si ripiega sulla pagina, che almeno
@@ -742,14 +747,43 @@ async function recuperaPerNome(opzioni: {
       // collegamento: riscrivere lo stesso appuntamento con un indirizzo di
       // formato diverso - come quello che scriveva Zapier - creerebbe un
       // doppione a ogni giro notturno, da cancellare a mano.
+      // L'ECCEZIONE: se quello salvato NON e' scaricabile si riscrive comunque.
+      // Il confronto per consulenza serve a non creare doppioni oscillando fra
+      // due formati ogni notte, ma un indirizzo che l'applicazione non sa
+      // leggere non ha mai prodotto nessun record - quindi non c'e' niente da
+      // duplicare, e lasciarlo li' vuol dire non avere l'analisi per sempre.
+      // Una volta riscritto e' nel formato giusto e il confronto torna a
+      // valere.
       const gia = appuntamentoDi(attuale.link_trascrizione_fireflies);
-      if (Number.isFinite(gia) && Math.abs(gia - x.riunione.inizio) < TOLLERANZA_STESSA_CONSULENZA) {
+      if (
+        Number.isFinite(gia) &&
+        Math.abs(gia - x.riunione.inizio) < TOLLERANZA_STESSA_CONSULENZA &&
+        eScaricabile(attuale.link_trascrizione_fireflies)
+      ) {
+        invariati++;
+        continue;
+      }
+
+      // MEGLIO NON SCRIVERE CHE SCRIVERE UN INDIRIZZO CHE NESSUNO SA LEGGERE.
+      // Senza FIREFLIES_WEBHOOK_SECRET si ripiega sulla pagina di Fireflies, e
+      // l'applicazione dell'analisi da una pagina non ricava niente: il
+      // collegamento sembra a posto, l'analisi non arriva mai, e il confronto
+      // qui sopra - che guarda la consulenza e non la stringa - impedisce a
+      // ogni giro successivo di correggerlo. E' successo il 16 settembre
+      // lanciando il giro da un computer dove il segreto non c'e': ventiquattro
+      // contatti con un indirizzo inservibile.
+      const indirizzo = indirizzoTrascrizione(x.registrazione.id);
+      if (!eScaricabile(indirizzo)) {
+        console.warn(
+          "[trascrizioni] FIREFLIES_WEBHOOK_SECRET non impostato: il collegamento non viene scritto " +
+            "(sarebbe una pagina, e l'analisi non partirebbe)."
+        );
         invariati++;
         continue;
       }
 
       const proprieta: Record<string, string> = {
-        link_trascrizione_fireflies: `${indirizzoTrascrizione(x.registrazione.id)} [${quando}]`
+        link_trascrizione_fireflies: `${indirizzo} [${quando}]`
       };
       const audio = audioDi.get(x.registrazione.id);
       if (audio) proprieta.link_audio_fireflies = `${audio} [${quando}]`;
