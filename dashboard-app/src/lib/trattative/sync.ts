@@ -171,12 +171,52 @@ export function primaSvolta(
  * trattativa puo' comparire piu' volte: viene ripianificata e il cliente
  * diserta di nuovo. Misurato: il 53% delle trattative ne ha almeno uno.
  */
-export function ingressiNoShow(storici: Record<string, Voce[]>, idFaseNoShow: string): Date[] {
-  const out: Date[] = [];
+/** Due passaggi piu' vicini di cosi' raccontano lo stesso fatto, non due
+ *  diserzioni: l'advisor segna il no show e poi ripianifica, a volte subito e
+ *  a volte il mattino dopo. */
+const STESSA_DISERZIONE_MS = 24 * 60 * 60 * 1000;
+
+export function ingressiNoShow(
+  storici: Record<string, Voce[]>,
+  idFaseNoShow: string,
+  idFaseRipianificata?: string
+): Date[] {
+  const istanti: number[] = [];
+
   for (const v of storici.dealstage ?? []) {
-    if ((v.value ?? "").trim() !== idFaseNoShow) continue;
-    const t = new Date(v.timestamp);
-    if (!Number.isNaN(t.getTime())) out.push(t);
+    const t = new Date(v.timestamp).getTime();
+    if (!Number.isFinite(t)) continue;
+    const fase = (v.value ?? "").trim();
+
+    if (fase === idFaseNoShow) {
+      istanti.push(t);
+      continue;
+    }
+
+    // RIPIANIFICATA CON MOTIVO "MANCATA PRESENZA": e' un no show anche questo.
+    // Chi lavora la pratica passando prima per la fase No Show e poi
+    // ripianificando viene contato dalla riga sopra; chi va dritto in
+    // Ripianificata scrivendo il motivo saltava la fase, e per noi quella
+    // diserzione non esisteva. Misurato da giugno: 193 casi con quel motivo,
+    // 101 passati anche dalla fase e 92 mai - il 4% dei no show, invisibile.
+    //
+    // Il motivo si legge AL MOMENTO del passaggio e non oggi: una trattativa
+    // ripianificata per mancata presenza e poi ripianificata di nuovo dopo la
+    // call porta "Trattativa" come valore corrente, e leggendo quello la prima
+    // diserzione sparirebbe.
+    if (idFaseRipianificata && fase === idFaseRipianificata) {
+      if (valoreAl(storici.motivo ?? [], t) === "Mancata Presenza") istanti.push(t);
+    }
+  }
+
+  // Si accorpano i passaggi ravvicinati: i 101 che toccano entrambe le fasi
+  // devono contare una volta sola.
+  istanti.sort((a, b) => a - b);
+  const out: Date[] = [];
+  for (const t of istanti) {
+    const ultimo = out[out.length - 1];
+    if (ultimo && t - ultimo.getTime() <= STESSA_DISERZIONE_MS) continue;
+    out.push(new Date(t));
   }
   return out;
 }
@@ -369,6 +409,9 @@ export type ContestoSvolte = {
   conStorico: string[];
   etichettaFase: Map<string, string>;
   idFaseNoShow: string;
+  /** Serve a riconoscere le diserzioni segnate come Ripianificata con motivo
+   *  "Mancata Presenza", che non passano dalla fase No Show. */
+  idFaseRipianificata: string;
 };
 
 export async function preparaContesto(token: string): Promise<ContestoSvolte> {
@@ -397,7 +440,14 @@ export async function preparaContesto(token: string): Promise<ContestoSvolte> {
   const idFaseNoShow = [...etichettaFase].find(([, label]) => label === "No Show")?.[0];
   if (!idFaseNoShow) throw new Error("Fase 'No Show' non trovata nella pipeline: impossibile contare gli appuntamenti disertati.");
 
-  return { gruppi, proprieta, conStorico, etichettaFase, idFaseNoShow };
+  // Se un giorno la fase venisse rinominata non si interrompe niente: si torna
+  // a contare le sole diserzioni che passano dalla fase No Show, com'era prima.
+  const idFaseRipianificata = [...etichettaFase].find(([, label]) => label === "Ripianificata")?.[0] ?? "";
+  if (!idFaseRipianificata) {
+    console.warn("[trattative] fase 'Ripianificata' non trovata: le diserzioni segnate con quel motivo non verranno contate.");
+  }
+
+  return { gruppi, proprieta, conStorico, etichettaFase, idFaseNoShow, idFaseRipianificata };
 }
 
 /**
@@ -422,7 +472,7 @@ export async function aggiornaUnaTrattativa(
   dealId: string,
   contesto?: ContestoSvolte
 ): Promise<{ dealId: number; svolta: Date | null; noShow: number } | null> {
-  const { gruppi, proprieta, conStorico, etichettaFase, idFaseNoShow } =
+  const { gruppi, proprieta, conStorico, etichettaFase, idFaseNoShow, idFaseRipianificata } =
     contesto ?? (await preparaContesto(token));
 
   const d = await chiamaHubSpot<any>(token, `${HUBSPOT_API}/crm/v3/objects/deals/batch/read`, {
@@ -444,7 +494,7 @@ export async function aggiornaUnaTrattativa(
   const campagna = (r.properties?.id_campagna_track ?? "").trim();
   const svolta = primaSvolta(gruppi, r.propertiesWithHistory ?? {}, r.properties ?? {}, etichettaFase);
   const setterId = setterAllaData(r.propertiesWithHistory ?? {}, creata);
-  const noShow = ingressiNoShow(r.propertiesWithHistory ?? {}, idFaseNoShow).map((ts) => ({
+  const noShow = ingressiNoShow(r.propertiesWithHistory ?? {}, idFaseNoShow, idFaseRipianificata).map((ts) => ({
     ts,
     setterId: setterAllaData(r.propertiesWithHistory ?? {}, ts)
   }));
@@ -502,7 +552,7 @@ export async function sincronizzaTrattative(
     rows: [log]
   } = await db.query(`INSERT INTO sync_log (tipo) VALUES ('trattative') RETURNING id`);
 
-  const { gruppi, proprieta, conStorico, etichettaFase, idFaseNoShow } = await preparaContesto(token);
+  const { gruppi, proprieta, conStorico, etichettaFase, idFaseNoShow, idFaseRipianificata } = await preparaContesto(token);
 
   const esito: EsitoTrattative = { trattative: 0, svolte: 0, noShow: 0, senzaCampagna: 0, troncato: false };
 
@@ -545,7 +595,7 @@ export async function sincronizzaTrattative(
             // E per ogni diserzione, quello di quel giorno: fra il primo
             // appuntamento e un no-show di due mesi dopo il lead puo' essere
             // passato di mano.
-            noShow: ingressiNoShow(r.propertiesWithHistory ?? {}, idFaseNoShow).map((ts) => ({
+            noShow: ingressiNoShow(r.propertiesWithHistory ?? {}, idFaseNoShow, idFaseRipianificata).map((ts) => ({
               ts,
               setterId: setterAllaData(r.propertiesWithHistory ?? {}, ts)
             }))
