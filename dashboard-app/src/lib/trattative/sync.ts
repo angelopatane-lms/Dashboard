@@ -13,6 +13,7 @@
 // modifica su HubSpot si riflette al sync successivo senza toccare il codice.
 
 import { getDb } from "@/lib/db";
+import { campagnaEffettiva } from "@/lib/campagnaEffettiva";
 
 const HUBSPOT_API = "https://api.hubapi.com";
 const FLOW_TRATTATIVE_SVOLTE = "4640743658";
@@ -479,7 +480,7 @@ export async function aggiornaUnaTrattativa(
     method: "POST",
     body: {
       inputs: [{ id: dealId }],
-      properties: [...proprieta, "id_campagna_track", "createdate"],
+      properties: [...proprieta, "id_campagna_track", "id_campagna_track_last", "createdate"],
       propertiesWithHistory: conStorico
     }
   });
@@ -491,7 +492,11 @@ export async function aggiornaUnaTrattativa(
   if (Number.isNaN(creata.getTime())) return null;
 
   const contatti = await leggiContatti(token, [String(r.id)]);
-  const campagna = (r.properties?.id_campagna_track ?? "").trim();
+  const campagna = campagnaEffettiva(
+    r.properties?.id_campagna_track,
+    r.properties?.id_campagna_track_last,
+    creata.getTime()
+  );
   const svolta = primaSvolta(gruppi, r.propertiesWithHistory ?? {}, r.properties ?? {}, etichettaFase);
   const setterId = setterAllaData(r.propertiesWithHistory ?? {}, creata);
   const noShow = ingressiNoShow(r.propertiesWithHistory ?? {}, idFaseNoShow, idFaseRipianificata).map((ts) => ({
@@ -567,7 +572,7 @@ export async function sincronizzaTrattative(
           method: "POST",
           body: {
             inputs: gruppoIds.map((id) => ({ id })),
-            properties: [...proprieta, "id_campagna_track", "createdate"],
+            properties: [...proprieta, "id_campagna_track", "id_campagna_track_last", "createdate"],
             propertiesWithHistory: conStorico
           }
         });
@@ -587,7 +592,11 @@ export async function sincronizzaTrattative(
           righe.push({
             dealId: Number(r.id),
             contactId: contatti.get(String(r.id)) ?? null,
-            campagna: (r.properties?.id_campagna_track ?? "").trim(),
+            campagna: campagnaEffettiva(
+              r.properties?.id_campagna_track,
+              r.properties?.id_campagna_track_last,
+              creata.getTime()
+            ),
             creata,
             svolta: primaSvolta(gruppi, r.propertiesWithHistory ?? {}, r.properties ?? {}, etichettaFase),
             // Il setter di quando l'appuntamento e' stato fissato.

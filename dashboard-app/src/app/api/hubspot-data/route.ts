@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { RE_SUFFISSO_VARIANTE, sqlEMarcatoreInstant, sqlNomeBase } from "@/lib/campagne";
 import { nomiPerRotta } from "@/lib/proprietari";
+import { campagnaEffettiva } from "@/lib/campagnaEffettiva";
 
 /**
  * NESSUNA RISPOSTA MEMORIZZATA.
@@ -120,7 +121,9 @@ async function fetchBoomRecords(
       // Setter: il primo e' compilato sull'87% degli incassi, il secondo sul
       // 98% e fa da ripiego per il resto. Sono proprieta' dello stesso oggetto,
       // quindi non costano una chiamata in piu'.
-      properties: ["data_di_pagamento", "tipologia_di_incasso", "importo", "hubspot_owner_id", "setter", "id_trattativa", "id_campagna_track", "tipo_di_vendita", "prodotto", "id_contatto_associato"],
+      // "id_campagna_track_last" e "hs_createdate" servono a stabilire a quale
+      // campagna appartiene davvero l'incasso: vedi campagnaEffettiva().
+      properties: ["data_di_pagamento", "tipologia_di_incasso", "importo", "hubspot_owner_id", "setter", "id_trattativa", "id_campagna_track", "id_campagna_track_last", "hs_createdate", "tipo_di_vendita", "prodotto", "id_contatto_associato"],
       limit: 100,
       ...(after ? { after } : {})
     };
@@ -141,7 +144,13 @@ async function fetchBoomRecords(
         importo: parseFloat(p.importo ?? "0") || 0,
         tipo_di_vendita: (p.tipo_di_vendita ?? "").trim(),
         prodotto: (p.prodotto ?? "").trim(),
-        id_campagna_track: p.id_campagna_track ?? "",
+        // LA CAMPAGNA GIA' RISOLTA. Chi legge questo record non deve sapere
+        // che su HubSpot i campi sono due: riceve quello giusto e basta.
+        id_campagna_track: campagnaEffettiva(
+          p.id_campagna_track,
+          p.id_campagna_track_last,
+          Date.parse(p.hs_createdate ?? "")
+        ),
         contact_id: Number(p.id_contatto_associato) || null,
         instant: false,
         data_di_pagamento_ms: (() => {
