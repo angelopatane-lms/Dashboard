@@ -14,6 +14,7 @@ import { getDb } from "@/lib/db";
 import { registraPresenze } from "@/lib/trascrizioni/presenze";
 import {
   abbina,
+  stessoNome,
   type Abbinamento,
   type Registrazione,
   type Riunione
@@ -522,7 +523,184 @@ export async function sincronizzaTrascrizioni(opzioni: {
     await attesa(280);
   }
 
+/** La voce dell'account condiviso con cui il Notetaker entra in call: non e'
+ *  un cliente, e va tolta prima di cercare nomi. */
+const VOCE_DEL_BOT = "advisor leone group";
+
+/** Una consulenza vera dura almeno questo. Sotto, e' il bot che entra in una
+ *  stanza vuota e se ne va: nel campione sono registrazioni da uno a tre
+ *  minuti, e cercargli un cliente non ha senso. */
+const DURATA_MINIMA_ORFANA = 10;
+
+/** Quanto lontano puo' stare l'appuntamento dalla call che lo ha onorato. Tre
+ *  settimane: un advisor che rimanda rimanda di giorni, non di mesi. */
+const DISTANZA_MASSIMA_MS = 21 * 24 * 60 * 60 * 1000;
+
+/**
+ * Le registrazioni rimaste senza appuntamento, agganciate PER NOME.
+ *
+ * PERCHE' SERVE. L'abbinamento normale accosta una registrazione a un
+ * appuntamento confrontando stanza e orario. Ma capita che la call si tenga in
+ * un giorno diverso da quello fissato senza che nessuno sposti l'appuntamento:
+ * l'advisor rimanda, si risentono tre giorni dopo nella stessa stanza, e in
+ * calendario resta la data vecchia. Dagli orari quella registrazione non
+ * appartiene a niente e si perde - niente trascrizione sul contatto, niente
+ * analisi della call, e la consulenza non risulta da nessuna parte.
+ *
+ * Misurato su settembre: 175 registrazioni, 63 senza appuntamento, di cui 29
+ * lunghe piu' di dieci minuti. Consulenze vere, una anche di 110 minuti.
+ *
+ * COME SI RICONOSCE IL CLIENTE. Dalla registrazione stessa: Fireflies scrive
+ * chi parla, e quel nome si cerca fra i contatti. Quando la ricerca restituisce
+ * una persona sola e il nome combacia davvero, l'appuntamento e' il suo - a
+ * patto che sia nella stessa stanza e non troppo lontano nel tempo.
+ *
+ * NON SI INDOVINA MAI. Se il nome in call e' troncato - Meet mostra quello che
+ * la persona ha scritto, e "marcel ma" restituisce cinque contatti diversi - la
+ * registrazione resta orfana. Meglio perderne una che mettere la consulenza di
+ * un estraneo sulla scheda di qualcun altro.
+ */
+async function recuperaPerNome(opzioni: {
+  token: string;
+  chiaveFireflies: string;
+  orfane: Registrazione[];
+  riunioniGiaUsate: Set<string>;
+}): Promise<Abbinamento[]> {
+  const { token, chiaveFireflies, orfane, riunioniGiaUsate } = opzioni;
+  const out: Abbinamento[] = [];
+
+  const candidate = orfane.filter((r) => r.durataMin >= DURATA_MINIMA_ORFANA);
+  if (!candidate.length) return out;
+
+  for (const reg of candidate) {
+    if (!reg.frasi) {
+      try {
+        reg.frasi = await leggiFrasi(chiaveFireflies, reg.id);
+      } catch {
+        reg.frasi = [];
+      }
+      await attesa(280);
+    }
+
+    const voci = [
+      ...new Set(
+        (reg.frasi ?? [])
+          .map((f) => (f.voce ?? "").trim())
+          .filter((v) => v && v.toLowerCase() !== VOCE_DEL_BOT && !/^speaker \d+$/i.test(v))
+      )
+    ];
+    if (!voci.length) continue;
+
+    // Un solo contatto su tutte le voci, o si lascia perdere.
+    const trovati = new Map<string, string>();
+    for (const voce of voci) {
+      try {
+        const d = await hubspot<Pagina<Oggetto>>(token, "/crm/v3/objects/contacts/search", {
+          query: voce,
+          properties: ["firstname", "lastname"],
+          limit: 5
+        });
+        for (const c of d.results ?? []) {
+          const nome = `${c.properties?.firstname ?? ""} ${c.properties?.lastname ?? ""}`.trim();
+          if (nome && stessoNome(voce, nome)) trovati.set(String(c.id), nome);
+        }
+      } catch {
+        // una ricerca che non risponde non deve fermare il giro
+      }
+      await attesa(220);
+    }
+    if (trovati.size !== 1) continue;
+
+    const [contattoId, nomeContatto] = [...trovati][0];
+
+    let riunioni: string[] = [];
+    try {
+      const d = await hubspot<{ results?: Array<{ toObjectId: number }> }>(
+        token,
+        `/crm/v4/objects/contacts/${contattoId}/associations/meetings`
+      );
+      riunioni = (d.results ?? []).map((x) => String(x.toObjectId));
+    } catch {
+      continue;
+    }
+    if (!riunioni.length) continue;
+
+    // L'appuntamento di quel contatto: stessa stanza, non gia' assegnato a
+    // un'altra registrazione, il piu' vicino nel tempo.
+    let migliore: Riunione | null = null;
+    try {
+      const d = await hubspot<{ results?: Oggetto[] }>(token, "/crm/v3/objects/meetings/batch/read", {
+        properties: [
+          "hs_meeting_location",
+          "hs_video_conference_url",
+          "hs_meeting_start_time",
+          "hs_meeting_end_time",
+          "hubspot_owner_id"
+        ],
+        inputs: riunioni.map((id) => ({ id }))
+      });
+      for (const m of d.results ?? []) {
+        if (riunioniGiaUsate.has(String(m.id))) continue;
+        const stanza = stanzaDa(m.properties);
+        if (stanza !== reg.stanza) continue;
+        const inizio = Date.parse(m.properties.hs_meeting_start_time ?? "");
+        if (!Number.isFinite(inizio)) continue;
+        if (Math.abs(inizio - reg.inizio) > DISTANZA_MASSIMA_MS) continue;
+        const fine = Date.parse(m.properties.hs_meeting_end_time ?? "");
+        const advisor = String(m.properties.hubspot_owner_id ?? "").trim();
+        if (!migliore || Math.abs(inizio - reg.inizio) < Math.abs(migliore.inizio - reg.inizio)) {
+          migliore = {
+            id: String(m.id),
+            stanza,
+            inizio,
+            fine: Number.isFinite(fine) && fine > inizio ? fine : inizio + 30 * MIN,
+            advisorPrenotato: advisor,
+            advisorEffettivo: advisor,
+            contattoId,
+            contattoNome: nomeContatto
+          };
+        }
+      }
+    } catch {
+      continue;
+    }
+    if (!migliore) continue;
+
+    riunioniGiaUsate.add(migliore.id);
+    out.push({
+      registrazione: reg,
+      riunione: migliore,
+      criterio: "nome",
+      scartoMin: Math.round((reg.inizio - migliore.inizio) / MIN),
+      // Nessuna sovrapposizione: e' proprio il motivo per cui questa
+      // registrazione era rimasta orfana.
+      sovrapposizioneMin: 0,
+      daSec: 0,
+      aSec: reg.durataMin * 60
+    });
+    await attesa(160);
+  }
+
+  return out;
+}
+
   const { abbinamenti, registrazioniSenzaRiunione } = abbina(registrazioni, riunioni);
+
+  // SECONDO PASSAGGIO, sulle sole rimaste orfane: si cerca il cliente per nome
+  // dentro la registrazione. Vedi recuperaPerNome().
+  const perNome = await recuperaPerNome({
+    token,
+    chiaveFireflies,
+    orfane: registrazioniSenzaRiunione,
+    riunioniGiaUsate: new Set(abbinamenti.map((x) => x.riunione.id))
+  }).catch((e) => {
+    console.warn("[trascrizioni] recupero per nome non riuscito:", e instanceof Error ? e.message : e);
+    return [] as Abbinamento[];
+  });
+  if (perNome.length) {
+    console.log(`[trascrizioni] ${perNome.length} registrazioni orfane agganciate per nome`);
+    abbinamenti.push(...perNome);
+  }
 
   const perCriterio: Record<string, number> = {};
   for (const x of abbinamenti) perCriterio[x.criterio] = (perCriterio[x.criterio] ?? 0) + 1;
