@@ -692,7 +692,7 @@ export default function AgendaGiornaliera({
               cosa, e sarebbe stata piu' piccola. */}
           <div className="flex items-center gap-2">
             <span className="inline-block w-3 text-center text-xs font-semibold leading-3 text-slate-700">↶</span>
-            <span className="text-xs font-medium text-slate-700">Non Dichiarati</span>
+            <span className="text-xs font-medium text-slate-700">Non Pianificato</span>
           </div>
 
           {/* Non e' un colore ma un segno: le quattro tinte dicono lo stato
