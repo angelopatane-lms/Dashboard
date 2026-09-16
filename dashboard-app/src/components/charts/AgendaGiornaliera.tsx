@@ -160,8 +160,8 @@ const COLORE_MANUALE = "#b91c1c";
 
 const LEGENDA: Array<{ tipo: TipoEvento; label: string }> = [
   { tipo: "appuntamento", label: "Fissato" },
-  { tipo: "svolta", label: "Svolto" },
   { tipo: "annullato", label: "Annullato" },
+  { tipo: "svolta", label: "Svolto" },
   { tipo: "no_show", label: "No Show" }
 ];
 
