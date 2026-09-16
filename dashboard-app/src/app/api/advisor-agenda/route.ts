@@ -837,19 +837,17 @@ async function presenzeDelleRiunioni(
 const FINESTRA_DISERZIONI_MS = 45 * 24 * 60 * 60 * 1000;
 
 /**
- * Quanto lontano puo' stare una diserzione per riferirsi ANCORA a questo
- * appuntamento.
+ * Quanto puo' tardare l'advisor a segnare la diserzione.
  *
- * PRIMA: una disdetta anticipata arriva qualche giorno prima, non settimane.
- * Senza un limite si pescava il no show di un appuntamento PRECEDENTE dello
- * stesso contatto - visto un caso reale con trentotto giorni di distanza, che
- * avrebbe fatto risultare annullato un appuntamento andato benissimo. Quello
- * vecchio ha gia' la sua card nel suo giorno.
+ * La sera stessa o la mattina dopo, quando passa a confermare gli esiti
+ * spostando di fase le trattative. Tre giorni coprono anche il fine settimana.
  *
- * DOPO: l'advisor registra la sera stessa o la mattina dopo. Tre giorni
- * coprono anche il fine settimana.
+ * Indietro invece non si guarda affatto: una diserzione precedente al giorno
+ * dell'appuntamento e' di un appuntamento precedente. Un limite all'indietro
+ * c'era - prima quattordici giorni - e non bastava comunque: cinque card di un
+ * giorno solo risultavano annullate per diserzioni vecchie da due a sei giorni,
+ * tutte appartenenti ad altri appuntamenti.
  */
-const DISERZIONE_MAX_PRIMA_MS = 14 * 24 * 60 * 60 * 1000;
 const DISERZIONE_MAX_DOPO_MS = 3 * 24 * 60 * 60 * 1000;
 
 /**
@@ -897,14 +895,22 @@ function giornoRoma(ms: number): string {
 }
 
 /**
- * Lo stato di un appuntamento disertato: annullato o no show.
+ * Se questo appuntamento e' stato disertato.
  *
- * Si prende la diserzione PIU' VICINA all'appuntamento, non la prima trovata:
- * un contatto che diserta, viene ripianificato e diserta di nuovo ha due
- * eventi, e ciascuna card deve prendere il suo.
+ * SOLO LE DISERZIONI DAL SUO GIORNO IN POI. Una segnata prima appartiene a un
+ * appuntamento PRECEDENTE dello stesso cliente, non a questo: verificato caso
+ * per caso su tutte quelle di settembre - Rosangela Rizzi ha due riunioni, la
+ * prima rinominata "DISDETTO" e la seconda ripianificata, e la diserzione e'
+ * della prima; Ketty Celante lo stesso; e sugli altri la riunione precedente
+ * non esiste piu' ma la diserzione e' li' a dire che c'era.
  *
- * Restituisce null quando non c'e' nessuna diserzione collegata: allora la card
- * resta quello che era, e non si conclude niente.
+ * Quando il cliente disdice il giorno stesso vale No Show: la fascia era
+ * occupata e non si riempie piu'. L'annullamento vero - la disdetta con
+ * anticipo - resta l'esito CANCELED sulla riunione, che e' un'affermazione
+ * esplicita invece che una deduzione dalle date.
+ *
+ * Fra piu' diserzioni si prende la PIU' VICINA: un cliente che diserta, viene
+ * ripianificato e diserta di nuovo ha due eventi, e ciascuna card prende il suo.
  */
 function statoDiserzione(
   eventi: number[],
@@ -912,22 +918,15 @@ function statoDiserzione(
 ): "annullato" | "no_show" | null {
   if (!eventi.length || !Number.isFinite(inizioAppuntamento)) return null;
 
+  // Dalla mezzanotte del giorno dell'appuntamento in poi. Prima di allora la
+  // diserzione non puo' riguardare questa fascia.
+  const giorno = giornoRoma(inizioAppuntamento);
   const vicini = eventi.filter(
-    (t) =>
-      t >= inizioAppuntamento - DISERZIONE_MAX_PRIMA_MS &&
-      t <= inizioAppuntamento + DISERZIONE_MAX_DOPO_MS
+    (t) => giornoRoma(t) >= giorno && t <= inizioAppuntamento + DISERZIONE_MAX_DOPO_MS
   );
   if (!vicini.length) return null;
 
-  const vicino = vicini.reduce(
-    (migliore, t) => (Math.abs(t - inizioAppuntamento) < Math.abs(migliore - inizioAppuntamento) ? t : migliore),
-    vicini[0]
-  );
-  // Segnata prima del giorno dell'appuntamento: il cliente ha disdetto e la
-  // fascia si e' liberata. Lo stesso giorno o dopo: la fascia e' stata
-  // occupata e il cliente non e' venuto, anche se l'advisor lo ha registrato
-  // la mattina seguente.
-  return giornoRoma(vicino) < giornoRoma(inizioAppuntamento) ? "annullato" : "no_show";
+  return "no_show";
 }
 
 /**
