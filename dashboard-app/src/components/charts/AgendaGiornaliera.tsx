@@ -51,16 +51,20 @@ function larghezzaColonna(nomi: string[]): number {
  * quattro fondi diversi un grigio fisso funzionerebbe su una tinta e
  * sfarfallerebbe sulle altre.
  */
-const COLORI: Record<TipoEvento, { fondo: string; testo: string; secondario: string }> = {
+const COLORI: Record<
+  TipoEvento,
+  { fondo: string; testo: string; secondario: string; bordo?: string }
+> = {
   appuntamento: { fondo: "#7dd3fc", testo: "#0c4a6e", secondario: "#075985" },
   svolta: { fondo: "#6ee7b7", testo: "#064e3b", secondario: "#065f46" },
-  // GRIGIO L'ANNULLATO, AMBRA IL NO SHOW. Il grigio dice "non e' successo
-  // niente", ed e' giusto per una disdetta arrivata in anticipo: la fascia si
-  // e' liberata. Un no show invece e' una fascia sprecata, e deve saltare
-  // all'occhio scorrendo la colonna - ma non in rosso, che qui e' gia' preso
-  // dalla linea dell'ora e dal segno delle riunioni create a mano.
-  annullato: { fondo: "#cbd5e1", testo: "#475569", secondario: "#64748b" },
-  no_show: { fondo: "#fdba74", testo: "#7c2d12", secondario: "#9a3412" }
+  // IL NO SHOW TIENE IL GRIGIO PIENO, che e' il colore con cui lo si e' sempre
+  // letto in questa agenda. L'ANNULLATO E' BIANCO CON UN CONTORNO SOTTILE: la
+  // fascia era libera, quindi la card non deve avere il peso visivo di una
+  // occupata - si vede che c'e', e basta. Il contorno riprende lo stesso grigio
+  // del no show, cosi' i due si leggono come due gradi della stessa cosa
+  // invece che come due colori slegati.
+  no_show: { fondo: "#cbd5e1", testo: "#475569", secondario: "#64748b" },
+  annullato: { fondo: "#ffffff", testo: "#64748b", secondario: "#94a3b8", bordo: "#cbd5e1" }
 };
 
 /**
@@ -626,7 +630,15 @@ export default function AgendaGiornaliera({
         <div className="flex flex-wrap items-center justify-center gap-4">
           {LEGENDA.map((v) => (
             <div key={v.tipo} className="flex items-center gap-2">
-              <span className="inline-block h-3 w-3 rounded-[3px]" style={{ background: COLORI[v.tipo].fondo }} />
+              {/* Il quadratino porta anche il contorno, se lo stato ce l'ha:
+                  un quadratino bianco senza bordo sarebbe invisibile. */}
+              <span
+                className="inline-block h-3 w-3 rounded-[3px]"
+                style={{
+                  background: COLORI[v.tipo].fondo,
+                  ...(COLORI[v.tipo].bordo ? { border: `1px solid ${COLORI[v.tipo].bordo}` } : {})
+                }}
+              />
               <span className="text-xs font-medium text-slate-700">{v.label}</span>
             </div>
           ))}
@@ -781,6 +793,10 @@ export default function AgendaGiornaliera({
                           width: largo - 1,
                           height: alto,
                           background: colore.fondo,
+                          // Il contorno va PRIMA dei due bordi laterali:
+                          // overbooking e creazione manuale devono poterlo
+                          // sovrascrivere sul loro lato, non il contrario.
+                          ...(colore.bordo ? { border: `1px solid ${colore.bordo}` } : {}),
                           padding: "2px 6px",
                           boxSizing: "border-box",
                           // La barra a destra dice che l'appuntamento era di un altro e
