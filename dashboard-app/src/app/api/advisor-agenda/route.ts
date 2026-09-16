@@ -762,19 +762,55 @@ async function contattiConConsulenza(dalle: number, alle: number): Promise<Set<n
  * Il calcolo non e' qui: lo fa il sync quando abbina la registrazione, e qui
  * si legge soltanto. Vedi chiEraInCall().
  */
+/**
+ * Chi c'era in call, per riunione.
+ *
+ * L'ESITO VALE SOLO NEL GIORNO IN CUI LA CALL E' AVVENUTA. La riga e' legata
+ * alla riunione, e una riunione si sposta: quella del 15 ripianificata al 17 si
+ * portava dietro il suo "cliente presente", e la card del 17 - un appuntamento
+ * che deve ancora tenersi - risultava gia' svolta. Con `call_ts` si sa quando
+ * la call e' stata fatta davvero, e fuori da quel giorno l'esito non si applica.
+ *
+ * LA TRASCRIZIONE INVECE RESTA SEMPRE. E' della riunione, non del giorno: se
+ * l'appuntamento e' stato tenuto una volta e poi ripianificato, quella
+ * registrazione riguarda le stesse persone e vale la pena poterla riaprire da
+ * entrambe le card.
+ */
 async function presenzeDelleRiunioni(
-  ids: string[]
+  ids: string[],
+  dalle: number,
+  alle: number
 ): Promise<Map<string, { esito: string; trascrizione: string }>> {
   if (!ids.length) return new Map();
   const r = await getDb().query(
-    `SELECT riunione_id, esito, trascrizione FROM presenza_call WHERE riunione_id = ANY($1::text[])`,
+    `SELECT riunione_id, esito, trascrizione, call_ts, inizio_ts
+       FROM presenza_call WHERE riunione_id = ANY($1::text[])`,
     [ids]
   );
   return new Map(
-    r.rows.map((x: { riunione_id: string; esito: string; trascrizione: string }) => [
-      String(x.riunione_id),
-      { esito: String(x.esito), trascrizione: String(x.trascrizione ?? "") }
-    ])
+    r.rows.map(
+      (x: {
+        riunione_id: string;
+        esito: string;
+        trascrizione: string;
+        call_ts: Date | null;
+        inizio_ts: Date | null;
+      }) => {
+        // Quando la call e' avvenuta. Le righe scritte prima che esistesse
+        // call_ts non ce l'hanno: per quelle vale l'orario dell'appuntamento,
+        // che e' il valore giusto in tutti i casi tranne i pochi in cui la
+        // consulenza e' stata tenuta in un altro giorno.
+        const quando = (x.call_ts ?? x.inizio_ts)?.getTime();
+        const nelGiorno = quando !== undefined && quando >= dalle && quando < alle;
+        return [
+          String(x.riunione_id),
+          {
+            esito: nelGiorno ? String(x.esito) : "",
+            trascrizione: String(x.trascrizione ?? "")
+          }
+        ];
+      }
+    )
   );
 }
 
@@ -1272,7 +1308,7 @@ export async function GET(req: NextRequest) {
         console.error("[advisor-agenda] no show", err instanceof Error ? err.message : err);
         return new Map<number, number[]>();
       }),
-      presenzeDelleRiunioni(grezzi.map((r) => r.id)).catch((err) => {
+      presenzeDelleRiunioni(grezzi.map((r) => r.id), dalle, alle).catch((err) => {
         console.error("[advisor-agenda] presenze", err instanceof Error ? err.message : err);
         return new Map<string, { esito: string; trascrizione: string }>();
       })
@@ -1385,9 +1421,18 @@ export async function GET(req: NextRequest) {
         // ANNULLATO O NO SHOW, secondo quando la diserzione e' stata segnata
         // rispetto a questo giorno. Si guardano le diserzioni di tutti i
         // contatti della riunione e si prende la piu' vicina all'orario.
-        const eventi = suoiContatti.flatMap((c) => disertati.get(c) ?? []);
-        const esito = statoDiserzione(eventi, Date.parse(p.hs_meeting_start_time ?? ""));
-        if (esito) tipo = esito;
+        //
+        // SOLO SE LA FASCIA E' GIA' COMINCIATA. Un appuntamento che deve ancora
+        // tenersi non puo' essere stato disertato, e senza questo controllo si
+        // prendeva la diserzione di un appuntamento PRECEDENTE dello stesso
+        // contatto: visto un caso disertato la mattina e ripianificato al
+        // giorno dopo, che faceva risultare annullata anche la card nuova.
+        const inizioSlot = Date.parse(p.hs_meeting_start_time ?? "");
+        if (Number.isFinite(inizioSlot) && inizioSlot <= Date.now()) {
+          const eventi = suoiContatti.flatMap((c) => disertati.get(c) ?? []);
+          const esito = statoDiserzione(eventi, inizioSlot);
+          if (esito) tipo = esito;
+        }
       }
 
       const suoi = contatti.get(r.id) ?? [];
