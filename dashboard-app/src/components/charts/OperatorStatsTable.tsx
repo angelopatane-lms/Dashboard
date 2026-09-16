@@ -202,6 +202,11 @@ const INTESTAZIONI_NUMERI = [
   "Connessioni",
   "Appuntamenti",
   "% Appuntamento",
+  // Queste due compaiono solo sulla pagina Setter, ma la larghezza si calcola
+  // una volta sola per tutte e due le tabelle: lasciarle fuori faceva andare a
+  // capo l'intestazione piu' lunga.
+  "No Show",
+  "% Consulenza",
   "Consulenze",
   "Chiusure",
   "% Chiusura",
@@ -484,7 +489,10 @@ export default function OperatorStatsTable({
                   // dal testo nero. Niente frecce: le colonne sono larghe
                   // quanto la loro intestazione, e una freccia in piu' le
                   // avrebbe allargate tutte per servirne una.
-                  className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} cursor-pointer select-none px-2 py-2 leading-tight transition hover:text-black ${
+                  // whitespace-nowrap: la colonna e' larga quanto la sua
+                  // intestazione, quindi andare a capo non serve a niente e
+                  // sfalsa l'altezza della riga dei titoli.
+                  className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} cursor-pointer select-none whitespace-nowrap px-2 py-2 leading-tight transition hover:text-black ${
                     attiva ? "bg-neutral-100 text-black" : "bg-white"
                   }`}
                 >
