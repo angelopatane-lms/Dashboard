@@ -328,26 +328,43 @@ async function audioDelleTrascrizioni(
   const out = new Map<string, { audio?: string; durataMin?: number }>();
   const chiave = process.env.FIREFLIES_API_KEY;
   if (!chiave || !ids.length) return out;
-  for (const id of ids) {
-    try {
-      const res = await fetch("https://api.fireflies.ai/graphql", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${chiave}`, "Content-Type": "application/json" },
-        // La durata arriva dalla stessa interrogazione: e' un campo in piu'
-        // nella risposta, non una chiamata in piu'.
-        body: JSON.stringify({ query: `{ transcript(id: "${id}") { audio_url duration } }` })
-      });
-      if (!res.ok) continue;
-      const dati = await res.json();
-      const url = dati?.data?.transcript?.audio_url;
-      const durata = Number(dati?.data?.transcript?.duration);
-      out.set(id, {
-        ...(typeof url === "string" && url.startsWith("http") ? { audio: url } : {}),
-        ...(Number.isFinite(durata) && durata > 0 ? { durataMin: Math.round(durata) } : {})
-      });
-    } catch {
-      // una registrazione senza audio non e' un motivo per far fallire l'agenda
-    }
+
+  // CINQUE ALLA VOLTA, NON UNA DIETRO L'ALTRA. Fireflis vuole una chiamata per
+  // trascrizione, e in fila indiana il costo si somma: misurato, dieci secondi
+  // e mezzo su una giornata piena - da sola, piu' di tutto il resto della
+  // rotta. Erano poche finche' le registrazioni agganciate erano poche; da
+  // quando ne recuperiamo anche di spostate e orfane sono diventate tante.
+  //
+  // Otto alla volta: il piano Business regge sessanta chiamate al minuto e
+  // un'agenda piena ne chiede una ventina, quindi si sta larghi. Provato anche
+  // a chiederle tutte in una sola interrogazione GraphQL con gli alias:
+  // funziona, ma Fireflies le elabora comunque in fila - cinque insieme
+  // costano quanto cinque separate - quindi non guadagna niente.
+  const ALLA_VOLTA = 8;
+  for (let i = 0; i < ids.length; i += ALLA_VOLTA) {
+    await Promise.all(
+      ids.slice(i, i + ALLA_VOLTA).map(async (id) => {
+        try {
+          const res = await fetch("https://api.fireflies.ai/graphql", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${chiave}`, "Content-Type": "application/json" },
+            // La durata arriva dalla stessa interrogazione: e' un campo in piu'
+            // nella risposta, non una chiamata in piu'.
+            body: JSON.stringify({ query: `{ transcript(id: "${id}") { audio_url duration } }` })
+          });
+          if (!res.ok) return;
+          const dati = await res.json();
+          const url = dati?.data?.transcript?.audio_url;
+          const durata = Number(dati?.data?.transcript?.duration);
+          out.set(id, {
+            ...(typeof url === "string" && url.startsWith("http") ? { audio: url } : {}),
+            ...(Number.isFinite(durata) && durata > 0 ? { durataMin: Math.round(durata) } : {})
+          });
+        } catch {
+          // una registrazione senza audio non e' un motivo per far fallire l'agenda
+        }
+      })
+    );
   }
   return out;
 }
