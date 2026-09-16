@@ -29,7 +29,24 @@ import { nomiPerRotta } from "@/lib/proprietari";
 // 2026. Prenderle "dalla tabella" non aiuterebbe, perche' e' li' che manca il
 // dato.
 
+/**
+ * NESSUNA RISPOSTA MEMORIZZATA.
+ *
+ * Next.js conserva le risposte delle chiamate in uscita in .next/cache e le
+ * riusa. Su dati di un CRM che cambia in continuazione questo significa
+ * mostrare il passato senza dirlo: misurato il 16 settembre, il proprietario di
+ * una trattativa cambiato alle 06:24 continuava a risultare quello vecchio
+ * venticinque minuti dopo, in locale e in produzione, e la card dell'agenda
+ * restava nella colonna della persona sbagliata. La stessa richiesta fatta da
+ * uno script fuori da Next dava subito il valore nuovo, e svuotando la cache la
+ * rotta si allineava all-istante.
+ *
+ * Non scade in modo prevedibile e non lascia traccia: l-unico segnale era
+ * hs_lastmodifieddate fermo al giorno prima dentro la risposta. Meglio pagare
+ * ogni volta la chiamata che servire un dato vecchio senza accorgersene.
+ */
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 
 const HUBSPOT_API = "https://api.hubapi.com";
 const BOOM_OBJECT_ID = "2-130365112";
