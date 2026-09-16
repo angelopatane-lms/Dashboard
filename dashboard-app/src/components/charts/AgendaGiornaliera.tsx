@@ -161,8 +161,8 @@ const COLORE_MANUALE = "#b91c1c";
 const LEGENDA: Array<{ tipo: TipoEvento; label: string }> = [
   { tipo: "appuntamento", label: "Fissato" },
   { tipo: "svolta", label: "Svolto" },
-  { tipo: "no_show", label: "No Show" },
-  { tipo: "annullato", label: "Annullato" }
+  { tipo: "annullato", label: "Annullato" },
+  { tipo: "no_show", label: "No Show" }
 ];
 
 /** Ora di Roma adesso, in minuti dalla mezzanotte. */
@@ -642,6 +642,14 @@ export default function AgendaGiornaliera({
               <span className="text-xs font-medium text-slate-700">{v.label}</span>
             </div>
           ))}
+          {/* Questa voce serve: la freccia non si spiega da se', e chi la vede
+              deve capire che quella card esiste anche in un altro giorno - se
+              no sembra un doppione da segnalare. */}
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-3 text-center text-xs font-semibold leading-3 text-slate-700">↷</span>
+            <span className="text-xs font-medium text-slate-700">Ripianificato</span>
+          </div>
+
           {/* Non e' un colore ma un segno: le quattro tinte dicono lo stato
               dell'appuntamento, e una call ricevuta da un altro advisor resta
               comunque fissata o svolta. Dare a questa casistica un quinto
@@ -660,14 +668,6 @@ export default function AgendaGiornaliera({
               card resta - vedi COLORE_MANUALE piu' sotto - perche' finche' qualche
               riunione nasce ancora a mano e' comodo riconoscerla aprendola, ma in
               legenda occupava una voce per un caso che tende a zero. */}
-
-          {/* Questa voce serve: la freccia non si spiega da se', e chi la vede
-              deve capire che quella card esiste anche in un altro giorno - se
-              no sembra un doppione da segnalare. */}
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-3 text-center text-xs font-semibold leading-3 text-slate-700">↷</span>
-            <span className="text-xs font-medium text-slate-700">Ripianificato</span>
-          </div>
 
           {lineaOra !== null ? (
             <div className="flex items-center gap-2">
