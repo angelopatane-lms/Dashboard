@@ -858,28 +858,41 @@ async function contattoDalNome(token: string, nome: string): Promise<number | nu
   const parti = nome.trim().split(/\s+/).filter((x) => x.length > 1);
   if (parti.length < 2) return null;
 
-  const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/contacts/search`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      filterGroups: [
-        {
-          filters: [
-            { propertyName: "firstname", operator: "CONTAINS_TOKEN", value: parti[0] },
-            { propertyName: "lastname", operator: "CONTAINS_TOKEN", value: parti[parti.length - 1] }
-          ]
-        }
-      ],
-      properties: ["firstname", "lastname"],
-      limit: 5
-    })
-  });
-  if (!res.ok) return null;
-  const dati = await res.json();
-  const trovati = dati.results ?? [];
-  if (trovati.length !== 1) return null;
-  const id = Number(trovati[0].id);
-  return Number.isFinite(id) ? id : null;
+  // TRE TENTATIVI, PERCHE' IL SILENZIO QUI NON SI VEDE. Se la ricerca non
+  // risponde - un limite di frequenza, un errore momentaneo - restiamo senza
+  // contatto, e senza contatto la card perde la vendita: resta verde invece che
+  // arancione, e non c'e' niente che segnali l'errore. Successo alla prima
+  // consulenza ricavata da una registrazione: la card e' uscita verde, e un
+  // minuto dopo la stessa richiesta dava il dato giusto.
+  for (let tentativo = 0; tentativo < 3; tentativo++) {
+    if (tentativo) await new Promise((r) => setTimeout(r, 400 * tentativo));
+    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/contacts/search`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filterGroups: [
+          {
+            filters: [
+              { propertyName: "firstname", operator: "CONTAINS_TOKEN", value: parti[0] },
+              { propertyName: "lastname", operator: "CONTAINS_TOKEN", value: parti[parti.length - 1] }
+            ]
+          }
+        ],
+        properties: ["firstname", "lastname"],
+        limit: 5
+      })
+    });
+    // Un errore si ritenta; una risposta buona con zero o due omonimi no,
+    // perche' ritentarla darebbe lo stesso risultato.
+    if (!res.ok) continue;
+    const dati = await res.json();
+    const trovati = dati.results ?? [];
+    if (trovati.length !== 1) return null;
+    const id = Number(trovati[0].id);
+    return Number.isFinite(id) ? id : null;
+  }
+  console.warn("[advisor-agenda] contatto non cercabile per nome:", nome);
+  return null;
 }
 
 async function cardDaRegistrazioni(
