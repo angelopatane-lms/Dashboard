@@ -159,6 +159,35 @@ function PrestazioneAdvisor({ dati }: { dati: NonNullable<AnalisiCall["advisor"]
 }
 
 /** Il segno dell'overbooking: un appuntamento passato da un altro advisor. */
+/**
+ * CHI NON USA FIREFLIES: la sua colonna ha il fondo grigio.
+ *
+ * Tre advisor si sono opposti alla registrazione delle call, ed e' una loro
+ * scelta. La conseguenza pero' si vede in agenda: sulle loro card non ci sara'
+ * mai il pallino della trascrizione ne' l'audio, e le loro consulenze restano
+ * azzurre finche' non spostano di fase la trattativa - non perche' qualcosa non
+ * funzioni, ma perche' per loro quella fonte non esiste. Senza un segno, ogni
+ * volta che si guarda l'agenda quelle colonne sembrano un guasto: e' gia'
+ * successo tre volte di andarle a controllare.
+ *
+ * Il fondo e' appena accennato e resta dietro a tutto: dice "qui manca una
+ * fonte", non deve competere con i colori delle card, che continuano a dire lo
+ * stato dell'appuntamento.
+ *
+ * L'ELENCO E' A MANO PERCHE' IL DATO NON ESISTE. Non c'e' niente, ne' su
+ * HubSpot ne' su Fireflies, che dica "questa persona ha aderito": dedurlo
+ * dall'assenza di registrazioni sarebbe peggio, perche' una postazione che
+ * smette di catturare per un guasto - ne abbiamo diverse - si trasformerebbe da
+ * sola in un'adesione negata. Quando qualcuno cambia idea, si aggiorna qui.
+ */
+const SENZA_FIREFLIES = new Set(
+  ["Asma Bouchrit", "Hassan Mozumber", "Valentina Mandarino"].map(chiaveNome)
+);
+
+/** Il grigio del fondo: trasparente, cosi' le righe delle ore continuano a
+ *  passarci sotto invece di essere coperte. */
+const FONDO_SENZA_FIREFLIES = "rgba(100, 116, 139, 0.08)";
+
 const COLORE_RICEVUTO = "#475569";
 
 /**
@@ -759,13 +788,30 @@ export default function AgendaGiornaliera({
                 altre tabelle, dove separa le colonne dei dati e non
                 l'intestazione. */}
             <div className="sticky left-0 z-30 flex-shrink-0 bg-white" style={{ width: LARGHEZZA_ORE }} />
-            {colonne.map((c) => (
-              <div key={c.nome} className="flex-shrink-0 px-2 pb-2.5 pt-2" style={{ width: larghezzaCol }}>
-                <div className="truncate text-sm font-semibold text-slate-900" title={c.nome}>
-                  {c.nome}
+            {colonne.map((c) => {
+              const senzaFireflies = SENZA_FIREFLIES.has(chiaveNome(c.nome));
+              return (
+                <div
+                  key={c.nome}
+                  className="flex-shrink-0 px-2 pb-2.5 pt-2"
+                  style={{
+                    width: larghezzaCol,
+                    ...(senzaFireflies ? { background: FONDO_SENZA_FIREFLIES } : {})
+                  }}
+                >
+                  <div
+                    className="truncate text-sm font-semibold text-slate-900"
+                    title={
+                      senzaFireflies
+                        ? `${c.nome} - non usa Fireflies: sulle sue call non ci sono registrazione ne' trascrizione`
+                        : c.nome
+                    }
+                  >
+                    {c.nome}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Lo stacco dalla riga dei nomi non e' estetico: l'etichetta delle
@@ -805,7 +851,12 @@ export default function AgendaGiornaliera({
                 <div
                   key={c.nome}
                   className="relative flex-shrink-0 shadow-[inset_-1px_0_0_0_#f1f5f9]"
-                  style={{ width: larghezzaCol }}
+                  style={{
+                    width: larghezzaCol,
+                    ...(SENZA_FIREFLIES.has(chiaveNome(c.nome))
+                      ? { background: FONDO_SENZA_FIREFLIES }
+                      : {})
+                  }}
                 >
                   {c.eventi.map((e, i) => {
                     const colore = COLORI[e.tipo];
