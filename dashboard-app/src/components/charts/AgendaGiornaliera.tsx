@@ -192,9 +192,15 @@ const SENZA_FIREFLIES = new Set(
   ["Asma Bouchrit", "Hassan Mozumber", "Valentina Mandarino"].map(chiaveNome)
 );
 
-/** Il grigio del fondo: trasparente, cosi' le righe delle ore continuano a
- *  passarci sotto invece di essere coperte. */
-const FONDO_CON_FIREFLIES = "rgba(100, 116, 139, 0.08)";
+/**
+ * LO STESSO FONDO DELLA PAGINA, che e' un grigio con dentro dell'azzurro
+ * (slate-50, #f8fafc) e non il grigio neutro di prima.
+ *
+ * E' scritto come trasparenza e non come colore pieno perche' le righe delle
+ * ore stanno DIETRO le colonne: un fondo opaco le coprirebbe, e in quelle
+ * colonne la griglia oraria sparirebbe. Cosi' invece ci passano sotto.
+ */
+const FONDO_CON_FIREFLIES = "rgba(100, 116, 139, 0.05)";
 
 const COLORE_RICEVUTO = "#475569";
 
