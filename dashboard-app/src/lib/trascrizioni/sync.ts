@@ -19,7 +19,7 @@ import {
   type Registrazione,
   type Riunione
 } from "@/lib/abbinamento";
-import { leggiFrasi, leggiNomiCitati, leggiTrascrizioni, linkTrascrizione } from "@/lib/fireflies";
+import { leggiFrasi, leggiNomiCitati, leggiTrascrizioni, leggiVoci, linkTrascrizione } from "@/lib/fireflies";
 import { gettoneTrascrizione } from "@/lib/gettoneTrascrizione";
 
 const HUBSPOT = "https://api.hubapi.com";
@@ -690,6 +690,46 @@ async function recuperaPerNome(opzioni: {
 }
 
   const { abbinamenti, registrazioniSenzaRiunione } = abbina(registrazioni, riunioni);
+
+  // CHI ESCE DALLA STANZA DEVE SAPERE CON CHI HA PARLATO.
+  //
+  // Il criterio "overbooking" e' l'unico che accosta una registrazione a una
+  // riunione di un'ALTRA stanza: lo fa quando l'appuntamento e' stato passato a
+  // un altro advisor, che lo tiene nella propria. Li' non c'e' nessuna
+  // sovrapposizione di orari a fare da controllo - le due stanze non si
+  // confrontano - e basta che nella finestra ci sia una sola riunione passata a
+  // quell'advisor perche' venga presa.
+  //
+  // COSA E' SUCCESSO IL 17 SETTEMBRE. Un advisor ha tenuto alle 10:00 nella sua
+  // stanza una consulenza che sul CRM non esisteva. Nella stessa finestra aveva
+  // ricevuto l'appuntamento di un'altra cliente, e la registrazione le e'
+  // finita addosso: trascrizione e audio della call di una persona scritti
+  // sulla scheda di un'altra, senza che niente lo segnalasse.
+  //
+  // Ora si guarda chi parla. Se la registrazione porta un nome di cliente e
+  // quel nome non e' quello della riunione, l'abbinamento si toglie e la
+  // registrazione torna orfana - dove il recupero per nome, che la stanza la
+  // controlla, potra' occuparsene. Se invece nessuna voce ha un nome (capita:
+  // Fireflies scrive "Speaker 2") si lascia com'era, perche' sull'assenza non
+  // si conclude niente.
+  const daControllare = abbinamenti.filter((x) => x.criterio === "overbooking" && x.riunione.contattoNome);
+  for (const x of daControllare) {
+    const voci = await leggiVoci(chiaveFireflies, x.registrazione.id).catch(() => [] as string[]);
+    const clienti = voci.filter(
+      (v) => v.toLowerCase() !== VOCE_DEL_BOT && !/^speaker \d+$/i.test(v)
+    );
+    await attesa(250);
+    if (!clienti.length) continue;
+    if (clienti.some((v) => stessoNome(v, x.riunione.contattoNome!))) continue;
+
+    const i = abbinamenti.indexOf(x);
+    if (i >= 0) abbinamenti.splice(i, 1);
+    registrazioniSenzaRiunione.push(x.registrazione);
+    console.log(
+      `[trascrizioni] overbooking scartato: in call ${clienti.join(", ")}, ` +
+        `sulla riunione ${x.riunione.contattoNome}`
+    );
+  }
 
   // SECONDO PASSAGGIO, sulle sole rimaste orfane: si cerca il cliente per nome
   // dentro la registrazione. Vedi recuperaPerNome().
