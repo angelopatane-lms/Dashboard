@@ -193,14 +193,31 @@ const SENZA_FIREFLIES = new Set(
 );
 
 /**
- * LO STESSO FONDO DELLA PAGINA, che e' un grigio con dentro dell'azzurro
- * (slate-50, #f8fafc) e non il grigio neutro di prima.
+ * LO STESSO COLORE CHE STA FRA UNA SEZIONE E L'ALTRA della dashboard: slate-100,
+ * il fondo su cui poggiano tutte le schede bianche. Non un grigio inventato per
+ * l'occasione.
  *
- * E' scritto come trasparenza e non come colore pieno perche' le righe delle
- * ore stanno DIETRO le colonne: un fondo opaco le coprirebbe, e in quelle
- * colonne la griglia oraria sparirebbe. Cosi' invece ci passano sotto.
+ * E la griglia oraria si sposta DENTRO le colonne. Prima era una sola sul
+ * fondo, dietro a tutte: con le colonne trasparenti si vedeva, ma con un colore
+ * pieno sparirebbe - e questo colore per giunta e' proprio quello delle righe
+ * delle ore, quindi sarebbero svanite comunque. Ogni colonna disegna ora le
+ * proprie, un gradino piu' scure dove il fondo e' colorato, cosi' la griglia si
+ * legge uguale su tutte e due i fondi.
  */
-const FONDO_CON_FIREFLIES = "rgba(100, 116, 139, 0.05)";
+const FONDO_CON_FIREFLIES = "#f1f5f9";
+
+/**
+ * Le righe delle ore, per un fondo o per l'altro: piena sull'ora, piu' tenue
+ * sulla mezz'ora.
+ */
+function grigliaOraria(colorata: boolean): string {
+  const ora = colorata ? "#e2e8f0" : "#f1f5f9";
+  const mezza = colorata ? "#eaeff5" : "#f8fafc";
+  return (
+    `repeating-linear-gradient(to bottom, ${ora} 0, ${ora} 1px, transparent 1px, transparent ${ALTEZZA_ORA}px), ` +
+    `repeating-linear-gradient(to bottom, transparent 0, transparent ${ALTEZZA_ORA / 2}px, ${mezza} ${ALTEZZA_ORA / 2}px, ${mezza} ${ALTEZZA_ORA / 2 + 1}px, transparent ${ALTEZZA_ORA / 2 + 1}px, transparent ${ALTEZZA_ORA}px)`
+  );
+}
 
 const COLORE_RICEVUTO = "#475569";
 
@@ -847,22 +864,17 @@ export default function AgendaGiornaliera({
               ))}
             </div>
 
-            <div
-              className="relative flex"
-              style={{
-                height: altezza,
-                backgroundImage: `repeating-linear-gradient(to bottom, #f1f5f9 0, #f1f5f9 1px, transparent 1px, transparent ${ALTEZZA_ORA}px), repeating-linear-gradient(to bottom, transparent 0, transparent ${ALTEZZA_ORA / 2}px, #f8fafc ${ALTEZZA_ORA / 2}px, #f8fafc ${ALTEZZA_ORA / 2 + 1}px, transparent ${ALTEZZA_ORA / 2 + 1}px, transparent ${ALTEZZA_ORA}px)`
-              }}
-            >
+            <div className="relative flex" style={{ height: altezza }}>
               {colonne.map((c) => (
                 <div
                   key={c.nome}
-                  className="relative flex-shrink-0 shadow-[inset_-1px_0_0_0_#f1f5f9]"
+                  className="relative flex-shrink-0 shadow-[inset_-1px_0_0_0_#e2e8f0]"
                   style={{
                     width: larghezzaCol,
-                    ...(SENZA_FIREFLIES.has(chiaveNome(c.nome))
-                      ? {}
-                      : { background: FONDO_CON_FIREFLIES })
+                    backgroundColor: SENZA_FIREFLIES.has(chiaveNome(c.nome))
+                      ? "#ffffff"
+                      : FONDO_CON_FIREFLIES,
+                    backgroundImage: grigliaOraria(!SENZA_FIREFLIES.has(chiaveNome(c.nome)))
                   }}
                 >
                   {c.eventi.map((e, i) => {
