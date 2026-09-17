@@ -732,23 +732,44 @@ async function gestoriEffettivi(
 }
 
 /**
- * I contatti che quel giorno hanno fatto una consulenza.
+ * Le consulenze dei contatti di giornata, CON LA LORO DATA.
+ *
+ * NON PIU' SOLO QUELLE SEGNATE DENTRO IL GIORNO GUARDATO. La data e' l'istante
+ * in cui l'advisor sposta di fase la trattativa, non l'ora della call: chi
+ * conferma gli esiti la mattina dopo lasciava la card azzurra per sempre.
+ * Misurato il 17 settembre su un caso: consulenza del 16 alle 11:00, trattativa
+ * portata a Persa alle 09:05 del giorno dopo, sincronizzata alle 09:23 - il
+ * dato era in banca dati, ma cadeva fuori dal 16 e la card restava "fissato".
+ *
+ * I no show questa tolleranza ce l'avevano gia': la finestra e la scelta di
+ * quale esito vale sono ora le stesse per entrambi - vedi esitoPiuVicino().
  *
  * L'alias serve alle persone che sono state unite in HubSpot: la trattativa
  * puo' portare il vecchio identificativo, mentre il meeting porta sempre quello
  * buono, e senza risolverlo la consulenza non si aggancerebbe.
  */
-async function contattiConConsulenza(dalle: number, alle: number): Promise<Set<number>> {
-  const r = await getDb().query(
-    `SELECT DISTINCT COALESCE(a.nuovo_id, t.contact_id) AS id
+async function consulenzeDeiContatti(dalle: number, alle: number): Promise<Map<number, number[]>> {
+  const out = new Map<number, number[]>();
+  const r = await getDb().query<{ id: string; ts: string }>(
+    `SELECT COALESCE(a.nuovo_id, t.contact_id) AS id, t.svolta_ts AS ts
        FROM trattativa t
        LEFT JOIN alias_contatto a ON a.vecchio_id = t.contact_id
       WHERE t.contact_id IS NOT NULL
         AND t.svolta_ts >= $1::timestamptz
         AND t.svolta_ts <  $2::timestamptz`,
-    [new Date(dalle).toISOString(), new Date(alle).toISOString()]
+    [
+      new Date(dalle - FINESTRA_ESITI_MS).toISOString(),
+      new Date(alle + FINESTRA_ESITI_MS).toISOString()
+    ]
   );
-  return new Set(r.rows.map((x: { id: number }) => Number(x.id)).filter(Number.isFinite));
+  for (const x of r.rows) {
+    const id = Number(x.id);
+    const t = new Date(x.ts).getTime();
+    if (!Number.isFinite(id) || !Number.isFinite(t)) continue;
+    if (!out.has(id)) out.set(id, []);
+    out.get(id)!.push(t);
+  }
+  return out;
 }
 
 /**
@@ -833,11 +854,11 @@ async function presenzeDelleRiunioni(
 }
 
 /** Quanto si legge dal database attorno al giorno guardato. Larga: serve solo
- *  ad avere in mano gli eventi, la scelta di quale vale la fa statoDiserzione(). */
-const FINESTRA_DISERZIONI_MS = 45 * 24 * 60 * 60 * 1000;
+ *  ad avere in mano gli eventi, la scelta di quale vale la fa esitoPiuVicino(). */
+const FINESTRA_ESITI_MS = 45 * 24 * 60 * 60 * 1000;
 
 /**
- * Quanto puo' tardare l'advisor a segnare la diserzione.
+ * Quanto puo' tardare l'advisor a segnare l'esito.
  *
  * La sera stessa o la mattina dopo, quando passa a confermare gli esiti
  * spostando di fase le trattative. Tre giorni coprono anche il fine settimana.
@@ -848,7 +869,7 @@ const FINESTRA_DISERZIONI_MS = 45 * 24 * 60 * 60 * 1000;
  * giorno solo risultavano annullate per diserzioni vecchie da due a sei giorni,
  * tutte appartenenti ad altri appuntamenti.
  */
-const DISERZIONE_MAX_DOPO_MS = 3 * 24 * 60 * 60 * 1000;
+const ESITO_MAX_DOPO_MS = 3 * 24 * 60 * 60 * 1000;
 
 /**
  * Le diserzioni dei contatti di giornata, CON LA LORO DATA.
@@ -874,8 +895,8 @@ async function diserzioniDeiContatti(dalle: number, alle: number): Promise<Map<n
         AND n.ts >= $1::timestamptz
         AND n.ts <  $2::timestamptz`,
     [
-      new Date(dalle - FINESTRA_DISERZIONI_MS).toISOString(),
-      new Date(alle + FINESTRA_DISERZIONI_MS).toISOString()
+      new Date(dalle - FINESTRA_ESITI_MS).toISOString(),
+      new Date(alle + FINESTRA_ESITI_MS).toISOString()
     ]
   );
   for (const x of r.rows) {
@@ -895,7 +916,13 @@ function giornoRoma(ms: number): string {
 }
 
 /**
- * Se questo appuntamento e' stato disertato.
+ * L'esito che appartiene a QUESTO appuntamento, fra quelli del cliente.
+ *
+ * Vale sia per le consulenze svolte sia per le diserzioni: sono due elenchi di
+ * istanti - il momento in cui l'advisor ha spostato di fase la trattativa - e
+ * la domanda e' la stessa, a quale fascia si riferiscono. Restituisce l'istante
+ * scelto e non un esito, cosi' chi chiama puo' confrontare i due e tenere
+ * quello piu' vicino all'appuntamento.
  *
  * SOLO LE DISERZIONI DAL SUO GIORNO IN POI. Una segnata prima appartiene a un
  * appuntamento PRECEDENTE dello stesso cliente, non a questo: verificato caso
@@ -908,24 +935,23 @@ function giornoRoma(ms: number): string {
  * era occupata e non si riempie piu'. La disdetta con anticipo invece non
  * arriva fin qui: cancella l'evento, e con esso la riunione.
  *
- * Fra piu' diserzioni si prende la PIU' VICINA: un cliente che diserta, viene
- * ripianificato e diserta di nuovo ha due eventi, e ciascuna card prende il suo.
+ * Fra piu' eventi si prende il PIU' VICINO: un cliente che diserta, viene
+ * ripianificato e diserta di nuovo ha due istanti, e ciascuna card prende il suo.
  */
-function statoDiserzione(
-  eventi: number[],
-  inizioAppuntamento: number
-): "no_show" | null {
+function esitoPiuVicino(eventi: number[], inizioAppuntamento: number): number | null {
   if (!eventi.length || !Number.isFinite(inizioAppuntamento)) return null;
 
-  // Dalla mezzanotte del giorno dell'appuntamento in poi. Prima di allora la
-  // diserzione non puo' riguardare questa fascia.
+  // Dalla mezzanotte del giorno dell'appuntamento in poi. Prima di allora
+  // l'esito non puo' riguardare questa fascia.
   const giorno = giornoRoma(inizioAppuntamento);
   const vicini = eventi.filter(
-    (t) => giornoRoma(t) >= giorno && t <= inizioAppuntamento + DISERZIONE_MAX_DOPO_MS
+    (t) => giornoRoma(t) >= giorno && t <= inizioAppuntamento + ESITO_MAX_DOPO_MS
   );
   if (!vicini.length) return null;
 
-  return "no_show";
+  return vicini.reduce((x, y) =>
+    Math.abs(y - inizioAppuntamento) < Math.abs(x - inizioAppuntamento) ? y : x
+  );
 }
 
 /**
@@ -1316,9 +1342,9 @@ export async function GET(req: NextRequest) {
         console.error("[advisor-agenda] associazioni", err instanceof Error ? err.message : err);
         return new Map<string, number[]>();
       }),
-      contattiConConsulenza(dalle, alle).catch((err) => {
+      consulenzeDeiContatti(dalle, alle).catch((err) => {
         console.error("[advisor-agenda] consulenze", err instanceof Error ? err.message : err);
-        return new Set<number>();
+        return new Map<number, number[]>();
       }),
       diserzioniDeiContatti(dalle, alle).catch((err) => {
         console.error("[advisor-agenda] no show", err instanceof Error ? err.message : err);
@@ -1425,10 +1451,36 @@ export async function GET(req: NextRequest) {
       // punto 2. E' cio' che impedisce agli advisor le cui postazioni non
       // catturano di riempirsi di no show inventati.
       const presenza = presenze.get(r.id)?.esito;
+
+      // GLI ESITI SEGNATI DALL'ADVISOR, CIASCUNO CON IL SUO ISTANTE.
+      //
+      // SOLO SE LA FASCIA E' GIA' COMINCIATA. Un appuntamento che deve ancora
+      // tenersi non puo' essere ne' svolto ne' disertato, e senza questo
+      // controllo si prende l'esito di un appuntamento PRECEDENTE dello stesso
+      // contatto: visto un caso disertato la mattina e ripianificato al giorno
+      // dopo, che faceva risultare gia' chiusa anche la card nuova.
+      const inizioSlot = Date.parse(p.hs_meeting_start_time ?? "");
+      const cominciata = Number.isFinite(inizioSlot) && inizioSlot <= Date.now();
+      const tsSvolta = cominciata
+        ? esitoPiuVicino(suoiContatti.flatMap((c) => svolte.get(c) ?? []), inizioSlot)
+        : null;
+      const tsDiserzione = cominciata
+        ? esitoPiuVicino(suoiContatti.flatMap((c) => disertati.get(c) ?? []), inizioSlot)
+        : null;
+
+      // QUANDO IL CLIENTE NE HA DUE vince quello segnato piu' vicino alla
+      // fascia. Capita a chi diserta e viene ripianificato: la diserzione e la
+      // consulenza esistono tutte e due dentro i tre giorni, e senza confronto
+      // la prima card prenderebbe l'esito della seconda.
+      const vinceSvolta =
+        tsSvolta !== null &&
+        (tsDiserzione === null ||
+          Math.abs(tsSvolta - inizioSlot) <= Math.abs(tsDiserzione - inizioSlot));
+
       if (presenza === "presentato") {
         if (tipo !== "svolta") svolteTrovate += 1;
         tipo = "svolta";
-      } else if (suoiContatti.some((c) => svolte.has(c))) {
+      } else if (vinceSvolta) {
         if (tipo !== "svolta") svolteTrovate += 1;
         tipo = "svolta";
       } else if (presenza === "solo-advisor") {
@@ -1442,22 +1494,8 @@ export async function GET(req: NextRequest) {
         // gli stati questa riga era rimasta indietro, e faceva risultare
         // annullate proprio le diserzioni di cui abbiamo la prova.
         tipo = "no_show";
-      } else {
-        // ANNULLATO O NO SHOW, secondo quando la diserzione e' stata segnata
-        // rispetto a questo giorno. Si guardano le diserzioni di tutti i
-        // contatti della riunione e si prende la piu' vicina all'orario.
-        //
-        // SOLO SE LA FASCIA E' GIA' COMINCIATA. Un appuntamento che deve ancora
-        // tenersi non puo' essere stato disertato, e senza questo controllo si
-        // prendeva la diserzione di un appuntamento PRECEDENTE dello stesso
-        // contatto: visto un caso disertato la mattina e ripianificato al
-        // giorno dopo, che faceva risultare annullata anche la card nuova.
-        const inizioSlot = Date.parse(p.hs_meeting_start_time ?? "");
-        if (Number.isFinite(inizioSlot) && inizioSlot <= Date.now()) {
-          const eventi = suoiContatti.flatMap((c) => disertati.get(c) ?? []);
-          const esito = statoDiserzione(eventi, inizioSlot);
-          if (esito) tipo = esito;
-        }
+      } else if (tsDiserzione !== null) {
+        tipo = "no_show";
       }
 
       const suoi = contatti.get(r.id) ?? [];
