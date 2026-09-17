@@ -228,20 +228,18 @@ function grigliaOraria(colorata: boolean): string {
 }
 
 /**
- * L'ARANCIONE DELLA VENDITA: una barretta in cima alla card quando la
- * trattativa e' stata vinta.
+ * L'ARANCIONE DELLA VENDITA: la card intera, non un segno sopra il verde.
  *
- * NON UN QUARTO COLORE DI FONDO. Le tinte dicono lo stato dell'appuntamento -
- * fissato, svolto, disertato - e la vendita e' un'altra cosa: arriva quasi
- * sempre dopo, a consulenza gia' finita, e una card che da verde diventasse
- * arancione smetterebbe di dire che la consulenza si e' tenuta. Cosi' invece le
- * due informazioni convivono: il verde resta, e sopra c'e' la riga.
+ * NON SI PERDE NIENTE cambiando colore, perche' una trattativa vinta e' per
+ * forza una consulenza svolta: il verde su quella card non aggiungeva
+ * un'informazione, la ripeteva. Cosi' invece la giornata si legge in un colpo
+ * d'occhio - quante fasce hanno chiuso - che e' la domanda che ci si fa
+ * guardando un'agenda passata.
  *
- * In cima e non di lato perche' i lati sono gia' presi - overbooking a destra,
- * creazione manuale dall'altra parte - e un terzo bordo colorato ne
- * sovrascriverebbe uno.
+ * Stessa famiglia delle altre tinte: tono medio e testo scuro dello stesso
+ * colore, perche' il bianco su questi fondi non reggerebbe a dieci pixel.
  */
-const COLORE_VINTA = "#f97316";
+const COLORE_VINTA = { fondo: "#fdba74", testo: "#7c2d12", secondario: "#9a3412" };
 
 const COLORE_RICEVUTO = "#475569";
 
@@ -257,10 +255,19 @@ const COLORE_RICEVUTO = "#475569";
  */
 const COLORE_MANUALE = "#b91c1c";
 
-const LEGENDA: Array<{ tipo: TipoEvento; label: string }> = [
-  { tipo: "appuntamento", label: "Fissato" },
-  { tipo: "svolta", label: "Svolto" },
-  { tipo: "no_show", label: "No Show" }
+/**
+ * AL FEMMINILE, perche' il soggetto e' la consulenza: "fissata", "svolta",
+ * "vinta". Erano al maschile per abitudine, riferite a un "appuntamento" che
+ * in questa pagina non e' mai scritto da nessuna parte.
+ *
+ * La Vinta sta subito dopo la Svolta perche' e' il passo successivo della
+ * stessa storia: la consulenza si tiene, e poi chiude.
+ */
+const LEGENDA: Array<{ chiave: string; label: string; fondo: string }> = [
+  { chiave: "appuntamento", label: "Fissata", fondo: COLORI.appuntamento.fondo },
+  { chiave: "svolta", label: "Svolta", fondo: COLORI.svolta.fondo },
+  { chiave: "vinta", label: "Vinta", fondo: COLORE_VINTA.fondo },
+  { chiave: "no_show", label: "No Show", fondo: COLORI.no_show.fondo }
 ];
 
 /** Ora di Roma adesso, in minuti dalla mezzanotte. */
@@ -762,8 +769,8 @@ export default function AgendaGiornaliera({
 
         <div className="flex flex-wrap items-center justify-center gap-4">
           {LEGENDA.map((v) => (
-            <div key={v.tipo} className="flex items-center gap-2">
-              <span className="inline-block h-3 w-3 rounded-[3px]" style={{ background: COLORI[v.tipo].fondo }} />
+            <div key={v.chiave} className="flex items-center gap-2">
+              <span className="inline-block h-3 w-3 rounded-[3px]" style={{ background: v.fondo }} />
               <span className="text-xs font-medium text-slate-700">{v.label}</span>
             </div>
           ))}
@@ -772,7 +779,7 @@ export default function AgendaGiornaliera({
               data dell'altro giorno. */}
           <div className="flex items-center gap-2">
             <span className="inline-block w-3 text-center text-xs font-semibold leading-3 text-slate-700">↷</span>
-            <span className="text-xs font-medium text-slate-700">Ripianificato</span>
+            <span className="text-xs font-medium text-slate-700">Ripianificata</span>
           </div>
 
           {/* LO SPECULARE ESATTO di quella di Ripianificato - stessa famiglia,
@@ -786,22 +793,6 @@ export default function AgendaGiornaliera({
               style={{ border: "1px dashed #64748b" }}
             />
             <span className="text-xs font-medium text-slate-700">Assente su CRM</span>
-          </div>
-
-          {/* La vendita non e' uno stato dell'appuntamento: e' una riga
-              arancione sopra una card che resta verde, e in legenda si mostra
-              esattamente cosi'. */}
-          <div className="flex items-center gap-2">
-            <span
-              className="relative inline-block h-3 w-3 overflow-hidden rounded-[3px]"
-              style={{ background: COLORI.svolta.fondo }}
-            >
-              <span
-                className="absolute inset-x-0 top-0 h-[3px]"
-                style={{ background: COLORE_VINTA }}
-              />
-            </span>
-            <span className="text-xs font-medium text-slate-700">Vinta</span>
           </div>
 
           {/* Non e' un colore ma un segno: le tre tinte dicono lo stato
@@ -923,7 +914,9 @@ export default function AgendaGiornaliera({
                   }}
                 >
                   {c.eventi.map((e, i) => {
-                    const colore = COLORI[e.tipo];
+                    // La vendita vince sullo stato: e' lo stesso fatto detto
+                    // meglio, non un fatto diverso.
+                    const colore = e.vinta ? COLORE_VINTA : COLORI[e.tipo];
                     const largo = (larghezzaCol - 6) / c.corsie;
                     const alto = Math.max(y(e.fineMin) - y(e.inizioMin) - 2, 14);
                     // SI APRE SOLO QUELLO CHE HA DENTRO QUALCOSA. Una card che
@@ -1018,16 +1011,6 @@ export default function AgendaGiornaliera({
                             {e.ripianificata ? ` · ↷ ${e.ripianificata}` : ""}
                             {e.appuntamentoDel ? ` · ↶ ${e.appuntamentoDel}` : ""}
                           </div>
-                        ) : null}
-                        {/* LA RIGA DELLA VENDITA sta sopra tutto e non occupa
-                            spazio: e' posizionata, non un bordo, cosi' su una
-                            card da un quarto d'ora non mangia i pixel del
-                            nome. */}
-                        {e.vinta ? (
-                          <span
-                            className="absolute inset-x-0 top-0 h-[3px]"
-                            style={{ background: COLORE_VINTA }}
-                          />
                         ) : null}
                         {/* UN SOLO SEGNO: il punto nell'angolo dice che c'e'
                             qualcosa da vedere - l'analisi, la trascrizione,
