@@ -480,13 +480,22 @@ export async function aggiornaUnaTrattativa(
     method: "POST",
     body: {
       inputs: [{ id: dealId }],
-      properties: [...proprieta, "id_campagna_track", "id_campagna_track_last", "createdate"],
+      properties: [...proprieta, "id_campagna_track", "id_campagna_track_last", "createdate", "pipeline"],
       propertiesWithHistory: conStorico
     }
   });
 
   const r = (d.results ?? [])[0];
   if (!r) return null;
+
+  // SOLO LA PIPELINE APPUNTAMENTI. Questa funzione la chiama un webhook, e il
+  // webhook lo innesca un workflow su HubSpot: se quel workflow venisse creato
+  // senza il filtro sulla pipeline - o se un domani se ne aggiungesse un altro -
+  // arriverebbero qui trattative di pipeline che non c'entrano, e questa
+  // tabella, che esiste per contare appuntamenti e consulenze, si riempirebbe
+  // in silenzio di righe di un altro mestiere. Il giro completo il filtro ce
+  // l'ha gia' nella ricerca; qui l'input arriva da fuori, quindi va rifatto.
+  if (String(r.properties?.pipeline ?? "") !== PIPELINE_APPUNTAMENTI) return null;
 
   const creata = new Date(r.properties?.createdate ?? "");
   if (Number.isNaN(creata.getTime())) return null;
