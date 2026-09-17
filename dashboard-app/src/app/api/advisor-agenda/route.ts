@@ -131,6 +131,16 @@ export type EventoAgenda = {
    * davvero non mostrerebbe niente.
    */
   appuntamentoDel?: string;
+  /**
+   * LA CONSULENZA HA CHIUSO: contiene la data in cui la trattativa e' stata
+   * vinta.
+   *
+   * Non e' lo stato dell'appuntamento - quello lo dice gia' il colore - ma
+   * l'esito commerciale, che e' un'altra cosa e arriva quasi sempre dopo: la
+   * consulenza e' di martedi', il contratto si chiude giovedi'. Per questo la
+   * card puo' diventare "vinta" giorni dopo essere diventata verde.
+   */
+  vinta?: string;
   /** L'indirizzo della trascrizione su Fireflies, quando si riesce a ricavarlo. */
   trascrizione?: string;
   /** Il file audio della call, da ascoltare direttamente. */
@@ -748,10 +758,12 @@ async function gestoriEffettivi(
  * puo' portare il vecchio identificativo, mentre il meeting porta sempre quello
  * buono, e senza risolverlo la consulenza non si aggancerebbe.
  */
-async function consulenzeDeiContatti(dalle: number, alle: number): Promise<Map<number, number[]>> {
-  const out = new Map<number, number[]>();
-  const r = await getDb().query<{ id: string; ts: string }>(
-    `SELECT COALESCE(a.nuovo_id, t.contact_id) AS id, t.svolta_ts AS ts
+type Consulenza = { svolta: number; vinta: number | null };
+
+async function consulenzeDeiContatti(dalle: number, alle: number): Promise<Map<number, Consulenza[]>> {
+  const out = new Map<number, Consulenza[]>();
+  const r = await getDb().query<{ id: string; ts: string; vinta: string | null }>(
+    `SELECT COALESCE(a.nuovo_id, t.contact_id) AS id, t.svolta_ts AS ts, t.vinta_ts AS vinta
        FROM trattativa t
        LEFT JOIN alias_contatto a ON a.vecchio_id = t.contact_id
       WHERE t.contact_id IS NOT NULL
@@ -766,8 +778,9 @@ async function consulenzeDeiContatti(dalle: number, alle: number): Promise<Map<n
     const id = Number(x.id);
     const t = new Date(x.ts).getTime();
     if (!Number.isFinite(id) || !Number.isFinite(t)) continue;
+    const v = x.vinta ? new Date(x.vinta).getTime() : NaN;
     if (!out.has(id)) out.set(id, []);
-    out.get(id)!.push(t);
+    out.get(id)!.push({ svolta: t, vinta: Number.isFinite(v) ? v : null });
   }
   return out;
 }
@@ -1344,7 +1357,7 @@ export async function GET(req: NextRequest) {
       }),
       consulenzeDeiContatti(dalle, alle).catch((err) => {
         console.error("[advisor-agenda] consulenze", err instanceof Error ? err.message : err);
-        return new Map<number, number[]>();
+        return new Map<number, Consulenza[]>();
       }),
       diserzioniDeiContatti(dalle, alle).catch((err) => {
         console.error("[advisor-agenda] no show", err instanceof Error ? err.message : err);
@@ -1461,9 +1474,13 @@ export async function GET(req: NextRequest) {
       // dopo, che faceva risultare gia' chiusa anche la card nuova.
       const inizioSlot = Date.parse(p.hs_meeting_start_time ?? "");
       const cominciata = Number.isFinite(inizioSlot) && inizioSlot <= Date.now();
-      const tsSvolta = cominciata
-        ? esitoPiuVicino(suoiContatti.flatMap((c) => svolte.get(c) ?? []), inizioSlot)
-        : null;
+      const sueConsulenze = cominciata ? suoiContatti.flatMap((c) => svolte.get(c) ?? []) : [];
+      const tsSvolta = esitoPiuVicino(sueConsulenze.map((x) => x.svolta), inizioSlot);
+      // LA VENDITA SEGUE LA CONSULENZA SCELTA, non il contatto: un cliente con
+      // due appuntamenti ha due trattative, e la vinta appartiene a quella che
+      // ha chiuso. Agganciandola al contatto si colorerebbero tutte e due.
+      const tsVinta =
+        tsSvolta === null ? null : sueConsulenze.find((x) => x.svolta === tsSvolta)?.vinta ?? null;
       const tsDiserzione = cominciata
         ? esitoPiuVicino(suoiContatti.flatMap((c) => disertati.get(c) ?? []), inizioSlot)
         : null;
@@ -1575,6 +1592,15 @@ export async function GET(req: NextRequest) {
         ...(spostate.has(r.id)
           ? {
               ripianificata: new Date(spostate.get(r.id)!.nuovoInizio).toLocaleDateString("it-IT", {
+                timeZone: "Europe/Rome",
+                day: "2-digit",
+                month: "2-digit"
+              })
+            }
+          : {}),
+        ...(tipo === "svolta" && tsVinta !== null && vinceSvolta
+          ? {
+              vinta: new Date(tsVinta).toLocaleDateString("it-IT", {
                 timeZone: "Europe/Rome",
                 day: "2-digit",
                 month: "2-digit"

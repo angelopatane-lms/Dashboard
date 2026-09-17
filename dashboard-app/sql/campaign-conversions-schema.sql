@@ -114,6 +114,24 @@ CREATE INDEX IF NOT EXISTS idx_trattativa_setter ON trattativa (setter_id) WHERE
 CREATE INDEX IF NOT EXISTS idx_trattativa_creata ON trattativa (creata_ts);
 CREATE INDEX IF NOT EXISTS idx_trattativa_svolta ON trattativa (svolta_ts) WHERE svolta_ts IS NOT NULL;
 
+-- QUANDO LA TRATTATIVA E' STATA VINTA la prima volta.
+--
+-- Serve all'agenda, che cosi' distingue una consulenza che ha chiuso da una che
+-- si e' solo tenuta: sono due cose diverse e finora avevano lo stesso colore.
+--
+-- Il primo ingresso nella fase, letto dalla cronologia e non dalla fase
+-- attuale: una vinta viene spesso spostata dopo - archiviata a fine pratica, o
+-- riaperta e richiusa - e guardando dove si trova adesso la vendita non si
+-- vedrebbe piu'. Stessa ragione per cui i no show stanno in una tabella a
+-- parte, ricavati allo stesso modo.
+--
+-- Una colonna e non una tabella perche' qui la domanda e' "questa consulenza ha
+-- portato a casa qualcosa?", che ha una risposta sola: le vinte successive
+-- della stessa pratica non sono altre vendite.
+ALTER TABLE trattativa ADD COLUMN IF NOT EXISTS vinta_ts TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_trattativa_vinta ON trattativa (vinta_ts) WHERE vinta_ts IS NOT NULL;
+
 -- Appuntamenti non onorati.
 --
 -- Tabella a parte e non una colonna di `trattativa` perche' una trattativa puo'

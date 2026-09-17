@@ -227,6 +227,22 @@ function grigliaOraria(colorata: boolean): string {
   return `repeating-linear-gradient(to bottom, ${ora} 0, ${ora} 1px, transparent 1px, transparent ${ALTEZZA_ORA}px)`;
 }
 
+/**
+ * L'ARANCIONE DELLA VENDITA: una barretta in cima alla card quando la
+ * trattativa e' stata vinta.
+ *
+ * NON UN QUARTO COLORE DI FONDO. Le tinte dicono lo stato dell'appuntamento -
+ * fissato, svolto, disertato - e la vendita e' un'altra cosa: arriva quasi
+ * sempre dopo, a consulenza gia' finita, e una card che da verde diventasse
+ * arancione smetterebbe di dire che la consulenza si e' tenuta. Cosi' invece le
+ * due informazioni convivono: il verde resta, e sopra c'e' la riga.
+ *
+ * In cima e non di lato perche' i lati sono gia' presi - overbooking a destra,
+ * creazione manuale dall'altra parte - e un terzo bordo colorato ne
+ * sovrascriverebbe uno.
+ */
+const COLORE_VINTA = "#f97316";
+
 const COLORE_RICEVUTO = "#475569";
 
 /**
@@ -772,6 +788,22 @@ export default function AgendaGiornaliera({
             <span className="text-xs font-medium text-slate-700">Assente su CRM</span>
           </div>
 
+          {/* La vendita non e' uno stato dell'appuntamento: e' una riga
+              arancione sopra una card che resta verde, e in legenda si mostra
+              esattamente cosi'. */}
+          <div className="flex items-center gap-2">
+            <span
+              className="relative inline-block h-3 w-3 overflow-hidden rounded-[3px]"
+              style={{ background: COLORI.svolta.fondo }}
+            >
+              <span
+                className="absolute inset-x-0 top-0 h-[3px]"
+                style={{ background: COLORE_VINTA }}
+              />
+            </span>
+            <span className="text-xs font-medium text-slate-700">Vinta</span>
+          </div>
+
           {/* Non e' un colore ma un segno: le tre tinte dicono lo stato
               dell'appuntamento, e una call ricevuta da un altro advisor resta
               comunque fissata o svolta. Dare a questa casistica un quinto
@@ -923,6 +955,7 @@ export default function AgendaGiornaliera({
                           `${e.manuale ? " · creato a mano" : ""}` +
                           `${e.ripianificata ? ` · ripianificata al ${e.ripianificata}, la card c'e' anche li'` : ""}` +
                           `${e.appuntamentoDel ? ` · Sul CRM non c'era nessun appuntamento qui: quello del ${e.appuntamentoDel} non e' stato spostato` : ""}` +
+                          `${e.vinta ? ` · VINTA il ${e.vinta}` : ""}` +
                           `${apribile ? " · clicca per il dettaglio" : ""}`
                         }
                         style={{
@@ -985,6 +1018,16 @@ export default function AgendaGiornaliera({
                             {e.ripianificata ? ` · ↷ ${e.ripianificata}` : ""}
                             {e.appuntamentoDel ? ` · ↶ ${e.appuntamentoDel}` : ""}
                           </div>
+                        ) : null}
+                        {/* LA RIGA DELLA VENDITA sta sopra tutto e non occupa
+                            spazio: e' posizionata, non un bordo, cosi' su una
+                            card da un quarto d'ora non mangia i pixel del
+                            nome. */}
+                        {e.vinta ? (
+                          <span
+                            className="absolute inset-x-0 top-0 h-[3px]"
+                            style={{ background: COLORE_VINTA }}
+                          />
                         ) : null}
                         {/* UN SOLO SEGNO: il punto nell'angolo dice che c'e'
                             qualcosa da vedere - l'analisi, la trascrizione,

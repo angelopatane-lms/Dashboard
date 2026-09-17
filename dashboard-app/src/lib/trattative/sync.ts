@@ -223,6 +223,30 @@ export function ingressiNoShow(
 }
 
 /**
+ * Quando la trattativa e' stata vinta la PRIMA volta, o null se non lo e' mai
+ * stata.
+ *
+ * DALLA CRONOLOGIA E NON DALLA FASE DI OGGI, per la stessa ragione dei no show:
+ * una trattativa vinta viene spesso spostata dopo - archiviata a fine pratica,
+ * o riaperta e richiusa - e guardando dove si trova adesso quella vendita non
+ * si vedrebbe piu'.
+ *
+ * LA PRIMA, non l'ultima: e' il momento in cui la consulenza ha portato a casa
+ * qualcosa, ed e' quello che l'agenda deve poter collegare alla card.
+ */
+export function primaVinta(storici: Record<string, Voce[]>, idFaseVinta: string): Date | null {
+  if (!idFaseVinta) return null;
+  let scelto: number | null = null;
+  for (const v of storici.dealstage ?? []) {
+    if ((v.value ?? "").trim() !== idFaseVinta) continue;
+    const t = new Date(v.timestamp).getTime();
+    if (!Number.isFinite(t)) continue;
+    if (scelto === null || t < scelto) scelto = t;
+  }
+  return scelto === null ? null : new Date(scelto);
+}
+
+/**
  * Chi era il setter a una certa data.
  *
  * PERCHE' DALLA CRONOLOGIA E NON DAL VALORE ATTUALE. La proprieta' `setter`
@@ -413,6 +437,9 @@ export type ContestoSvolte = {
   /** Serve a riconoscere le diserzioni segnate come Ripianificata con motivo
    *  "Mancata Presenza", che non passano dalla fase No Show. */
   idFaseRipianificata: string;
+  /** La fase "Vinta": serve a distinguere in agenda le consulenze che hanno
+   *  chiuso da quelle che si sono solo tenute. */
+  idFaseVinta: string;
 };
 
 export async function preparaContesto(token: string): Promise<ContestoSvolte> {
@@ -448,7 +475,12 @@ export async function preparaContesto(token: string): Promise<ContestoSvolte> {
     console.warn("[trattative] fase 'Ripianificata' non trovata: le diserzioni segnate con quel motivo non verranno contate.");
   }
 
-  return { gruppi, proprieta, conStorico, etichettaFase, idFaseNoShow, idFaseRipianificata };
+  // Se la fase venisse rinominata non si interrompe niente: le vendite
+  // smettono di essere segnate in agenda, e il resto continua a funzionare.
+  const idFaseVinta = [...etichettaFase].find(([, label]) => label === "Vinta")?.[0] ?? "";
+  if (!idFaseVinta) console.warn("[trattative] fase 'Vinta' non trovata: le vendite non verranno segnate.");
+
+  return { gruppi, proprieta, conStorico, etichettaFase, idFaseNoShow, idFaseRipianificata, idFaseVinta };
 }
 
 /**
@@ -473,7 +505,7 @@ export async function aggiornaUnaTrattativa(
   dealId: string,
   contesto?: ContestoSvolte
 ): Promise<{ dealId: number; svolta: Date | null; noShow: number } | null> {
-  const { gruppi, proprieta, conStorico, etichettaFase, idFaseNoShow, idFaseRipianificata } =
+  const { gruppi, proprieta, conStorico, etichettaFase, idFaseNoShow, idFaseRipianificata, idFaseVinta } =
     contesto ?? (await preparaContesto(token));
 
   const d = await chiamaHubSpot<any>(token, `${HUBSPOT_API}/crm/v3/objects/deals/batch/read`, {
@@ -507,6 +539,7 @@ export async function aggiornaUnaTrattativa(
     creata.getTime()
   );
   const svolta = primaSvolta(gruppi, r.propertiesWithHistory ?? {}, r.properties ?? {}, etichettaFase);
+  const vinta = primaVinta(r.propertiesWithHistory ?? {}, idFaseVinta);
   const setterId = setterAllaData(r.propertiesWithHistory ?? {}, creata);
   const noShow = ingressiNoShow(r.propertiesWithHistory ?? {}, idFaseNoShow, idFaseRipianificata).map((ts) => ({
     ts,
@@ -518,17 +551,18 @@ export async function aggiornaUnaTrattativa(
   const db = getDb();
 
   await db.query(
-    `INSERT INTO trattativa (deal_id, campagna_id, creata_ts, svolta_ts, contact_id, setter_id)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO trattativa (deal_id, campagna_id, creata_ts, svolta_ts, vinta_ts, contact_id, setter_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (deal_id) DO UPDATE
        SET campagna_id = EXCLUDED.campagna_id,
            creata_ts   = EXCLUDED.creata_ts,
            svolta_ts   = EXCLUDED.svolta_ts,
+           vinta_ts    = EXCLUDED.vinta_ts,
            -- Se l'associazione non arriva si tiene quella gia' salvata,
            -- invece di cancellarla con un NULL. Idem per il setter.
            contact_id  = COALESCE(EXCLUDED.contact_id, trattativa.contact_id),
            setter_id   = COALESCE(EXCLUDED.setter_id, trattativa.setter_id)`,
-    [Number(r.id), campagnaId, creata, svolta, contatti.get(String(r.id)) ?? null, setterId]
+    [Number(r.id), campagnaId, creata, svolta, vinta, contatti.get(String(r.id)) ?? null, setterId]
   );
 
   // Come nel giro completo: si cancella e si reinserisce, cosi' sparisce anche
@@ -566,7 +600,8 @@ export async function sincronizzaTrattative(
     rows: [log]
   } = await db.query(`INSERT INTO sync_log (tipo) VALUES ('trattative') RETURNING id`);
 
-  const { gruppi, proprieta, conStorico, etichettaFase, idFaseNoShow, idFaseRipianificata } = await preparaContesto(token);
+  const { gruppi, proprieta, conStorico, etichettaFase, idFaseNoShow, idFaseRipianificata, idFaseVinta } =
+    await preparaContesto(token);
 
   const esito: EsitoTrattative = { trattative: 0, svolte: 0, noShow: 0, senzaCampagna: 0, troncato: false };
 
@@ -592,6 +627,7 @@ export async function sincronizzaTrattative(
           campagna: string;
           creata: Date;
           svolta: Date | null;
+          vinta: Date | null;
           setterId: number | null;
           noShow: Array<{ ts: Date; setterId: number | null }>;
         }> = [];
@@ -608,6 +644,7 @@ export async function sincronizzaTrattative(
             ),
             creata,
             svolta: primaSvolta(gruppi, r.propertiesWithHistory ?? {}, r.properties ?? {}, etichettaFase),
+            vinta: primaVinta(r.propertiesWithHistory ?? {}, idFaseVinta),
             // Il setter di quando l'appuntamento e' stato fissato.
             setterId: setterAllaData(r.propertiesWithHistory ?? {}, creata),
             // E per ogni diserzione, quello di quel giorno: fra il primo
@@ -624,12 +661,13 @@ export async function sincronizzaTrattative(
         await risolviIdCampagne(righe.map((x) => x.campagna));
 
         await db.query(
-          `INSERT INTO trattativa (deal_id, campagna_id, creata_ts, svolta_ts, contact_id, setter_id)
-           SELECT * FROM UNNEST($1::bigint[], $2::int[], $3::timestamptz[], $4::timestamptz[], $5::bigint[], $6::bigint[])
+          `INSERT INTO trattativa (deal_id, campagna_id, creata_ts, svolta_ts, vinta_ts, contact_id, setter_id)
+           SELECT * FROM UNNEST($1::bigint[], $2::int[], $3::timestamptz[], $4::timestamptz[], $5::timestamptz[], $6::bigint[], $7::bigint[])
            ON CONFLICT (deal_id) DO UPDATE
              SET campagna_id = EXCLUDED.campagna_id,
                  creata_ts   = EXCLUDED.creata_ts,
                  svolta_ts   = EXCLUDED.svolta_ts,
+                 vinta_ts    = EXCLUDED.vinta_ts,
                  -- Se l'associazione non arriva si tiene quella gia' salvata,
                  -- invece di cancellarla con un NULL. Stesso ragionamento per
                  -- il setter: una cronologia vuota non deve azzerare un nome
@@ -641,6 +679,7 @@ export async function sincronizzaTrattative(
             righe.map((x) => (x.campagna ? idCampagne.get(x.campagna) ?? null : null)),
             righe.map((x) => x.creata),
             righe.map((x) => x.svolta),
+            righe.map((x) => x.vinta),
             righe.map((x) => x.contactId),
             righe.map((x) => x.setterId)
           ]
