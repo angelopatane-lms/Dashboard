@@ -948,6 +948,7 @@ export default function AgendaGiornaliera({
                           `${e.manuale ? " · creato a mano" : ""}` +
                           `${e.ripianificata ? ` · ripianificata al ${e.ripianificata}, la card c'e' anche li'` : ""}` +
                           `${e.appuntamentoDel ? ` · Sul CRM non c'era nessun appuntamento qui: quello del ${e.appuntamentoDel} non e' stato spostato` : ""}` +
+                          `${e.senzaRiunione ? " · Sul CRM non esiste nessun appuntamento: card ricavata dalla registrazione, orario arrotondato alla mezz'ora" : ""}` +
                           `${e.vinta ? ` · VINTA il ${e.vinta}` : ""}` +
                           `${apribile ? " · clicca per il dettaglio" : ""}`
                         }
@@ -966,7 +967,7 @@ export default function AgendaGiornaliera({
                           // Sta PRIMA dei bordi laterali di overbooking e
                           // creazione manuale: quelli devono poterlo
                           // sovrascrivere sul loro lato, non il contrario.
-                          ...(e.appuntamentoDel
+                          ...(e.appuntamentoDel || e.senzaRiunione
                             ? { border: `1px dashed ${colore.secondario}` }
                             : {}),
                           padding: "2px 6px",

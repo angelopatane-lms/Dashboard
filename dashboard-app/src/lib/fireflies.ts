@@ -125,6 +125,22 @@ export async function leggiNomiCitati(chiave: string, id: string): Promise<strin
 }
 
 /**
+ * I nomi delle voci di una registrazione, come Fireflies le ha etichettate.
+ *
+ * Costa una chiamata, ma e' l'unico modo di sapere CHI c'era senza scaricare
+ * tutte le frasi: su una call da un'ora sono centinaia, e qui serve solo il
+ * nome del cliente. Sulle consulenze le voci sono due - "Advisor Leone Group" e
+ * il nome del contatto - e la seconda e' quella che interessa.
+ */
+export async function leggiVoci(chiave: string, id: string): Promise<string[]> {
+  const dati = await interroga<{ transcript: { speakers: Array<{ name: string | null }> | null } | null }>(
+    chiave,
+    `{ transcript(id: "${id}") { speakers { name } } }`
+  );
+  return (dati?.transcript?.speakers ?? []).map((s) => String(s?.name ?? "").trim()).filter(Boolean);
+}
+
+/**
  * Le frasi di una registrazione con il loro istante, in secondi dall'inizio.
  *
  * Servono quando una sola registrazione contiene due consulenze: dai tempi si

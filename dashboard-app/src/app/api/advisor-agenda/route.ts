@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { leggiTrascrizioni, leggiVoci } from "@/lib/fireflies";
 
 // L'agenda di una giornata: i meeting di HubSpot, per persona e per orario.
 //
@@ -131,6 +132,15 @@ export type EventoAgenda = {
    * davvero non mostrerebbe niente.
    */
   appuntamentoDel?: string;
+  /**
+   * LA CARD NON VIENE DA UNA RIUNIONE: e' ricavata dalla registrazione, perche'
+   * sul CRM quell'appuntamento non esiste proprio.
+   *
+   * Rientra nella stessa casistica di `appuntamentoDel` - "assente su CRM" - e
+   * si disegna allo stesso modo: la fascia non era nel piano. La differenza e'
+   * che li' l'appuntamento esiste ma sta in un altro giorno, qui non esiste.
+   */
+  senzaRiunione?: true;
   /**
    * LA CONSULENZA HA CHIUSO: contiene la data in cui la trattativa e' stata
    * vinta.
@@ -785,6 +795,184 @@ async function consulenzeDeiContatti(dalle: number, alle: number): Promise<Map<n
   return out;
 }
 
+/** La stanza Meet dentro un collegamento, se c'e'. */
+function stanzaDa(testo: string | null | undefined): string {
+  return String(testo ?? "").match(/meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})/)?.[1] ?? "";
+}
+
+/** Come Fireflies etichetta la voce dell'advisor: e' l'account, uguale per
+ *  tutti, quindi l'altra voce e' quella del cliente. */
+const VOCE_ADVISOR = /advisor\s*leone\s*group/i;
+
+/**
+ * Sotto questa durata non e' una consulenza: e' un rientro in stanza per
+ * sbaglio. Visto oggi: due minuti, una sola frase trascritta, "Scusi."
+ */
+const DURATA_MINIMA_MIN = 10;
+
+/** L'orario arrotondato alla mezz'ora piu' vicina, in minuti dalla mezzanotte. */
+function allaMezzOra(minuti: number): number {
+  return Math.max(0, Math.min(24 * 60, Math.round(minuti / 30) * 30));
+}
+
+/**
+ * LE CONSULENZE CHE ESISTONO SOLO COME REGISTRAZIONE.
+ *
+ * IL CASO. L'advisor fa la call e la vendita la registra creando la trattativa
+ * gia' vinta, senza che nessuno abbia mai messo in calendario l'appuntamento.
+ * Sul CRM non c'e' nessuna riunione, quindi in agenda non c'e' nessuna card - e
+ * un'ora di lavoro, con un contratto in fondo, non compare da nessuna parte.
+ * Misurato il 17 settembre: consulenza delle 10:00, 61 minuti registrati,
+ * vendita alle 11:26, colonna dell'advisor vuota.
+ *
+ * COSA SI RICAVA DALLA REGISTRAZIONE. La stanza dice di CHI e' - ogni advisor
+ * ne usa una fissa, e la si riconosce dalle altre riunioni sue - le voci dicono
+ * CON CHI, l'orario dice QUANDO. L'inizio si arrotonda alla mezz'ora perche' una
+ * call comincia alle 10:03 e la fascia era le 10:00: mostrarla spostata di tre
+ * minuti rispetto a tutte le altre farebbe sembrare un dato piu' preciso di
+ * quello che e'.
+ *
+ * QUANDO NON SI FA NIENTE: se la registrazione e' gia' agganciata a una
+ * riunione (allora la card c'e' gia'), se dura meno di dieci minuti, se non si
+ * capisce di chi e' la stanza, o se l'unica voce e' quella dell'advisor - li'
+ * il cliente non e' entrato, e inventare una card servirebbe solo a sporcare
+ * la giornata di qualcuno.
+ *
+ * COSTA POCO PERCHE' QUASI SEMPRE NON C'E' NIENTE DA FARE: una chiamata a
+ * Fireflies per l'elenco del giorno, e poi una per registrazione solo su quelle
+ * che restano - di norma nessuna.
+ */
+/**
+ * Il contatto che porta questo nome, se ce n'e' UNO SOLO.
+ *
+ * Serve a dare un cliente alle card ricavate dalla registrazione, dove l'unica
+ * traccia di chi c'era e' l'etichetta che Fireflies mette alla voce. Con quel
+ * contatto si sa se la consulenza ha chiuso.
+ *
+ * DUE OMONIMI E SI LASCIA PERDERE: attribuire la vendita alla persona sbagliata
+ * e' peggio che non mostrarla, perche' non si vede e non si corregge. Per lo
+ * stesso motivo il nome deve avere almeno due parole: "Giuseppe" da solo
+ * pescherebbe mezzo database.
+ */
+async function contattoDalNome(token: string, nome: string): Promise<number | null> {
+  const parti = nome.trim().split(/\s+/).filter((x) => x.length > 1);
+  if (parti.length < 2) return null;
+
+  const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/contacts/search`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      filterGroups: [
+        {
+          filters: [
+            { propertyName: "firstname", operator: "CONTAINS_TOKEN", value: parti[0] },
+            { propertyName: "lastname", operator: "CONTAINS_TOKEN", value: parti[parti.length - 1] }
+          ]
+        }
+      ],
+      properties: ["firstname", "lastname"],
+      limit: 5
+    })
+  });
+  if (!res.ok) return null;
+  const dati = await res.json();
+  const trovati = dati.results ?? [];
+  if (trovati.length !== 1) return null;
+  const id = Number(trovati[0].id);
+  return Number.isFinite(id) ? id : null;
+}
+
+async function cardDaRegistrazioni(
+  token: string,
+  dalle: number,
+  alle: number,
+  stanzaDiChi: Map<string, string>,
+  proprietari: Record<string, string>,
+  gia: Set<string>
+): Promise<Array<{ evento: EventoAgenda; idTrascrizione: string; contatto: number | null }>> {
+  const chiave = process.env.FIREFLIES_API_KEY;
+  if (!chiave) return [];
+
+  const registrazioni = await leggiTrascrizioni(chiave, new Date(dalle), new Date(alle));
+  const candidate = registrazioni.filter(
+    (r) => !gia.has(r.id) && r.durataMin >= DURATA_MINIMA_MIN && r.stanza && stanzaDiChi.has(r.stanza)
+  );
+  if (!candidate.length) return [];
+
+  const out: Array<{ evento: EventoAgenda; idTrascrizione: string; contatto: number | null }> = [];
+  for (const r of candidate) {
+    const operatore = proprietari[stanzaDiChi.get(r.stanza!) ?? ""] ?? "";
+    if (!operatore) continue;
+
+    const voci = await leggiVoci(chiave, r.id).catch(() => [] as string[]);
+    const cliente = voci.find((v) => !VOCE_ADVISOR.test(v));
+    if (!cliente) continue;
+
+    const da = oraRoma(new Date(r.inizio).toISOString());
+    if (!da) continue;
+    const inizioMin = allaMezzOra(da.minuti);
+    const fineMin = Math.min(allaMezzOra(da.minuti + r.durataMin), 24 * 60);
+
+    out.push({
+      idTrascrizione: r.id,
+      contatto: await contattoDalNome(token, cliente).catch(() => null),
+      evento: {
+        operatore,
+        titolo: cliente,
+        inizioMin,
+        fineMin: fineMin > inizioMin ? fineMin : inizioMin + 30,
+        inizio: `${due(Math.floor(inizioMin / 60))}:${due(inizioMin % 60)}`,
+        fine: `${due(Math.floor(fineMin / 60))}:${due(fineMin % 60)}`,
+        // Qualcuno ha parlato con l'advisor per piu' di dieci minuti: la
+        // consulenza si e' tenuta, non serve altro per dirlo.
+        tipo: "svolta",
+        senzaRiunione: true,
+        trascrizione: linkTrascrizione(r.id),
+        presenza: "presentato"
+      }
+    });
+  }
+  return out;
+}
+
+/**
+ * LE VENDITE DEI CONTATTI, anche quelle senza una consulenza registrata.
+ *
+ * PERCHE' NON BASTA LA LETTURA DI SOPRA. Li' la vinta viaggia insieme alla
+ * consulenza svolta, ed e' la via precisa: stessa trattativa, nessun dubbio su
+ * quale appuntamento abbia chiuso. Ma una trattativa creata direttamente in
+ * fase Vinta non ha nessuna consulenza svolta - non essendoci passaggi di fase,
+ * non c'e' niente che risponda ai criteri - e quella vendita restava invisibile
+ * all'agenda.
+ *
+ * Succede quando l'advisor registra la vendita di getto a fine call, creando la
+ * trattativa gia' chiusa: visto oggi su una consulenza delle 10:00, un'ora di
+ * registrazione e una vendita alle 11:26, e in agenda niente di niente.
+ */
+async function venditeDeiContatti(dalle: number, alle: number): Promise<Map<number, number[]>> {
+  const out = new Map<number, number[]>();
+  const r = await getDb().query<{ id: string; ts: string }>(
+    `SELECT COALESCE(a.nuovo_id, t.contact_id) AS id, t.vinta_ts AS ts
+       FROM trattativa t
+       LEFT JOIN alias_contatto a ON a.vecchio_id = t.contact_id
+      WHERE t.contact_id IS NOT NULL
+        AND t.vinta_ts >= $1::timestamptz
+        AND t.vinta_ts <  $2::timestamptz`,
+    [
+      new Date(dalle - FINESTRA_ESITI_MS).toISOString(),
+      new Date(alle + FINESTRA_ESITI_MS).toISOString()
+    ]
+  );
+  for (const x of r.rows) {
+    const id = Number(x.id);
+    const t = new Date(x.ts).getTime();
+    if (!Number.isFinite(id) || !Number.isFinite(t)) continue;
+    if (!out.has(id)) out.set(id, []);
+    out.get(id)!.push(t);
+  }
+  return out;
+}
+
 /**
  * I contatti che quel giorno hanno disertato l'appuntamento.
  *
@@ -1266,7 +1454,17 @@ export async function GET(req: NextRequest) {
             "hs_meeting_end_time",
             "hubspot_owner_id",
             "hs_meeting_outcome",
-            "hs_createdate"
+            "hs_createdate",
+            // IL LINK DELLA STANZA, che serve a capire di chi e' una
+            // registrazione senza riunione - vedi cardDaRegistrazioni().
+            //
+            // STA IN hs_meeting_location: hs_meeting_external_url sembrerebbe
+            // il campo giusto ma porta il link all'evento di Google Calendar
+            // ("google.com/calendar/event?eid=..."), non alla stanza Meet. Si
+            // leggono tutti e due perche' costano uguale e non si sa se valga
+            // per ogni riunione.
+            "hs_meeting_external_url",
+            "hs_meeting_location"
           ],
           limit: 100,
           ...(after ? { after } : {})
@@ -1350,7 +1548,7 @@ export async function GET(req: NextRequest) {
     // Le due letture che dicono quali appuntamenti si sono davvero svolti.
     // Se una delle due non risponde, gli appuntamenti restano "fissati": e'
     // meno informazione, non informazione sbagliata.
-    const [contatti, svolte, disertati, presenze] = await Promise.all([
+    const [contatti, svolte, disertati, vendite, presenze] = await Promise.all([
       contattiDeiMeeting(token, grezzi.map((r) => r.id)).catch((err) => {
         console.error("[advisor-agenda] associazioni", err instanceof Error ? err.message : err);
         return new Map<string, number[]>();
@@ -1361,6 +1559,10 @@ export async function GET(req: NextRequest) {
       }),
       diserzioniDeiContatti(dalle, alle).catch((err) => {
         console.error("[advisor-agenda] no show", err instanceof Error ? err.message : err);
+        return new Map<number, number[]>();
+      }),
+      venditeDeiContatti(dalle, alle).catch((err) => {
+        console.error("[advisor-agenda] vendite", err instanceof Error ? err.message : err);
         return new Map<number, number[]>();
       }),
       presenzeDelleRiunioni(grezzi.map((r) => r.id), dalle, alle).catch((err) => {
@@ -1476,11 +1678,23 @@ export async function GET(req: NextRequest) {
       const cominciata = Number.isFinite(inizioSlot) && inizioSlot <= Date.now();
       const sueConsulenze = cominciata ? suoiContatti.flatMap((c) => svolte.get(c) ?? []) : [];
       const tsSvolta = esitoPiuVicino(sueConsulenze.map((x) => x.svolta), inizioSlot);
-      // LA VENDITA SEGUE LA CONSULENZA SCELTA, non il contatto: un cliente con
-      // due appuntamenti ha due trattative, e la vinta appartiene a quella che
-      // ha chiuso. Agganciandola al contatto si colorerebbero tutte e due.
+
+      // LA VENDITA, PER DUE VIE.
+      //
+      // La prima e' precisa: segue la consulenza scelta per questa fascia, cioe'
+      // la sua stessa trattativa. Un cliente con due appuntamenti ha due
+      // trattative, e la vinta appartiene a quella che ha chiuso.
+      //
+      // La seconda serve a chi la trattativa l'ha creata gia' vinta, senza
+      // passaggi di fase: li' non c'e' nessuna consulenza svolta a cui
+      // agganciarsi, e la vendita si accosta all'appuntamento con la stessa
+      // regola degli altri esiti - dal suo giorno in poi, entro tre giorni, il
+      // piu' vicino. Vale solo dove la fascia e' gia' cominciata.
       const tsVinta =
-        tsSvolta === null ? null : sueConsulenze.find((x) => x.svolta === tsSvolta)?.vinta ?? null;
+        (tsSvolta === null ? null : sueConsulenze.find((x) => x.svolta === tsSvolta)?.vinta ?? null) ??
+        (cominciata
+          ? esitoPiuVicino(suoiContatti.flatMap((c) => vendite.get(c) ?? []), inizioSlot)
+          : null);
       const tsDiserzione = cominciata
         ? esitoPiuVicino(suoiContatti.flatMap((c) => disertati.get(c) ?? []), inizioSlot)
         : null;
@@ -1489,10 +1703,15 @@ export async function GET(req: NextRequest) {
       // fascia. Capita a chi diserta e viene ripianificato: la diserzione e la
       // consulenza esistono tutte e due dentro i tre giorni, e senza confronto
       // la prima card prenderebbe l'esito della seconda.
+      // UNA VINTA VALE COME CONSULENZA SVOLTA, perche' lo e' per forza: non si
+      // chiude una vendita senza aver parlato col cliente. Quindi se la
+      // trattativa non porta la consulenza ma porta la vittoria, e' la vittoria
+      // a dire che quella fascia e' stata lavorata.
+      const tsChiusura = tsSvolta ?? tsVinta;
       const vinceSvolta =
-        tsSvolta !== null &&
+        tsChiusura !== null &&
         (tsDiserzione === null ||
-          Math.abs(tsSvolta - inizioSlot) <= Math.abs(tsDiserzione - inizioSlot));
+          Math.abs(tsChiusura - inizioSlot) <= Math.abs(tsDiserzione - inizioSlot));
 
       if (presenza === "presentato") {
         if (tipo !== "svolta") svolteTrovate += 1;
@@ -1598,7 +1817,7 @@ export async function GET(req: NextRequest) {
               })
             }
           : {}),
-        ...(tipo === "svolta" && tsVinta !== null && vinceSvolta
+        ...(tipo === "svolta" && tsVinta !== null
           ? {
               vinta: new Date(tsVinta).toLocaleDateString("it-IT", {
                 timeZone: "Europe/Rome",
@@ -1611,6 +1830,58 @@ export async function GET(req: NextRequest) {
         ...(presenza ? { presenza: presenza as "presentato" | "solo-advisor" | "non-si-sa" } : {})
       });
       idDiEvento.push(idTrascrizioneSua);
+    }
+
+    // LE CONSULENZE CHE SUL CRM NON ESISTONO, ricavate dalla registrazione.
+    //
+    // Si fa qui, alla fine, perche' serve sapere cosa e' gia' in agenda: le
+    // registrazioni gia' agganciate a una riunione hanno la loro card, e la
+    // mappa stanza -> advisor si ricava dalle riunioni della giornata, dove
+    // ogni advisor compare con la sua stanza fissa.
+    const stanzaDiChi = new Map<string, string>();
+    for (const r of grezzi) {
+      const stanza =
+        stanzaDa(r.properties.hs_meeting_location) || stanzaDa(r.properties.hs_meeting_external_url);
+      const chi = (r.properties.hubspot_owner_id ?? "").trim();
+      if (stanza && chi && !stanzaDiChi.has(stanza)) stanzaDiChi.set(stanza, gestori.get(r.id) ?? chi);
+    }
+
+    const fantasma = await cardDaRegistrazioni(
+      token,
+      dalle,
+      alle,
+      stanzaDiChi,
+      proprietari,
+      new Set(idDiEvento.filter((x): x is string => Boolean(x)))
+    ).catch((err) => {
+      console.error("[advisor-agenda] card da registrazioni", err instanceof Error ? err.message : err);
+      return [] as Array<{ evento: EventoAgenda; idTrascrizione: string; contatto: number | null }>;
+    });
+
+    // NIENTE CARD DOVE LA FASCIA E' GIA' OCCUPATA. Appena qualcuno crea la
+    // riunione mancante - succede spesso poche ore dopo - la card vera compare,
+    // e questa resterebbe accanto a raccontare la stessa call due volte. Finche'
+    // l'abbinamento notturno non lega la registrazione a quella riunione, e'
+    // la sovrapposizione degli orari a dire che si tratta della stessa cosa.
+    const occupata = (chi: string, da: number, a: number): boolean =>
+      eventi.some((e) => e.operatore === chi && e.inizioMin < a && da < e.fineMin);
+
+    for (const f of fantasma) {
+      if (occupata(f.evento.operatore, f.evento.inizioMin, f.evento.fineMin)) continue;
+      // La vendita, se il contatto si e' riconosciuto: stessa regola delle
+      // altre card, dal giorno dell'appuntamento in poi ed entro tre giorni.
+      const inizio = dalle + f.evento.inizioMin * 60 * 1000;
+      const suaVinta =
+        f.contatto === null ? null : esitoPiuVicino(vendite.get(f.contatto) ?? [], inizio);
+      if (suaVinta !== null) {
+        f.evento.vinta = new Date(suaVinta).toLocaleDateString("it-IT", {
+          timeZone: "Europe/Rome",
+          day: "2-digit",
+          month: "2-digit"
+        });
+      }
+      eventi.push(f.evento);
+      idDiEvento.push(f.idTrascrizione);
     }
 
     // L'audio si chiede solo per le trascrizioni che compaiono davvero in
