@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { leggiTrascrizioni, leggiVoci } from "@/lib/fireflies";
+import { chiaveNome } from "@/lib/nomi";
 
 // L'agenda di una giornata: i meeting di HubSpot, per persona e per orario.
 //
@@ -1871,16 +1872,22 @@ export async function GET(req: NextRequest) {
       return [] as Array<{ evento: EventoAgenda; idTrascrizione: string; contatto: number | null }>;
     });
 
-    // NIENTE CARD DOVE LA FASCIA E' GIA' OCCUPATA. Appena qualcuno crea la
-    // riunione mancante - succede spesso poche ore dopo - la card vera compare,
-    // e questa resterebbe accanto a raccontare la stessa call due volte. Finche'
-    // l'abbinamento notturno non lega la registrazione a quella riunione, e'
-    // la sovrapposizione degli orari a dire che si tratta della stessa cosa.
-    const occupata = (chi: string, da: number, a: number): boolean =>
-      eventi.some((e) => e.operatore === chi && e.inizioMin < a && da < e.fineMin);
+    // NIENTE DOPPIONI, MA SUL NOME DEL CLIENTE, non sull'orario.
+    //
+    // Appena qualcuno crea la riunione mancante - succede spesso poche ore dopo
+    // - la card vera compare, e questa resterebbe accanto a raccontare la
+    // stessa call due volte. A dire che si tratta della stessa cosa e' il
+    // cliente: stessa persona, stesso advisor, stesso giorno.
+    //
+    // PRIMA IL CONFRONTO ERA SUGLI ORARI, e sbagliava per eccesso: bastava
+    // un'altra card sovrapposta - un appuntamento ricevuto da un collega,
+    // magari disertato - perche' la consulenza vera sparisse. E' esattamente
+    // il caso che ha fatto nascere questa funzione.
+    const giaInAgenda = (chi: string, cliente: string): boolean =>
+      eventi.some((e) => e.operatore === chi && chiaveNome(e.titolo) === chiaveNome(cliente));
 
     for (const f of fantasma) {
-      if (occupata(f.evento.operatore, f.evento.inizioMin, f.evento.fineMin)) continue;
+      if (giaInAgenda(f.evento.operatore, f.evento.titolo)) continue;
       // La vendita, se il contatto si e' riconosciuto: stessa regola delle
       // altre card, dal giorno dell'appuntamento in poi ed entro tre giorni.
       const inizio = dalle + f.evento.inizioMin * 60 * 1000;
