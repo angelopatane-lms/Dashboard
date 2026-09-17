@@ -126,9 +126,25 @@ export async function POST(req: NextRequest) {
   // non e' visibile a chi non amministra il portale. Alla prima consegna vera
   // annotiamo quali intestazioni di firma arrivano davvero: se ce n'e' una
   // verificabile, si stringe passando a quella.
-  const dato = req.nextUrl.searchParams.get("k") ?? "";
+  // DUE NOMI PER LO STESSO PARAMETRO. Si chiamava solo `k`, e chi ha
+  // configurato il workflow ha scritto `segreto` - il nome con cui questa cosa
+  // viene chiamata dappertutto, nei commenti e nella variabile d'ambiente.
+  // Rifiutare quella chiamata sarebbe stato pignolo e basta: il valore era
+  // giusto, era giusto anche l'indirizzo, e il rifiuto arrivava senza dire
+  // quale delle due cose non andava. Si accettano tutti e due.
+  const dato = req.nextUrl.searchParams.get("segreto") ?? req.nextUrl.searchParams.get("k") ?? "";
   if (!ugualiInSicurezza(dato, segreto)) {
-    await annota("respinto", "segreto assente o errato nell'indirizzo");
+    // COSA NON TORNAVA, senza scrivere il segreto nel log: se il parametro non
+    // c'e' il problema e' il nome, se c'e' ma di lunghezza diversa e' un
+    // valore sbagliato o uno spazio di troppo, se la lunghezza e' la stessa e'
+    // un carattere diverso. Tre guasti diversi che prima davano tutti la
+    // stessa riga.
+    await annota(
+      "respinto",
+      dato
+        ? `valore diverso da quello configurato (arrivati ${dato.length} caratteri, attesi ${segreto.length})`
+        : "nessun parametro segreto/k nell'indirizzo"
+    );
     return NextResponse.json({ error: "non autorizzato" }, { status: 401 });
   }
 
