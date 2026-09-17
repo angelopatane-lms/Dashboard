@@ -206,17 +206,25 @@ const SENZA_FIREFLIES = new Set(
  */
 const FONDO_CON_FIREFLIES = "#f1f5f9";
 
+/** Il colore delle righe delle ore, che cambia col fondo della colonna. */
+function coloreRighe(colorata: boolean): string {
+  return colorata ? "#e2e8f0" : "#f1f5f9";
+}
+
 /**
- * Le righe delle ore, per un fondo o per l'altro: piena sull'ora, piu' tenue
- * sulla mezz'ora.
+ * Le righe delle ore. SOLO LE ORE: quelle delle mezz'ore erano il doppio dei
+ * segni per un'informazione che nessuno cerca - un appuntamento lo si colloca
+ * leggendo l'orario scritto sulla card, non contando le righe - e su una
+ * giornata da tredici ore facevano ventisei linee dietro le card.
+ *
+ * L'ULTIMA RIGA NON E' QUI. Il disegno si ripete ogni ora partendo dall'alto,
+ * quindi traccia le righe all'INIZIO di ogni fascia: quella delle 22:00 cadrebbe
+ * sul bordo inferiore, dove il disegno e' gia' finito, e infatti mancava mentre
+ * la sua etichetta a sinistra c'era. La chiude il bordo della colonna.
  */
 function grigliaOraria(colorata: boolean): string {
-  const ora = colorata ? "#e2e8f0" : "#f1f5f9";
-  const mezza = colorata ? "#eaeff5" : "#f8fafc";
-  return (
-    `repeating-linear-gradient(to bottom, ${ora} 0, ${ora} 1px, transparent 1px, transparent ${ALTEZZA_ORA}px), ` +
-    `repeating-linear-gradient(to bottom, transparent 0, transparent ${ALTEZZA_ORA / 2}px, ${mezza} ${ALTEZZA_ORA / 2}px, ${mezza} ${ALTEZZA_ORA / 2 + 1}px, transparent ${ALTEZZA_ORA / 2 + 1}px, transparent ${ALTEZZA_ORA}px)`
-  );
+  const ora = coloreRighe(colorata);
+  return `repeating-linear-gradient(to bottom, ${ora} 0, ${ora} 1px, transparent 1px, transparent ${ALTEZZA_ORA}px)`;
 }
 
 const COLORE_RICEVUTO = "#475569";
@@ -868,13 +876,18 @@ export default function AgendaGiornaliera({
               {colonne.map((c) => (
                 <div
                   key={c.nome}
-                  className="relative flex-shrink-0 shadow-[inset_-1px_0_0_0_#e2e8f0]"
+                  className="relative flex-shrink-0"
                   style={{
                     width: larghezzaCol,
                     backgroundColor: SENZA_FIREFLIES.has(chiaveNome(c.nome))
                       ? "#ffffff"
                       : FONDO_CON_FIREFLIES,
-                    backgroundImage: grigliaOraria(!SENZA_FIREFLIES.has(chiaveNome(c.nome)))
+                    backgroundImage: grigliaOraria(!SENZA_FIREFLIES.has(chiaveNome(c.nome))),
+                    // Il secondo bordo e' la riga dell'ultima ora, che il
+                    // disegno ripetuto non traccia. Il primo separa le colonne.
+                    boxShadow: `inset -1px 0 0 0 #e2e8f0, inset 0 -1px 0 0 ${coloreRighe(
+                      !SENZA_FIREFLIES.has(chiaveNome(c.nome))
+                    )}`
                   }}
                 >
                   {c.eventi.map((e, i) => {
