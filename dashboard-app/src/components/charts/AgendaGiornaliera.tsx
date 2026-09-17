@@ -160,19 +160,27 @@ function PrestazioneAdvisor({ dati }: { dati: NonNullable<AnalisiCall["advisor"]
 
 /** Il segno dell'overbooking: un appuntamento passato da un altro advisor. */
 /**
- * CHI NON USA FIREFLIES: la sua colonna ha il fondo grigio.
+ * DOVE LE CALL SI REGISTRANO: la colonna ha il fondo grigio.
  *
- * Tre advisor si sono opposti alla registrazione delle call, ed e' una loro
- * scelta. La conseguenza pero' si vede in agenda: sulle loro card non ci sara'
- * mai il pallino della trascrizione ne' l'audio, e le loro consulenze restano
- * azzurre finche' non spostano di fase la trattativa - non perche' qualcosa non
+ * Tre advisor si sono opposti a Fireflies, ed e' una loro scelta. La
+ * conseguenza pero' si vede in agenda: sulle loro card non ci sara' mai il
+ * pallino della trascrizione ne' l'audio, e le loro consulenze restano azzurre
+ * finche' non spostano di fase la trattativa - non perche' qualcosa non
  * funzioni, ma perche' per loro quella fonte non esiste. Senza un segno, ogni
  * volta che si guarda l'agenda quelle colonne sembrano un guasto: e' gia'
  * successo tre volte di andarle a controllare.
  *
- * Il fondo e' appena accennato e resta dietro a tutto: dice "qui manca una
- * fonte", non deve competere con i colori delle card, che continuano a dire lo
- * stato dell'appuntamento.
+ * IL FONDO STA SU CHI ADERISCE, NON SU CHI SI E' OPPOSTO. Sono la maggioranza,
+ * quindi la fascia grigia diventa il tessuto normale dell'agenda e le tre
+ * colonne bianche si staccano da sole, senza che il colore sembri un'etichetta
+ * appiccicata addosso a qualcuno. La differenza si legge uguale, ma da questa
+ * parte non addita nessuno.
+ *
+ * Il grigio e' trasparente e resta dietro a tutto: dice dove una fonte c'e',
+ * non deve competere con i colori delle card, che continuano a dire lo stato
+ * dell'appuntamento. E si ferma sotto i nomi: l'intestazione resta bianca per
+ * tutti, perche' li' il grigio diventava una fascia pesante sul nome della
+ * persona.
  *
  * L'ELENCO E' A MANO PERCHE' IL DATO NON ESISTE. Non c'e' niente, ne' su
  * HubSpot ne' su Fireflies, che dica "questa persona ha aderito": dedurlo
@@ -186,7 +194,7 @@ const SENZA_FIREFLIES = new Set(
 
 /** Il grigio del fondo: trasparente, cosi' le righe delle ore continuano a
  *  passarci sotto invece di essere coperte. */
-const FONDO_SENZA_FIREFLIES = "rgba(100, 116, 139, 0.08)";
+const FONDO_CON_FIREFLIES = "rgba(100, 116, 139, 0.08)";
 
 const COLORE_RICEVUTO = "#475569";
 
@@ -791,14 +799,7 @@ export default function AgendaGiornaliera({
             {colonne.map((c) => {
               const senzaFireflies = SENZA_FIREFLIES.has(chiaveNome(c.nome));
               return (
-                <div
-                  key={c.nome}
-                  className="flex-shrink-0 px-2 pb-2.5 pt-2"
-                  style={{
-                    width: larghezzaCol,
-                    ...(senzaFireflies ? { background: FONDO_SENZA_FIREFLIES } : {})
-                  }}
-                >
+                <div key={c.nome} className="flex-shrink-0 px-2 pb-2.5 pt-2" style={{ width: larghezzaCol }}>
                   <div
                     className="truncate text-sm font-semibold text-slate-900"
                     title={
@@ -854,8 +855,8 @@ export default function AgendaGiornaliera({
                   style={{
                     width: larghezzaCol,
                     ...(SENZA_FIREFLIES.has(chiaveNome(c.nome))
-                      ? { background: FONDO_SENZA_FIREFLIES }
-                      : {})
+                      ? {}
+                      : { background: FONDO_CON_FIREFLIES })
                   }}
                 >
                   {c.eventi.map((e, i) => {
