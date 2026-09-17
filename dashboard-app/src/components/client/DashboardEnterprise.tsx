@@ -838,7 +838,7 @@ export default function DashboardEnterprise({
         {!hideOperatorTable && !setterView && (
           <>
             <div id="agenda" className="scroll-mt-6">
-              <SectionTitle className="mt-10">Agenda Advisor</SectionTitle>
+              <SectionTitle className="mt-10">Agenda Consulenze Advisor</SectionTitle>
             </div>
             <Card>
               <AgendaGiornaliera
