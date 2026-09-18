@@ -12,8 +12,10 @@
 
 import { getDb } from "@/lib/db";
 import { registraPresenze } from "@/lib/trascrizioni/presenze";
+import { PIPELINE_APPUNTAMENTI } from "@/lib/trattative/sync";
 import {
   abbina,
+  giornoRoma,
   stessoNome,
   type Abbinamento,
   type Registrazione,
@@ -584,7 +586,101 @@ const DISTANZA_MASSIMA_MS = 21 * 24 * 60 * 60 * 1000;
  * riga sparisce: da li' in poi la consulenza la racconta la card vera, e
  * contarla due volte sarebbe peggio che non contarla affatto.
  */
+/**
+ * IL CLIENTE E LA SUA TRATTATIVA, per una consulenza che sul CRM non esiste.
+ *
+ * Il nome arriva dalla voce che Fireflies ha etichettato, e si cerca fra i
+ * contatti: se ne risponde uno solo, e il nome combacia davvero, e' lui. Due
+ * omonimi e si lascia perdere - attribuire una consulenza alla persona
+ * sbagliata non si vede e non si corregge.
+ *
+ * LA TRATTATIVA SI SCEGLIE CON LA DATA DI CHIUSURA. Un cliente puo' avere piu'
+ * pratiche aperte, e senza appuntamento niente dice a quale appartiene la call.
+ * Su una trattativa ripianificata pero' un'automazione scrive in "Data di
+ * chiusura" IL GIORNO della consulenza nuova: se coincide con il giorno della
+ * registrazione, e' quella. Il giorno da solo non basterebbe a mettere una card
+ * in agenda - manca l'ora - ma qui l'ora la da' la registrazione, e il giorno
+ * serve solo a scegliere fra due pratiche.
+ */
+async function clienteEPratica(
+  token: string,
+  nome: string,
+  quando: number
+): Promise<{ contatto: number | null; deal: number | null }> {
+  const parti = nome.trim().split(/\s+/).filter((x) => x.length > 1);
+  if (parti.length < 2) return { contatto: null, deal: null };
+
+  // DUE RICERCHE, E IN QUEST'ORDINE.
+  //
+  // Prima il filtro preciso su nome e cognome: e' quello che distingue una
+  // persona dai suoi omonimi. Su "Chiara Gilardi" il portale ne ha tre - due
+  // con nome e cognome scritti tutti dentro il campo del nome - e la ricerca
+  // larga le restituiva tutte e tre, lasciando la consulenza senza cliente
+  // perche' fra tre non si sceglie.
+  //
+  // La ricerca larga resta come seconda, perche' trova chi ha il nome scritto
+  // in modo un po' diverso da come Fireflies l'ha sentito. Anche li' vale la
+  // stessa regola: se risponde piu' di una persona si lascia perdere.
+  const cerca = async (corpo: unknown): Promise<Oggetto[]> =>
+    (await hubspot<Pagina<Oggetto>>(token, "/crm/v3/objects/contacts/search", corpo).catch(() => null))
+      ?.results ?? [];
+
+  const combacia = (lista: Oggetto[]): Oggetto[] => {
+    const perId = new Map<string, Oggetto>();
+    for (const x of lista) {
+      const suo = `${x.properties?.firstname ?? ""} ${x.properties?.lastname ?? ""}`.trim();
+      if (stessoNome(nome, suo)) perId.set(String(x.id), x);
+    }
+    return [...perId.values()];
+  };
+
+  const preciso = combacia(
+    await cerca({
+      filterGroups: [
+        {
+          filters: [
+            { propertyName: "firstname", operator: "CONTAINS_TOKEN", value: parti[0] },
+            { propertyName: "lastname", operator: "CONTAINS_TOKEN", value: parti[parti.length - 1] }
+          ]
+        }
+      ],
+      properties: ["firstname", "lastname"],
+      limit: 5
+    })
+  );
+
+  const candidati =
+    preciso.length === 1
+      ? preciso
+      : combacia(await cerca({ query: nome, properties: ["firstname", "lastname"], limit: 5 }));
+  if (candidati.length !== 1) return { contatto: null, deal: null };
+  const contatto = Number(candidati[0].id);
+  if (!Number.isFinite(contatto)) return { contatto: null, deal: null };
+
+  const giorno = giornoRoma(quando);
+  const ass = await hubspot<{ results?: Array<{ toObjectId: number }> }>(
+    token,
+    `/crm/v4/objects/contacts/${contatto}/associations/deals`
+  ).catch(() => null);
+  const idDeal = (ass?.results ?? []).map((x) => String(x.toObjectId));
+  if (!idDeal.length) return { contatto, deal: null };
+
+  const lette = await hubspot<{ results?: Oggetto[] }>(token, "/crm/v3/objects/deals/batch/read", {
+    properties: ["closedate", "pipeline"],
+    inputs: idDeal.slice(0, 100).map((id) => ({ id }))
+  }).catch(() => null);
+
+  for (const d of lette?.results ?? []) {
+    if (d.properties.pipeline !== PIPELINE_APPUNTAMENTI) continue;
+    const chiusura = Date.parse(d.properties.closedate ?? "");
+    if (!Number.isFinite(chiusura)) continue;
+    if (giornoRoma(chiusura) === giorno) return { contatto, deal: Number(d.id) };
+  }
+  return { contatto, deal: null };
+}
+
 async function salvaFuoriCrm(opzioni: {
+  token: string;
   chiaveFireflies: string;
   orfane: Registrazione[];
   abbinate: string[];
@@ -592,7 +688,7 @@ async function salvaFuoriCrm(opzioni: {
   da: Date;
   a: Date;
 }): Promise<void> {
-  const { chiaveFireflies, orfane, abbinate, riunioni, da, a } = opzioni;
+  const { token, chiaveFireflies, orfane, abbinate, riunioni, da, a } = opzioni;
   const db = getDb();
 
   // CHI LAVORA IN QUALE STANZA, A MAGGIORANZA e non alla prima riunione che
@@ -625,6 +721,8 @@ async function salvaFuoriCrm(opzioni: {
     inizio: Date;
     durata: number;
     cliente: string;
+    contatto: number | null;
+    deal: number | null;
   }> = [];
 
   for (const r of orfane) {
@@ -646,13 +744,16 @@ async function salvaFuoriCrm(opzioni: {
     );
     if (!cliente) continue;
 
+    const { contatto, deal } = await clienteEPratica(token, cliente, r.inizio);
     righe.push({
       id: r.id,
       advisor,
       stanza: r.stanza,
       inizio: new Date(r.inizio),
       durata: Math.round(r.durataMin),
-      cliente
+      cliente,
+      contatto,
+      deal
     });
   }
 
@@ -663,14 +764,19 @@ async function salvaFuoriCrm(opzioni: {
   }
   if (righe.length) {
     await db.query(
-      `INSERT INTO consulenza_fuori_crm (trascrizione, advisor_id, stanza, inizio_ts, durata_min, cliente)
-       SELECT * FROM UNNEST($1::text[], $2::bigint[], $3::text[], $4::timestamptz[], $5::int[], $6::text[])
+      `INSERT INTO consulenza_fuori_crm
+         (trascrizione, advisor_id, stanza, inizio_ts, durata_min, cliente, contatto_id, deal_id)
+       SELECT * FROM UNNEST($1::text[], $2::bigint[], $3::text[], $4::timestamptz[], $5::int[], $6::text[], $7::bigint[], $8::bigint[])
        ON CONFLICT (trascrizione) DO UPDATE
          SET advisor_id = EXCLUDED.advisor_id,
              stanza     = EXCLUDED.stanza,
              inizio_ts  = EXCLUDED.inizio_ts,
              durata_min = EXCLUDED.durata_min,
              cliente    = EXCLUDED.cliente,
+             -- Il contatto e la pratica si tengono se gia' noti: una ricerca
+             -- che non risponde non deve cancellare un aggancio riuscito.
+             contatto_id = COALESCE(EXCLUDED.contatto_id, consulenza_fuori_crm.contatto_id),
+             deal_id     = COALESCE(EXCLUDED.deal_id, consulenza_fuori_crm.deal_id),
              aggiornato_at = now()`,
       [
         righe.map((x) => x.id),
@@ -678,7 +784,9 @@ async function salvaFuoriCrm(opzioni: {
         righe.map((x) => x.stanza),
         righe.map((x) => x.inizio),
         righe.map((x) => x.durata),
-        righe.map((x) => x.cliente)
+        righe.map((x) => x.cliente),
+        righe.map((x) => x.contatto),
+        righe.map((x) => x.deal)
       ]
     );
   }
@@ -875,6 +983,7 @@ async function recuperaPerNome(opzioni: {
   // cose diverse. Vedi salvaFuoriCrm().
   if (scrivi) {
     await salvaFuoriCrm({
+      token,
       chiaveFireflies,
       orfane: registrazioniSenzaRiunione.filter(
         (r) => !abbinamenti.some((x) => x.registrazione.id === r.id)

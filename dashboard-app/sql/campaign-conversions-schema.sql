@@ -222,6 +222,19 @@ CREATE TABLE IF NOT EXISTS consulenza_fuori_crm (
 CREATE INDEX IF NOT EXISTS idx_fuori_crm_inizio ON consulenza_fuori_crm (inizio_ts);
 CREATE INDEX IF NOT EXISTS idx_fuori_crm_advisor ON consulenza_fuori_crm (advisor_id);
 
+-- LA TRATTATIVA DI QUELLA CONSULENZA, quando si riesce a stabilirla.
+--
+-- Il cliente si riconosce dal nome della voce nella registrazione, ma un
+-- cliente puo' avere piu' trattative aperte e senza appuntamento non c'e' niente
+-- che dica a quale appartiene la call. Lo dice la "Data di chiusura": su una
+-- trattativa ripianificata un'automazione ci scrive IL GIORNO della consulenza
+-- nuova - solo il giorno, senza ora. Messa insieme all'orario della
+-- registrazione, la coppia identifica la pratica.
+--
+-- Serve a far comparire l'arancione sulla card giusta quando la vendita chiude,
+-- e a non attribuire una consulenza a una pratica che non c'entra.
+ALTER TABLE consulenza_fuori_crm ADD COLUMN IF NOT EXISTS deal_id BIGINT;
+
 CREATE TABLE IF NOT EXISTS proprietario (
   id     BIGINT PRIMARY KEY,
   nome   TEXT NOT NULL,

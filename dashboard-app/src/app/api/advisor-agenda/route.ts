@@ -879,7 +879,7 @@ async function cardDaRegistrazioni(
   dalle: number,
   alle: number,
   proprietari: Record<string, string>
-): Promise<Array<{ evento: EventoAgenda; idTrascrizione: string; contatto: number | null }>> {
+): Promise<Array<{ evento: EventoAgenda; idTrascrizione: string; contatto: number | null; vinta: number | null }>> {
   const { rows } = await getDb().query<{
     trascrizione: string;
     advisor_id: string;
@@ -887,15 +887,23 @@ async function cardDaRegistrazioni(
     durata_min: number;
     cliente: string;
     contatto_id: string | null;
+    vinta_ts: Date | null;
   }>(
-    `SELECT trascrizione, advisor_id::text, inizio_ts, durata_min, cliente, contatto_id::text
-       FROM consulenza_fuori_crm
-      WHERE inizio_ts >= $1::timestamptz AND inizio_ts < $2::timestamptz
-      ORDER BY inizio_ts`,
+    // LA VENDITA ARRIVA DALLA PRATICA AGGANCIATA, quando si e' riusciti a
+    // stabilirla: la sceglie il sync confrontando la "Data di chiusura" della
+    // trattativa con il giorno della registrazione. E' l'unico modo di sapere a
+    // quale pratica appartenga una consulenza che nessun appuntamento collega,
+    // e serve quando il cliente ne ha piu' di una aperta.
+    `SELECT f.trascrizione, f.advisor_id::text, f.inizio_ts, f.durata_min, f.cliente,
+            f.contatto_id::text, t.vinta_ts
+       FROM consulenza_fuori_crm f
+       LEFT JOIN trattativa t ON t.deal_id = f.deal_id
+      WHERE f.inizio_ts >= $1::timestamptz AND f.inizio_ts < $2::timestamptz
+      ORDER BY f.inizio_ts`,
     [new Date(dalle).toISOString(), new Date(alle).toISOString()]
   );
 
-  const out: Array<{ evento: EventoAgenda; idTrascrizione: string; contatto: number | null }> = [];
+  const out: Array<{ evento: EventoAgenda; idTrascrizione: string; contatto: number | null; vinta: number | null }> = [];
   for (const r of rows) {
     const operatore = proprietari[String(r.advisor_id)] ?? "";
     if (!operatore) continue;
@@ -909,6 +917,9 @@ async function cardDaRegistrazioni(
     const contattoSalvato = Number(r.contatto_id ?? "");
     out.push({
       idTrascrizione: r.trascrizione,
+      // La pratica agganciata batte la ricerca per contatto: e' piu' precisa,
+      // perche' distingue fra due trattative dello stesso cliente.
+      vinta: r.vinta_ts ? r.vinta_ts.getTime() : null,
       contatto: Number.isFinite(contattoSalvato) && contattoSalvato > 0
         ? contattoSalvato
         : await contattoDalNome(token, r.cliente).catch(() => null),
@@ -1840,7 +1851,7 @@ export async function GET(req: NextRequest) {
     // vera porta lo stesso cliente e questa si toglie di mezzo.
     const fantasma = await cardDaRegistrazioni(token, dalle, alle, proprietari).catch((err) => {
       console.error("[advisor-agenda] card da registrazioni", err instanceof Error ? err.message : err);
-      return [] as Array<{ evento: EventoAgenda; idTrascrizione: string; contatto: number | null }>;
+      return [] as Array<{ evento: EventoAgenda; idTrascrizione: string; contatto: number | null; vinta: number | null }>;
     });
 
     // NIENTE DOPPIONI, MA SUL NOME DEL CLIENTE, non sull'orario.
@@ -1863,7 +1874,7 @@ export async function GET(req: NextRequest) {
       // altre card, dal giorno dell'appuntamento in poi ed entro tre giorni.
       const inizio = dalle + f.evento.inizioMin * 60 * 1000;
       const suaVinta =
-        f.contatto === null ? null : esitoPiuVicino(vendite.get(f.contatto) ?? [], inizio);
+        f.vinta ?? (f.contatto === null ? null : esitoPiuVicino(vendite.get(f.contatto) ?? [], inizio));
       if (suaVinta !== null) {
         f.evento.vinta = new Date(suaVinta).toLocaleDateString("it-IT", {
           timeZone: "Europe/Rome",
