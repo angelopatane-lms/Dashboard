@@ -1721,7 +1721,22 @@ export async function GET(req: NextRequest) {
       }
 
       const suoi = contatti.get(r.id) ?? [];
-      const analisiSua = suoi.map((c) => analisi.get(c)).find(Boolean);
+
+      // L'ANALISI SOLO SU UNA CARD CHE RACCONTA QUALCOSA DI SUCCESSO.
+      //
+      // Arriva dall'oggetto Appuntamento di HubSpot, scelto per la data scritta
+      // nel nome, e quella data non sempre corrisponde a una call. Visto il 18
+      // settembre: una consulenza del 16 ripianificata prima al 18 e poi al 22,
+      // con un record di analisi creato stamattina alle 09:05 intestato al 18 -
+      // giorno in cui non si e' tenuto niente. La card era azzurra, senza
+      // registrazione ne' trascrizione, e portava dentro la valutazione di una
+      // call di due giorni prima.
+      //
+      // Registrazione e trascrizione questa protezione ce l'hanno gia': valgono
+      // solo nel giorno in cui la call e' avvenuta. Su una fascia ancora da
+      // tenersi non c'e' niente da analizzare, e l'analisi si tace.
+      const analisiSua =
+        tipo === "appuntamento" ? undefined : suoi.map((c) => analisi.get(c)).find(Boolean);
       // PRIMA IL NOSTRO DATO, POI QUELLO DI HUBSPOT.
       //
       // L'identificativo della trascrizione lo decide il nostro abbinamento e lo
