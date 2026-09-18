@@ -191,6 +191,37 @@ ALTER TABLE presenza_call ADD COLUMN IF NOT EXISTS call_ts TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_presenza_call_ts ON presenza_call (call_ts) WHERE call_ts IS NOT NULL;
 
+-- LE CONSULENZE CHE ESISTONO SOLO COME REGISTRAZIONE.
+--
+-- L'advisor tiene la call e registra la vendita creando la trattativa gia'
+-- vinta, senza che nessuno metta l'appuntamento a calendario: sul CRM non c'e'
+-- ne' riunione ne' consulenza svolta, e un'ora di lavoro non compare da nessuna
+-- parte - ne' in agenda ne' nei conteggi per advisor.
+--
+-- PERCHE' UNA TABELLA E NON UN CALCOLO AL VOLO. L'agenda le ricavava
+-- interrogando Fireflies a ogni apertura, un giorno alla volta. La tabella
+-- Advisor pero' copre settimane, e rifare quel calcolo su un mese vorrebbe dire
+-- decine di chiamate a ogni caricamento di pagina. Scritte qui dal sync - che
+-- gira a ogni registrazione consegnata - le leggono tutte e due allo stesso
+-- modo, e i due numeri non possono piu' divergere.
+--
+-- La riga sparisce se quella registrazione viene poi agganciata a una riunione:
+-- a quel punto la consulenza ha la sua card vera e contarla qui la
+-- raddoppierebbe.
+CREATE TABLE IF NOT EXISTS consulenza_fuori_crm (
+  trascrizione TEXT        PRIMARY KEY,
+  advisor_id   BIGINT      NOT NULL,
+  stanza       TEXT        NOT NULL,
+  inizio_ts    TIMESTAMPTZ NOT NULL,
+  durata_min   INT         NOT NULL,
+  cliente      TEXT        NOT NULL,
+  contatto_id  BIGINT,
+  aggiornato_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_fuori_crm_inizio ON consulenza_fuori_crm (inizio_ts);
+CREATE INDEX IF NOT EXISTS idx_fuori_crm_advisor ON consulenza_fuori_crm (advisor_id);
+
 CREATE TABLE IF NOT EXISTS proprietario (
   id     BIGINT PRIMARY KEY,
   nome   TEXT NOT NULL,

@@ -96,6 +96,11 @@ export default function DashboardEnterprise({
   // denominatore di "% Chiusura" sulla sua pagina. Nel foglio Operatori quel
   // campo e' zero per chi fa solo il setter.
   const [svolteSetter, setSvolteSetter] = useState<Record<string, number> | null>(null);
+  // Le consulenze che sul CRM non esistono - call registrate senza nessun
+  // appuntamento - per advisor. Si sommano alla colonna Consulenze, che arriva
+  // dal foglio Operatori e per forza di cose non le conosce: l'agenda le
+  // mostrava e la tabella no.
+  const [fuoriCrm, setFuoriCrm] = useState<Record<string, number> | null>(null);
   // Gli obiettivi di Boom del mese. `meseObiettivo` vale null quando il periodo
   // scelto copre piu' mesi: in quel caso la colonna mostra la somma e non si
   // lascia scrivere, perche' non si saprebbe a quale mese attribuire la cifra.
@@ -141,6 +146,7 @@ export default function DashboardEnterprise({
       .then((data: {
         perSetter?: Record<string, number>;
         svoltePerSetter?: Record<string, number>;
+        fuoriCrmPerAdvisor?: Record<string, number>;
         error?: string;
       }) => {
         if (annullato) return;
@@ -150,6 +156,7 @@ export default function DashboardEnterprise({
         }
         setNoShowSetter(data.perSetter ?? {});
         setSvolteSetter(data.svoltePerSetter ?? {});
+        setFuoriCrm(data.fuoriCrmPerAdvisor ?? {});
       })
       .catch(console.error);
 
@@ -826,7 +833,7 @@ export default function DashboardEnterprise({
                   Caricamento dei dati in corso...
                 </div>
               ) : (
-              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={salvaObiettivo} />
+              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={salvaObiettivo} />
               )}
             </Card>
           </div>

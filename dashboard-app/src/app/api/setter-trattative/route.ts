@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const db = getDb();
-    const [disertati, svolte] = await Promise.all([
+    const [disertati, svolte, fuoriCrm] = await Promise.all([
       db.query<{ setter: string; n: string }>(
         `SELECT p.nome AS setter, COUNT(*)::text AS n
            FROM no_show n
@@ -106,7 +106,29 @@ export async function GET(req: NextRequest) {
             AND ($3 = '' OR lower(c.nome) LIKE '%' || $3 || '%')
           GROUP BY 1`,
         [from, to, frammento]
-      )
+      ),
+      // LE CONSULENZE CHE SUL CRM NON ESISTONO, per advisor.
+      //
+      // Sono call registrate senza nessun appuntamento: non hanno una
+      // trattativa, quindi non entrano nella query qui sopra, e la tabella
+      // Advisor le perdeva mentre l'agenda le mostrava - due pagine con due
+      // numeri diversi sullo stesso giorno.
+      //
+      // NON SI FILTRANO PER CAMPAGNA perche' non ne hanno una: senza
+      // appuntamento non c'e' nessuna trattativa da cui leggerla. Quando si
+      // guarda una campagna sola restano quindi fuori, altrimenti gonfierebbero
+      // un totale che dovrebbe essere di quella campagna soltanto.
+      frammento
+        ? Promise.resolve({ rows: [] as Array<{ advisor: string; n: string }> })
+        : db.query<{ advisor: string; n: string }>(
+            `SELECT p.nome AS advisor, COUNT(*)::text AS n
+               FROM consulenza_fuori_crm f
+               JOIN proprietario p ON p.id = f.advisor_id
+              WHERE f.inizio_ts >= $1::date
+                AND f.inizio_ts < ($2::date + INTERVAL '1 day')
+              GROUP BY 1`,
+            [from, to]
+          )
     ]);
 
     const perSetter: Record<string, number> = {};
@@ -115,8 +137,11 @@ export async function GET(req: NextRequest) {
     const svoltePerSetter: Record<string, number> = {};
     for (const r of svolte.rows) svoltePerSetter[chiave(r.setter)] = Number(r.n);
 
+    const fuoriCrmPerAdvisor: Record<string, number> = {};
+    for (const r of fuoriCrm.rows) fuoriCrmPerAdvisor[chiave(r.advisor)] = Number(r.n);
+
     return NextResponse.json(
-      { perSetter, svoltePerSetter },
+      { perSetter, svoltePerSetter, fuoriCrmPerAdvisor },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (err) {

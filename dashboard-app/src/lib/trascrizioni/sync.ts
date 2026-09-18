@@ -565,6 +565,129 @@ const DISTANZA_MASSIMA_MS = 21 * 24 * 60 * 60 * 1000;
  * registrazione resta orfana. Meglio perderne una che mettere la consulenza di
  * un estraneo sulla scheda di qualcun altro.
  */
+/**
+ * LE CONSULENZE FUORI CRM, salvate perche' le legga chi ne ha bisogno.
+ *
+ * COSA SONO. Registrazioni lunghe, in una stanza che sappiamo di chi e', con un
+ * cliente che parla - e nessun appuntamento a cui agganciarsi, ne' per orario
+ * ne' per nome. L'advisor ha tenuto la call e ha registrato la vendita creando
+ * la trattativa gia' vinta, senza che l'appuntamento esistesse: senza questa
+ * tabella quell'ora di lavoro non comparirebbe da nessuna parte.
+ *
+ * PERCHE' SI SCRIVONO QUI. L'agenda le ricavava da sola interrogando Fireflies
+ * a ogni apertura, ma la tabella Advisor copre settimane e rifare quel calcolo
+ * su un mese vorrebbe dire decine di chiamate a ogni caricamento. Scritte una
+ * volta sola, i due numeri non possono piu' divergere.
+ *
+ * E SI CANCELLANO DA SOLE. Se qualcuno crea la riunione mancante - capita, a
+ * ore di distanza - al giro dopo quella registrazione risulta abbinata e la
+ * riga sparisce: da li' in poi la consulenza la racconta la card vera, e
+ * contarla due volte sarebbe peggio che non contarla affatto.
+ */
+async function salvaFuoriCrm(opzioni: {
+  chiaveFireflies: string;
+  orfane: Registrazione[];
+  abbinate: string[];
+  riunioni: Riunione[];
+  da: Date;
+  a: Date;
+}): Promise<void> {
+  const { chiaveFireflies, orfane, abbinate, riunioni, da, a } = opzioni;
+  const db = getDb();
+
+  // CHI LAVORA IN QUALE STANZA, A MAGGIORANZA e non alla prima riunione che
+  // capita. Una stanza e' di chi ci riceve tutti i giorni, ma su dieci giorni
+  // ci passa anche qualche appuntamento di un collega: prendendo la prima
+  // riunione trovata, una consulenza finiva sotto il nome sbagliato - visto
+  // subito, la call del 17 settembre attribuita a un advisor che non era il suo.
+  //
+  // Si contano gli advisor A CUI LA RIUNIONE E' INTESTATA, non quelli che poi
+  // l'hanno gestita: la stanza segue il calendario di chi la possiede, mentre il
+  // passaggio a un collega e' proprio il caso che sposta le eccezioni.
+  const conteggio = new Map<string, Map<string, number>>();
+  for (const m of riunioni) {
+    const chi = m.advisorPrenotato || m.advisorEffettivo;
+    if (!m.stanza || !chi) continue;
+    if (!conteggio.has(m.stanza)) conteggio.set(m.stanza, new Map());
+    const per = conteggio.get(m.stanza)!;
+    per.set(chi, (per.get(chi) ?? 0) + 1);
+  }
+  const padroneDi = new Map<string, string>();
+  for (const [stanza, per] of conteggio) {
+    const vincitore = [...per].sort((x, y) => y[1] - x[1])[0];
+    if (vincitore) padroneDi.set(stanza, vincitore[0]);
+  }
+
+  const righe: Array<{
+    id: string;
+    advisor: number;
+    stanza: string;
+    inizio: Date;
+    durata: number;
+    cliente: string;
+  }> = [];
+
+  for (const r of orfane) {
+    if (r.durataMin < DURATA_MINIMA_ORFANA) continue;
+    const advisor = Number(padroneDi.get(r.stanza) ?? "");
+    if (!Number.isFinite(advisor) || advisor <= 0) continue;
+
+    // Le voci: per le orfane il recupero per nome ha gia' chiesto le frasi, e
+    // quelle bastano. Si chiede a Fireflies solo se mancano.
+    let voci = [
+      ...new Set((r.frasi ?? []).map((f) => (f.voce ?? "").trim()).filter(Boolean))
+    ];
+    if (!voci.length) {
+      voci = await leggiVoci(chiaveFireflies, r.id).catch(() => [] as string[]);
+      await attesa(250);
+    }
+    const cliente = voci.find(
+      (v) => v.toLowerCase() !== VOCE_DEL_BOT && !/^speaker \d+$/i.test(v)
+    );
+    if (!cliente) continue;
+
+    righe.push({
+      id: r.id,
+      advisor,
+      stanza: r.stanza,
+      inizio: new Date(r.inizio),
+      durata: Math.round(r.durataMin),
+      cliente
+    });
+  }
+
+  // Prima si tolgono quelle del periodo che ora hanno un appuntamento, poi si
+  // riscrivono le attuali: cosi' il giro e' ripetibile e non lascia residui.
+  if (abbinate.length) {
+    await db.query(`DELETE FROM consulenza_fuori_crm WHERE trascrizione = ANY($1::text[])`, [abbinate]);
+  }
+  if (righe.length) {
+    await db.query(
+      `INSERT INTO consulenza_fuori_crm (trascrizione, advisor_id, stanza, inizio_ts, durata_min, cliente)
+       SELECT * FROM UNNEST($1::text[], $2::bigint[], $3::text[], $4::timestamptz[], $5::int[], $6::text[])
+       ON CONFLICT (trascrizione) DO UPDATE
+         SET advisor_id = EXCLUDED.advisor_id,
+             stanza     = EXCLUDED.stanza,
+             inizio_ts  = EXCLUDED.inizio_ts,
+             durata_min = EXCLUDED.durata_min,
+             cliente    = EXCLUDED.cliente,
+             aggiornato_at = now()`,
+      [
+        righe.map((x) => x.id),
+        righe.map((x) => x.advisor),
+        righe.map((x) => x.stanza),
+        righe.map((x) => x.inizio),
+        righe.map((x) => x.durata),
+        righe.map((x) => x.cliente)
+      ]
+    );
+  }
+  console.log(
+    `[trascrizioni] consulenze fuori CRM nel periodo ${da.toISOString().slice(0, 10)} - ` +
+      `${a.toISOString().slice(0, 10)}: ${righe.length}`
+  );
+}
+
 async function recuperaPerNome(opzioni: {
   token: string;
   chiaveFireflies: string;
@@ -745,6 +868,24 @@ async function recuperaPerNome(opzioni: {
   if (perNome.length) {
     console.log(`[trascrizioni] ${perNome.length} registrazioni orfane agganciate per nome`);
     abbinamenti.push(...perNome);
+  }
+
+  // LE CONSULENZE CHE RESTANO SENZA NESSUN APPUNTAMENTO si salvano in banca
+  // dati: le leggono l'agenda e la tabella Advisor, che altrimenti conterebbero
+  // cose diverse. Vedi salvaFuoriCrm().
+  if (scrivi) {
+    await salvaFuoriCrm({
+      chiaveFireflies,
+      orfane: registrazioniSenzaRiunione.filter(
+        (r) => !abbinamenti.some((x) => x.registrazione.id === r.id)
+      ),
+      abbinate: abbinamenti.map((x) => x.registrazione.id),
+      riunioni,
+      da,
+      a
+    }).catch((e) => {
+      console.error("[trascrizioni] consulenze fuori CRM non salvate:", e instanceof Error ? e.message : e);
+    });
   }
 
   const perCriterio: Record<string, number> = {};

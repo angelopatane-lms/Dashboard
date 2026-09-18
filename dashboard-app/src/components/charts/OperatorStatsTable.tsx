@@ -221,6 +221,7 @@ export default function OperatorStatsTable({
   hubspotOverrides,
   noShowOverrides,
   svolteOverrides,
+  consulenzeFuoriCrm,
   meseObiettivo,
   onSalvaObiettivo,
   trattativeOverrides,
@@ -254,6 +255,16 @@ export default function OperatorStatsTable({
    * cui chi ne aveva fissati 102 - e la percentuale diventava un trattino.
    */
   svolteOverrides?: Record<string, number>;
+  /**
+   * Le consulenze che sul CRM non esistono: call registrate senza nessun
+   * appuntamento, contate per advisor.
+   *
+   * Si sommano alla colonna Consulenze, che arriva dal foglio Operatori e per
+   * forza di cose non le conosce - senza appuntamento non c'e' niente da
+   * contare. Finivano in agenda e non qui, e le due pagine davano numeri
+   * diversi sullo stesso giorno.
+   */
+  consulenzeFuoriCrm?: Record<string, number>;
   trattativeOverrides?: Record<string, number>;
   precomputedTotals?: { chiusure: number; boom: number };
   hubspotLoading?: boolean;
@@ -286,8 +297,14 @@ export default function OperatorStatsTable({
   const effNoShow = (r: OperatorSummary) => noShowOverrides?.[normKey(r.operatore)] ?? r.noShow;
   // Sulla pagina Setter il denominatore sono le consulenze che i SUOI
   // appuntamenti hanno prodotto; su quella Advisor restano le sue, dal foglio.
+  // LE CONSULENZE DI UN ADVISOR: quelle del foglio piu' quelle che sul CRM non
+  // esistono. Sulla pagina Setter non si sommano: li' la colonna conta un'altra
+  // cosa, e una call senza appuntamento non ha un setter a cui attribuirla.
+  const effConsulenze = (r: OperatorSummary) =>
+    r.consulenze + (isSetterView ? 0 : consulenzeFuoriCrm?.[normKey(r.operatore)] ?? 0);
+
   const effConsulenzeChiusura = (r: OperatorSummary) =>
-    isSetterView ? svolteOverrides?.[normKey(r.operatore)] ?? 0 : r.consulenze;
+    isSetterView ? svolteOverrides?.[normKey(r.operatore)] ?? 0 : effConsulenze(r);
   const effChiusure = (r: OperatorSummary) => hubspotOverrides?.[normKey(r.operatore)]?.chiusure ?? 0;
   const effBoom = (r: OperatorSummary) => hubspotOverrides?.[normKey(r.operatore)]?.boom ?? 0;
   /**
@@ -312,7 +329,7 @@ export default function OperatorStatsTable({
         chiamate: acc.chiamate + r.chiamate,
         connessioni: acc.connessioni + r.connessioni,
         appuntamenti: acc.appuntamenti + effAppuntamenti(r),
-        consulenze: acc.consulenze + (isSetterView ? effNoShow(r) : r.consulenze),
+        consulenze: acc.consulenze + (isSetterView ? effNoShow(r) : effConsulenze(r)),
         svolte: acc.svolte + effConsulenzeChiusura(r),
         chiusure: acc.chiusure + effChiusure(r),
         boom: acc.boom + effBoom(r),
@@ -328,7 +345,7 @@ export default function OperatorStatsTable({
       chiusure: precomputedTotals?.chiusure ?? base.chiusure,
       boom: precomputedTotals?.boom ?? base.boom
     };
-  }, [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, precomputedTotals, obiettivi]);
+  }, [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, consulenzeFuoriCrm, precomputedTotals, obiettivi]);
 
   const maxValues = useMemo(
     () => ({
@@ -336,11 +353,11 @@ export default function OperatorStatsTable({
       chiamate: Math.max(...data.map((r) => r.chiamate), 1),
       connessioni: Math.max(...data.map((r) => r.connessioni), 1),
       appuntamenti: Math.max(...data.map((r) => effAppuntamenti(r)), 1),
-      consulenze: Math.max(...data.map((r) => isSetterView ? effNoShow(r) : r.consulenze), 1),
+      consulenze: Math.max(...data.map((r) => (isSetterView ? effNoShow(r) : effConsulenze(r))), 1),
       svolte: Math.max(...data.map((r) => effConsulenzeChiusura(r)), 1),
       chiusure: Math.max(...data.map((r) => effChiusure(r)), 1),
       boom: Math.max(...data.map((r) => effBoom(r)), 1),
-      resa: Math.max(...data.map((r) => resaOraria(effIncassoChiusure(r), r.consulenze) ?? 0), 1)
+      resa: Math.max(...data.map((r) => resaOraria(effIncassoChiusure(r), effConsulenze(r)) ?? 0), 1)
     }),
     [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides]
   );
@@ -366,7 +383,7 @@ export default function OperatorStatsTable({
     { label: "% Appuntamento", valore: (r) => tassoPresa(effAppuntamenti(r), r.connessioni) },
     {
       label: isSetterView ? "No Show" : "Consulenze",
-      valore: (r) => (isSetterView ? effNoShow(r) : r.consulenze)
+      valore: (r) => (isSetterView ? effNoShow(r) : effConsulenze(r))
     },
     // LE CONSULENZE DEL SETTER, e quante ne ha prodotte ogni appuntamento.
     //
@@ -395,7 +412,7 @@ export default function OperatorStatsTable({
   // stanza sono le loro: un setter non ne fa nessuna, quindi la colonna
   // dividerebbe per zero.
   if (!isSetterView) {
-    colonne.push({ label: "Resa", valore: (r) => resaOraria(effIncassoChiusure(r), r.consulenze) });
+    colonne.push({ label: "Resa", valore: (r) => resaOraria(effIncassoChiusure(r), effConsulenze(r)) });
   }
 
   // L'OBIETTIVO STA SU ENTRAMBE LE PAGINE, E ULTIMO. E' il traguardo di Boom
@@ -550,9 +567,9 @@ export default function OperatorStatsTable({
                 </td>
                 <td
                   className="border-r border-white px-2 py-1.5 text-right tabular-nums"
-                  style={{ background: heatBg(isSetterView ? effNoShow(r) : r.consulenze, maxValues.consulenze) }}
+                  style={{ background: heatBg(isSetterView ? effNoShow(r) : effConsulenze(r), maxValues.consulenze) }}
                 >
-                  {formatInt(isSetterView ? effNoShow(r) : r.consulenze)}
+                  {formatInt(isSetterView ? effNoShow(r) : effConsulenze(r))}
                 </td>
                 {isSetterView ? (
                   <>
@@ -600,13 +617,13 @@ export default function OperatorStatsTable({
                     style={{
                       background: hubspotLoading
                         ? undefined
-                        : heatBg(resaOraria(effIncassoChiusure(r), r.consulenze) ?? 0, maxValues.resa)
+                        : heatBg(resaOraria(effIncassoChiusure(r), effConsulenze(r)) ?? 0, maxValues.resa)
                     }}
                   >
                     {hubspotLoading ? (
                       <span className="text-slate-400">–</span>
-                    ) : resaOraria(effIncassoChiusure(r), r.consulenze) !== null ? (
-                      formatResa(resaOraria(effIncassoChiusure(r), r.consulenze) as number)
+                    ) : resaOraria(effIncassoChiusure(r), effConsulenze(r)) !== null ? (
+                      formatResa(resaOraria(effIncassoChiusure(r), effConsulenze(r)) as number)
                     ) : (
                       <span className="text-slate-400">–</span>
                     )}

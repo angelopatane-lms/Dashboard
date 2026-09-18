@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { leggiTrascrizioni, leggiVoci } from "@/lib/fireflies";
 import { chiaveNome } from "@/lib/nomi";
 
 // L'agenda di una giornata: i meeting di HubSpot, per persona e per orario.
@@ -796,21 +795,6 @@ async function consulenzeDeiContatti(dalle: number, alle: number): Promise<Map<n
   return out;
 }
 
-/** La stanza Meet dentro un collegamento, se c'e'. */
-function stanzaDa(testo: string | null | undefined): string {
-  return String(testo ?? "").match(/meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})/)?.[1] ?? "";
-}
-
-/** Come Fireflies etichetta la voce dell'advisor: e' l'account, uguale per
- *  tutti, quindi l'altra voce e' quella del cliente. */
-const VOCE_ADVISOR = /advisor\s*leone\s*group/i;
-
-/**
- * Sotto questa durata non e' una consulenza: e' un rientro in stanza per
- * sbaglio. Visto oggi: due minuti, una sola frase trascritta, "Scusi."
- */
-const DURATA_MINIMA_MIN = 10;
-
 /** L'orario arrotondato alla mezz'ora piu' vicina, in minuti dalla mezzanotte. */
 function allaMezzOra(minuti: number): number {
   return Math.max(0, Math.min(24 * 60, Math.round(minuti / 30) * 30));
@@ -826,22 +810,16 @@ function allaMezzOra(minuti: number): number {
  * Misurato il 17 settembre: consulenza delle 10:00, 61 minuti registrati,
  * vendita alle 11:26, colonna dell'advisor vuota.
  *
- * COSA SI RICAVA DALLA REGISTRAZIONE. La stanza dice di CHI e' - ogni advisor
- * ne usa una fissa, e la si riconosce dalle altre riunioni sue - le voci dicono
- * CON CHI, l'orario dice QUANDO. L'inizio si arrotonda alla mezz'ora perche' una
- * call comincia alle 10:03 e la fascia era le 10:00: mostrarla spostata di tre
- * minuti rispetto a tutte le altre farebbe sembrare un dato piu' preciso di
- * quello che e'.
+ * SI LEGGONO DALLA BANCA DATI, non da Fireflies. A riconoscerle e' il sync
+ * delle trascrizioni, che gira a ogni registrazione consegnata e sa gia' quali
+ * sono rimaste senza appuntamento - stanza, cliente, durata. Prima questo
+ * calcolo lo rifaceva l'agenda a ogni apertura, un giorno alla volta: cosi'
+ * invece lo stesso dato serve anche alla tabella Advisor, che copre settimane,
+ * e i due numeri non possono divergere.
  *
- * QUANDO NON SI FA NIENTE: se la registrazione e' gia' agganciata a una
- * riunione (allora la card c'e' gia'), se dura meno di dieci minuti, se non si
- * capisce di chi e' la stanza, o se l'unica voce e' quella dell'advisor - li'
- * il cliente non e' entrato, e inventare una card servirebbe solo a sporcare
- * la giornata di qualcuno.
- *
- * COSTA POCO PERCHE' QUASI SEMPRE NON C'E' NIENTE DA FARE: una chiamata a
- * Fireflies per l'elenco del giorno, e poi una per registrazione solo su quelle
- * che restano - di norma nessuna.
+ * L'INIZIO SI ARROTONDA ALLA MEZZ'ORA: una call comincia alle 10:03 e la fascia
+ * era le 10:00, e mostrarla spostata di tre minuti rispetto a tutte le altre
+ * farebbe sembrare un dato piu' preciso di quello che e'.
  */
 /**
  * Il contatto che porta questo nome, se ce n'e' UNO SOLO.
@@ -900,48 +878,52 @@ async function cardDaRegistrazioni(
   token: string,
   dalle: number,
   alle: number,
-  stanzaDiChi: Map<string, string>,
-  proprietari: Record<string, string>,
-  gia: Set<string>
+  proprietari: Record<string, string>
 ): Promise<Array<{ evento: EventoAgenda; idTrascrizione: string; contatto: number | null }>> {
-  const chiave = process.env.FIREFLIES_API_KEY;
-  if (!chiave) return [];
-
-  const registrazioni = await leggiTrascrizioni(chiave, new Date(dalle), new Date(alle));
-  const candidate = registrazioni.filter(
-    (r) => !gia.has(r.id) && r.durataMin >= DURATA_MINIMA_MIN && r.stanza && stanzaDiChi.has(r.stanza)
+  const { rows } = await getDb().query<{
+    trascrizione: string;
+    advisor_id: string;
+    inizio_ts: Date;
+    durata_min: number;
+    cliente: string;
+    contatto_id: string | null;
+  }>(
+    `SELECT trascrizione, advisor_id::text, inizio_ts, durata_min, cliente, contatto_id::text
+       FROM consulenza_fuori_crm
+      WHERE inizio_ts >= $1::timestamptz AND inizio_ts < $2::timestamptz
+      ORDER BY inizio_ts`,
+    [new Date(dalle).toISOString(), new Date(alle).toISOString()]
   );
-  if (!candidate.length) return [];
 
   const out: Array<{ evento: EventoAgenda; idTrascrizione: string; contatto: number | null }> = [];
-  for (const r of candidate) {
-    const operatore = proprietari[stanzaDiChi.get(r.stanza!) ?? ""] ?? "";
+  for (const r of rows) {
+    const operatore = proprietari[String(r.advisor_id)] ?? "";
     if (!operatore) continue;
 
-    const voci = await leggiVoci(chiave, r.id).catch(() => [] as string[]);
-    const cliente = voci.find((v) => !VOCE_ADVISOR.test(v));
-    if (!cliente) continue;
-
-    const da = oraRoma(new Date(r.inizio).toISOString());
+    const da = oraRoma(r.inizio_ts.toISOString());
     if (!da) continue;
     const inizioMin = allaMezzOra(da.minuti);
-    const fineMin = Math.min(allaMezzOra(da.minuti + r.durataMin), 24 * 60);
+    const fine = Math.min(allaMezzOra(da.minuti + Number(r.durata_min ?? 0)), 24 * 60);
+    const fineMin = fine > inizioMin ? fine : inizioMin + 30;
 
+    const contattoSalvato = Number(r.contatto_id ?? "");
     out.push({
-      idTrascrizione: r.id,
-      contatto: await contattoDalNome(token, cliente).catch(() => null),
+      idTrascrizione: r.trascrizione,
+      contatto: Number.isFinite(contattoSalvato) && contattoSalvato > 0
+        ? contattoSalvato
+        : await contattoDalNome(token, r.cliente).catch(() => null),
       evento: {
         operatore,
-        titolo: cliente,
+        titolo: r.cliente,
         inizioMin,
-        fineMin: fineMin > inizioMin ? fineMin : inizioMin + 30,
+        fineMin,
         inizio: `${due(Math.floor(inizioMin / 60))}:${due(inizioMin % 60)}`,
         fine: `${due(Math.floor(fineMin / 60))}:${due(fineMin % 60)}`,
         // Qualcuno ha parlato con l'advisor per piu' di dieci minuti: la
         // consulenza si e' tenuta, non serve altro per dirlo.
         tipo: "svolta",
         senzaRiunione: true,
-        trascrizione: linkTrascrizione(r.id),
+        trascrizione: linkTrascrizione(r.trascrizione),
         presenza: "presentato"
       }
     });
@@ -1468,17 +1450,7 @@ export async function GET(req: NextRequest) {
             "hs_meeting_end_time",
             "hubspot_owner_id",
             "hs_meeting_outcome",
-            "hs_createdate",
-            // IL LINK DELLA STANZA, che serve a capire di chi e' una
-            // registrazione senza riunione - vedi cardDaRegistrazioni().
-            //
-            // STA IN hs_meeting_location: hs_meeting_external_url sembrerebbe
-            // il campo giusto ma porta il link all'evento di Google Calendar
-            // ("google.com/calendar/event?eid=..."), non alla stanza Meet. Si
-            // leggono tutti e due perche' costano uguale e non si sa se valga
-            // per ogni riunione.
-            "hs_meeting_external_url",
-            "hs_meeting_location"
+            "hs_createdate"
           ],
           limit: 100,
           ...(after ? { after } : {})
@@ -1846,28 +1818,12 @@ export async function GET(req: NextRequest) {
       idDiEvento.push(idTrascrizioneSua);
     }
 
-    // LE CONSULENZE CHE SUL CRM NON ESISTONO, ricavate dalla registrazione.
+    // LE CONSULENZE CHE SUL CRM NON ESISTONO, lette dalla banca dati.
     //
-    // Si fa qui, alla fine, perche' serve sapere cosa e' gia' in agenda: le
-    // registrazioni gia' agganciate a una riunione hanno la loro card, e la
-    // mappa stanza -> advisor si ricava dalle riunioni della giornata, dove
-    // ogni advisor compare con la sua stanza fissa.
-    const stanzaDiChi = new Map<string, string>();
-    for (const r of grezzi) {
-      const stanza =
-        stanzaDa(r.properties.hs_meeting_location) || stanzaDa(r.properties.hs_meeting_external_url);
-      const chi = (r.properties.hubspot_owner_id ?? "").trim();
-      if (stanza && chi && !stanzaDiChi.has(stanza)) stanzaDiChi.set(stanza, gestori.get(r.id) ?? chi);
-    }
-
-    const fantasma = await cardDaRegistrazioni(
-      token,
-      dalle,
-      alle,
-      stanzaDiChi,
-      proprietari,
-      new Set(idDiEvento.filter((x): x is string => Boolean(x)))
-    ).catch((err) => {
+    // Si aggiungono qui, alla fine, perche' serve sapere cosa e' gia' in
+    // agenda: se la riunione mancante e' stata creata nel frattempo, la card
+    // vera porta lo stesso cliente e questa si toglie di mezzo.
+    const fantasma = await cardDaRegistrazioni(token, dalle, alle, proprietari).catch((err) => {
       console.error("[advisor-agenda] card da registrazioni", err instanceof Error ? err.message : err);
       return [] as Array<{ evento: EventoAgenda; idTrascrizione: string; contatto: number | null }>;
     });
