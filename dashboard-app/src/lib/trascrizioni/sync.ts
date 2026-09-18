@@ -739,9 +739,31 @@ async function salvaFuoriCrm(opzioni: {
       voci = await leggiVoci(chiaveFireflies, r.id).catch(() => [] as string[]);
       await attesa(250);
     }
-    const cliente = voci.find(
+    const dalleVoci = voci.find(
       (v) => v.toLowerCase() !== VOCE_DEL_BOT && !/^speaker \d+$/i.test(v)
     );
+
+    // QUANDO L'ETICHETTA DELLA VOCE NON E' UN NOME.
+    //
+    // Fireflies scrive come si e' chiamata la persona entrando in Meet, e non
+    // sempre e' un nome: visto oggi "a l", due lettere, mentre l'advisor nella
+    // call la chiama Manuela tredici volte. In agenda quella card diceva "a l",
+    // che non serve a nessuno.
+    //
+    // Il nome parlato sta negli appunti di Fireflies, che li estrae dal testo.
+    // Vale solo per farla leggere: per riconoscere il contatto resta il criterio
+    // severo di sempre, perche' quei nomi l'AI li storpia spesso e attribuire
+    // una consulenza alla persona sbagliata non si corregge piu'.
+    const leggibile = (v: string | undefined): boolean =>
+      Boolean(v) && (v as string).split(/\s+/).some((x) => x.length >= 3);
+
+    let cliente = dalleVoci;
+    if (!leggibile(cliente)) {
+      const citati = await leggiNomiCitati(chiaveFireflies, r.id).catch(() => [] as string[]);
+      await attesa(250);
+      const detto = citati.find((v) => v.toLowerCase() !== VOCE_DEL_BOT && leggibile(v));
+      if (detto) cliente = detto;
+    }
     if (!cliente) continue;
 
     const { contatto, deal } = await clienteEPratica(token, cliente, r.inizio);
