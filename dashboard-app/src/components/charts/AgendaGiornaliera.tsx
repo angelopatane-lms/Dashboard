@@ -453,7 +453,11 @@ function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: (
             {evento.esito || (evento.presenza && evento.presenza !== "non-si-sa") ? (
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                 {evento.esito ? (
-                  <span className="inline-flex items-center rounded-md bg-slate-900 px-2 py-1 text-[11px] font-medium text-white">
+                  // Un grigio della stessa famiglia dell'altra etichetta, un
+                  // gradino piu' scuro: si distingue senza gridare. Il nero
+                  // pesava piu' del titolo della scheda, e in una finestra fatta
+                  // di grigi chiari era l'unica cosa che si vedeva.
+                  <span className="inline-flex items-center rounded-md bg-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-800">
                     {evento.esito}
                   </span>
                 ) : null}
