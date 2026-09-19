@@ -1,27 +1,32 @@
 "use client";
 
+// La password non è più nel codice della pagina: la verifica il server (/api/login),
+// che in caso di successo lascia un cookie di sessione.
 import { useState } from "react";
 
-interface PasswordModalProps {
-  onSuccess: () => void;
-}
-
-export default function PasswordModal({ onSuccess }: PasswordModalProps) {
+export default function PasswordModal() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
 
-  const correctPassword = process.env.NEXT_PUBLIC_DASHBOARD_PASSWORD ?? "password123";
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === correctPassword) {
-      setError(false);
-      onSuccess();
-    } else {
-      setError(true);
-      setPassword("");
+    setChecking(true);
+    const response = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password })
+    }).catch(() => null);
+    setChecking(false);
+    if (response?.ok) {
+      // Ricarica la pagina richiesta, ora con l'accesso.
+      window.location.reload();
+      return;
     }
+    const data = await response?.json().catch(() => null);
+    setError(response?.status === 401 ? "Password errata, riprova." : (data?.error ?? "Accesso non riuscito, riprova."));
+    setPassword("");
   };
 
   return (
@@ -41,7 +46,7 @@ export default function PasswordModal({ onSuccess }: PasswordModalProps) {
             id="pwd"
             type={showPassword ? "text" : "password"}
             value={password}
-            onChange={(e) => { setPassword(e.target.value); setError(false); }}
+            onChange={(e) => { setPassword(e.target.value); setError(null); }}
             required
             autoFocus
             placeholder="Inserisci la password"
@@ -71,11 +76,12 @@ export default function PasswordModal({ onSuccess }: PasswordModalProps) {
           </button>
         </div>
         {error && (
-          <p className="mb-3 text-center text-sm text-red-500">Password errata, riprova.</p>
+          <p className="mb-3 text-center text-sm text-red-500">{error}</p>
         )}
         <button
           type="submit"
-          className="w-full rounded-lg bg-slate-900 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
+          disabled={checking}
+          className="w-full rounded-lg bg-slate-900 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-60"
         >
           Accedi
         </button>
