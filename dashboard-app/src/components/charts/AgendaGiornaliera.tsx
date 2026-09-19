@@ -823,25 +823,23 @@ export default function AgendaGiornaliera({
               opposte: li' la card va avanti, qui l'appuntamento sta indietro.
               Una freccia di un altro disegno si sarebbe letta come un'altra
               cosa, e sarebbe stata piu' piccola. */}
+          {/* UNA VOCE SOLA PER I DUE BUCHI, perche' per chi guarda l'agenda
+              sono la stessa cosa: una fascia che uno dei due sistemi non
+              conosce, e che qualcuno deve sistemare.
+
+              Erano due voci - "Assente su CRM" per la consulenza tenuta senza
+              appuntamento, "Assente su Calendar" per l'appuntamento rimasto solo
+              sulla trattativa - e distinguerle in legenda costringeva a
+              ricordare quale delle due significasse cosa. Il tratteggio dice
+              gia' tutto: questa fascia non e' nel piano. Da che parte manchi lo
+              dice il colore della card, e per esteso l'etichetta col mouse
+              sopra. */}
           <div className="flex items-center gap-2">
             <span
               className="inline-block h-3 w-3 rounded-[3px]"
               style={{ border: "1px dashed #64748b" }}
             />
-            <span className="text-xs font-medium text-slate-700">Assente su CRM</span>
-          </div>
-
-          {/* L'OPPOSTO DI QUELLA SOPRA, e si legge dal colore: li' la consulenza
-              c'e' stata e sul CRM no, qui il CRM dice che c'e' un appuntamento e
-              in calendario non esiste. Il tratteggio dice la stessa cosa in tutti
-              e due i casi - questa fascia non e' nel piano - e il colore dice
-              quale dei due. */}
-          <div className="flex items-center gap-2">
-            <span
-              className="inline-block h-3 w-3 rounded-[3px]"
-              style={{ background: COLORI.appuntamento.fondo, border: `1px dashed ${COLORI.appuntamento.secondario}` }}
-            />
-            <span className="text-xs font-medium text-slate-700">Assente su Calendar</span>
+            <span className="text-xs font-medium text-slate-700">Non Tracciata da Advisor</span>
           </div>
 
           {/* Non e' un colore ma un segno: le tre tinte dicono lo stato
