@@ -162,6 +162,16 @@ export type EventoAgenda = {
    * card puo' diventare "vinta" giorni dopo essere diventata verde.
    */
   vinta?: string;
+  /**
+   * DOVE STA LA TRATTATIVA ADESSO: "Semina", "No Show", "Ripianificata
+   * (Trattativa)".
+   *
+   * Non e' lo stato della card - quello lo dice il colore, e riguarda questa
+   * fascia - ma dove e' arrivata la pratica del cliente. Le due cose divergono
+   * di continuo: una consulenza svolta ieri puo' avere la trattativa in Semina
+   * da stamattina, e chi guarda la scheda vuole sapere tutte e due.
+   */
+  esito?: string;
   /** L'indirizzo della trascrizione su Fireflies, quando si riesce a ricavarlo. */
   trascrizione?: string;
   /** Il file audio della call, da ascoltare direttamente. */
@@ -836,6 +846,48 @@ async function consulenzeDeiContatti(dalle: number, alle: number): Promise<Map<n
 /** L'orario arrotondato alla mezz'ora piu' vicina, in minuti dalla mezzanotte. */
 function allaMezzOra(minuti: number): number {
   return Math.max(0, Math.min(24 * 60, Math.round(minuti / 30) * 30));
+}
+
+/**
+ * LE PRATICHE DEI CONTATTI DI GIORNATA, con la fase in cui stanno adesso.
+ *
+ * Serve alla scheda che si apre cliccando una card: li' si vuole sapere dove e'
+ * arrivata la trattativa - Semina, No Show, Vinta - che e' un'altra cosa dal
+ * colore della card. Si legge dalla nostra tabella, quindi non costa una
+ * chiamata a HubSpot.
+ *
+ * La data di creazione serve a scegliere: un cliente puo' avere piu' pratiche, e
+ * quella di questo appuntamento e' la nata insieme a lui.
+ */
+async function praticheDeiContatti(
+  contatti: number[]
+): Promise<Map<number, Array<{ fase: string; motivo: string; creata: number }>>> {
+  const out = new Map<number, Array<{ fase: string; motivo: string; creata: number }>>();
+  if (!contatti.length) return out;
+  const { rows } = await getDb().query<{
+    id: string;
+    fase: string | null;
+    motivo: string | null;
+    creata: Date | null;
+  }>(
+    `SELECT COALESCE(a.nuovo_id, t.contact_id) AS id, t.fase, t.motivo, t.creata_ts AS creata
+       FROM trattativa t
+       LEFT JOIN alias_contatto a ON a.vecchio_id = t.contact_id
+      WHERE COALESCE(a.nuovo_id, t.contact_id) = ANY($1::bigint[])
+        AND t.fase IS NOT NULL`,
+    [contatti]
+  );
+  for (const r of rows) {
+    const id = Number(r.id);
+    if (!Number.isFinite(id)) continue;
+    if (!out.has(id)) out.set(id, []);
+    out.get(id)!.push({
+      fase: String(r.fase ?? ""),
+      motivo: String(r.motivo ?? ""),
+      creata: r.creata ? r.creata.getTime() : NaN
+    });
+  }
+  return out;
 }
 
 /**
@@ -1788,7 +1840,7 @@ export async function GET(req: NextRequest) {
     });
 
     const diGiornata = Array.from(new Set(Array.from(contatti.values()).flat()));
-    const [analisi, trascrizioni] = await Promise.all([
+    const [analisi, trascrizioni, pratiche] = await Promise.all([
       analisiDeiContatti(token, diGiornata, giorno).catch((err) => {
         console.error("[advisor-agenda] analisi call", err instanceof Error ? err.message : err);
         return new Map<number, AnalisiCall>();
@@ -1796,6 +1848,10 @@ export async function GET(req: NextRequest) {
       trascrizioniDeiContatti(token, diGiornata).catch((err) => {
         console.error("[advisor-agenda] trascrizioni", err instanceof Error ? err.message : err);
         return new Map<number, { id: string; appuntamento: number }>();
+      }),
+      praticheDeiContatti(diGiornata).catch((err) => {
+        console.error("[advisor-agenda] pratiche", err instanceof Error ? err.message : err);
+        return new Map<number, Array<{ fase: string; motivo: string; creata: number }>>();
       })
     ]);
 
@@ -1952,6 +2008,26 @@ export async function GET(req: NextRequest) {
 
       const suoi = contatti.get(r.id) ?? [];
 
+      // DOVE STA LA PRATICA, per la scheda che si apre cliccando la card.
+      //
+      // Un cliente puo' avere piu' trattative: si prende quella NATA INSIEME a
+      // questo appuntamento, confrontando le date di creazione. E' lo stesso
+      // criterio con cui si stabilisce di chi e' la consulenza quando viene
+      // passata a un altro advisor, e regge meglio di "la piu' recente".
+      const nascita = Date.parse(p.hs_createdate ?? "");
+      const suePratiche = suoi.flatMap((c) => pratiche.get(c) ?? []);
+      let scelta: { fase: string; motivo: string; creata: number } | null = null;
+      for (const x of suePratiche) {
+        if (!Number.isFinite(x.creata)) continue;
+        if (!scelta || Math.abs(x.creata - nascita) < Math.abs(scelta.creata - nascita)) scelta = x;
+      }
+      const etichettaFase = scelta ? etichette.get(scelta.fase) ?? "" : "";
+      const esitoDellaPratica = etichettaFase
+        ? scelta?.motivo
+          ? `${etichettaFase} (${scelta.motivo})`
+          : etichettaFase
+        : "";
+
       // L'ANALISI SOLO SU UNA CARD CHE RACCONTA QUALCOSA DI SUCCESSO.
       //
       // Arriva dall'oggetto Appuntamento di HubSpot, scelto per la data scritta
@@ -2048,6 +2124,7 @@ export async function GET(req: NextRequest) {
               })
             }
           : {}),
+        ...(esitoDellaPratica ? { esito: esitoDellaPratica } : {}),
         ...(tipo === "svolta" && tsVinta !== null
           ? {
               vinta: new Date(tsVinta).toLocaleDateString("it-IT", {

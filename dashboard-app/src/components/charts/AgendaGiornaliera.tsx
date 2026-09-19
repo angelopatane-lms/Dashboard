@@ -441,6 +441,18 @@ function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: (
                   molto meno o molto piu' di quanto era prenotata. */}
               {evento.durataMin ? ` · call di ${evento.durataMin} min` : ""}
             </div>
+            {/* L'ESITO DELLA PRATICA, sempre in vista.
+                Non e' lo stato della card - quello lo dice il colore e riguarda
+                questa fascia - ma dove e' arrivata la trattativa del cliente:
+                Semina, No Show, Vinta. Le due cose divergono di continuo, e
+                questo e' il posto dove si vedono insieme. */}
+            {evento.esito ? (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2 py-1 text-[11px] font-medium text-white">
+                  Esito: {evento.esito}
+                </span>
+              </div>
+            ) : null}
             {evento.presenza && evento.presenza !== "non-si-sa" ? (
               <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700">
                 <span
@@ -937,7 +949,14 @@ export default function AgendaGiornaliera({
                     // non cliccare piu' nessuna card.
                     // Si apre se c'e' qualcosa da vedere: l'analisi, la
                     // trascrizione o l'audio.
-                    const apribile = Boolean(e.analisi || e.trascrizione || e.audio);
+                    // Si apre anche solo per leggere l'esito della pratica...
+                    const apribile = Boolean(e.analisi || e.trascrizione || e.audio || e.esito);
+                    // ...ma IL PUNTINO RESTA PER CIO' CHE SI ASCOLTA O SI LEGGE.
+                    // E' un richiamo, e richiamare su ogni card di una giornata
+                    // piena - l'esito ce l'hanno quasi tutte - vorrebbe dire
+                    // smettere di richiamare su niente. Lo tengono solo le card
+                    // che hanno dentro la call.
+                    const conContenuto = Boolean(e.analisi || e.trascrizione || e.audio);
                     return (
                       <div
                         key={`${e.titolo}-${e.inizioMin}-${i}`}
@@ -1033,7 +1052,7 @@ export default function AgendaGiornaliera({
                             stanno dentro la finestra, non sulla card: qui lo
                             spazio e' quello di un appuntamento da mezz'ora, e
                             il nome del contatto viene prima di tutto. */}
-                        {apribile ? (
+                        {conContenuto ? (
                           <span
                             className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full"
                             style={{ background: colore.secondario }}
