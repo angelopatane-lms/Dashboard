@@ -2045,8 +2045,14 @@ export async function GET(req: NextRequest) {
         if (!scelta || Math.abs(x.creata - nascita) < Math.abs(scelta.creata - nascita)) scelta = x;
       }
       const etichettaFase = scelta ? etichette.get(scelta.fase) ?? "" : "";
+      // IL MOTIVO SI MOSTRA SOLO SU "RIPIANIFICATA", che e' l'unica fase dove
+      // serve a distinguere: consulenza tenuta e rimandata, oppure cliente che
+      // non si e' presentato. Altrove e' un residuo - HubSpot non lo cancella
+      // quando la trattativa va avanti - e produceva accostamenti senza senso
+      // come "No Show (Trattativa)": il motivo era stato scritto il giorno prima
+      // passando da Ripianificata, ed e' rimasto li'.
       const esitoDellaPratica = etichettaFase
-        ? scelta?.motivo
+        ? etichettaFase.trim().toLowerCase() === "ripianificata" && scelta?.motivo
           ? `${etichettaFase} (${scelta.motivo})`
           : etichettaFase
         : "";
