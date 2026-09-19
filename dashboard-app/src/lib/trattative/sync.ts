@@ -223,6 +223,51 @@ export function ingressiNoShow(
 }
 
 /**
+ * QUANDO SI TERRA' LA CONSULENZA RIMANDATA, se la trattativa lo dice.
+ *
+ * Su questa pipeline "Data di chiusura" non indica una chiusura: e' l'orario
+ * dell'appuntamento finche' la trattativa e' da svolgere, e diventa il momento
+ * della consulenza nuova quando viene ripianificata - scritto da un'automazione
+ * al cambio di fase.
+ *
+ * SERVE L'ORA, non solo il giorno. Fino al 18 settembre 2026 quel campo portava
+ * la sola data, e con la sola data non si puo' mettere una card in agenda senza
+ * inventare una fascia. Da quando gli advisor sono obbligati a indicare anche
+ * l'ora, il dato diventa utilizzabile - e una data a mezzanotte in punto resta
+ * quindi esclusa, perche' e' il vecchio formato.
+ *
+ * Vale solo in fase Ripianificata: altrove quel campo dice altro.
+ */
+export function ripianificataAl(
+  correnti: Record<string, string>,
+  idFaseRipianificata: string
+): Date | null {
+  if (!idFaseRipianificata) return null;
+  if ((correnti.dealstage ?? "").trim() !== idFaseRipianificata) return null;
+
+  const quando = new Date(correnti.closedate ?? "");
+  if (Number.isNaN(quando.getTime())) return null;
+
+  // DEVE SEMBRARE UN ORARIO SCELTO DA UNA PERSONA.
+  //
+  // In quel campo finiscono tre cose diverse: l'orario dell'appuntamento, la
+  // sola data del vecchio formato, e - quando l'advisor non indica niente -
+  // l'istante in cui l'automazione ha scritto. Misurato su nove trattative
+  // ripianificate: due portano orari tondi (11:00, 10:30), le altre sette
+  // hanno i secondi (15:57:33, 18:10:34, 11:12:49), e mettere una card alle
+  // 15:57:33 vorrebbe dire dare per buono un appuntamento che nessuno ha
+  // fissato.
+  //
+  // Un orario scelto da una persona cade sui cinque minuti e non ha secondi.
+  // Mezzanotte esatta in UTC resta fuori a prescindere: e' il vecchio formato
+  // "solo data".
+  if (quando.getUTCSeconds() !== 0 || quando.getUTCMilliseconds() !== 0) return null;
+  if (quando.getUTCMinutes() % 5 !== 0) return null;
+  if (quando.getTime() % (24 * 60 * 60 * 1000) === 0) return null;
+  return quando;
+}
+
+/**
  * Quando la trattativa e' stata vinta la PRIMA volta, o null se non lo e' mai
  * stata.
  *
@@ -512,7 +557,7 @@ export async function aggiornaUnaTrattativa(
     method: "POST",
     body: {
       inputs: [{ id: dealId }],
-      properties: [...proprieta, "id_campagna_track", "id_campagna_track_last", "createdate", "pipeline"],
+      properties: [...proprieta, "id_campagna_track", "id_campagna_track_last", "createdate", "closedate", "dealstage", "hubspot_owner_id", "pipeline"],
       propertiesWithHistory: conStorico
     }
   });
@@ -540,6 +585,8 @@ export async function aggiornaUnaTrattativa(
   );
   const svolta = primaSvolta(gruppi, r.propertiesWithHistory ?? {}, r.properties ?? {}, etichettaFase);
   const vinta = primaVinta(r.propertiesWithHistory ?? {}, idFaseVinta);
+  const rinviata = ripianificataAl(r.properties ?? {}, idFaseRipianificata);
+  const proprietario = Number(String(r.properties?.hubspot_owner_id ?? "").trim()) || null;
   const setterId = setterAllaData(r.propertiesWithHistory ?? {}, creata);
   const noShow = ingressiNoShow(r.propertiesWithHistory ?? {}, idFaseNoShow, idFaseRipianificata).map((ts) => ({
     ts,
@@ -551,18 +598,33 @@ export async function aggiornaUnaTrattativa(
   const db = getDb();
 
   await db.query(
-    `INSERT INTO trattativa (deal_id, campagna_id, creata_ts, svolta_ts, vinta_ts, contact_id, setter_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO trattativa
+       (deal_id, campagna_id, creata_ts, svolta_ts, vinta_ts, contact_id, setter_id, ripianificata_al, proprietario_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT (deal_id) DO UPDATE
        SET campagna_id = EXCLUDED.campagna_id,
            creata_ts   = EXCLUDED.creata_ts,
            svolta_ts   = EXCLUDED.svolta_ts,
            vinta_ts    = EXCLUDED.vinta_ts,
+           -- Si riscrive sempre, anche a NULL: quando la consulenza si tiene la
+           -- trattativa esce da Ripianificata, e quella data non vale piu'.
+           ripianificata_al = EXCLUDED.ripianificata_al,
+           proprietario_id  = COALESCE(EXCLUDED.proprietario_id, trattativa.proprietario_id),
            -- Se l'associazione non arriva si tiene quella gia' salvata,
            -- invece di cancellarla con un NULL. Idem per il setter.
            contact_id  = COALESCE(EXCLUDED.contact_id, trattativa.contact_id),
            setter_id   = COALESCE(EXCLUDED.setter_id, trattativa.setter_id)`,
-    [Number(r.id), campagnaId, creata, svolta, vinta, contatti.get(String(r.id)) ?? null, setterId]
+    [
+      Number(r.id),
+      campagnaId,
+      creata,
+      svolta,
+      vinta,
+      contatti.get(String(r.id)) ?? null,
+      setterId,
+      rinviata,
+      proprietario
+    ]
   );
 
   // Come nel giro completo: si cancella e si reinserisce, cosi' sparisce anche
@@ -616,7 +678,7 @@ export async function sincronizzaTrattative(
           method: "POST",
           body: {
             inputs: gruppoIds.map((id) => ({ id })),
-            properties: [...proprieta, "id_campagna_track", "id_campagna_track_last", "createdate"],
+            properties: [...proprieta, "id_campagna_track", "id_campagna_track_last", "createdate", "closedate", "dealstage", "hubspot_owner_id"],
             propertiesWithHistory: conStorico
           }
         });
@@ -628,6 +690,8 @@ export async function sincronizzaTrattative(
           creata: Date;
           svolta: Date | null;
           vinta: Date | null;
+          rinviata: Date | null;
+          proprietario: number | null;
           setterId: number | null;
           noShow: Array<{ ts: Date; setterId: number | null }>;
         }> = [];
@@ -645,6 +709,8 @@ export async function sincronizzaTrattative(
             creata,
             svolta: primaSvolta(gruppi, r.propertiesWithHistory ?? {}, r.properties ?? {}, etichettaFase),
             vinta: primaVinta(r.propertiesWithHistory ?? {}, idFaseVinta),
+            rinviata: ripianificataAl(r.properties ?? {}, idFaseRipianificata),
+            proprietario: Number(String(r.properties?.hubspot_owner_id ?? "").trim()) || null,
             // Il setter di quando l'appuntamento e' stato fissato.
             setterId: setterAllaData(r.propertiesWithHistory ?? {}, creata),
             // E per ogni diserzione, quello di quel giorno: fra il primo
@@ -661,13 +727,16 @@ export async function sincronizzaTrattative(
         await risolviIdCampagne(righe.map((x) => x.campagna));
 
         await db.query(
-          `INSERT INTO trattativa (deal_id, campagna_id, creata_ts, svolta_ts, vinta_ts, contact_id, setter_id)
-           SELECT * FROM UNNEST($1::bigint[], $2::int[], $3::timestamptz[], $4::timestamptz[], $5::timestamptz[], $6::bigint[], $7::bigint[])
+          `INSERT INTO trattativa
+             (deal_id, campagna_id, creata_ts, svolta_ts, vinta_ts, contact_id, setter_id, ripianificata_al, proprietario_id)
+           SELECT * FROM UNNEST($1::bigint[], $2::int[], $3::timestamptz[], $4::timestamptz[], $5::timestamptz[], $6::bigint[], $7::bigint[], $8::timestamptz[], $9::bigint[])
            ON CONFLICT (deal_id) DO UPDATE
              SET campagna_id = EXCLUDED.campagna_id,
                  creata_ts   = EXCLUDED.creata_ts,
                  svolta_ts   = EXCLUDED.svolta_ts,
                  vinta_ts    = EXCLUDED.vinta_ts,
+                 ripianificata_al = EXCLUDED.ripianificata_al,
+                 proprietario_id  = COALESCE(EXCLUDED.proprietario_id, trattativa.proprietario_id),
                  -- Se l'associazione non arriva si tiene quella gia' salvata,
                  -- invece di cancellarla con un NULL. Stesso ragionamento per
                  -- il setter: una cronologia vuota non deve azzerare un nome
@@ -681,7 +750,9 @@ export async function sincronizzaTrattative(
             righe.map((x) => x.svolta),
             righe.map((x) => x.vinta),
             righe.map((x) => x.contactId),
-            righe.map((x) => x.setterId)
+            righe.map((x) => x.setterId),
+            righe.map((x) => x.rinviata),
+            righe.map((x) => x.proprietario)
           ]
         );
 

@@ -142,6 +142,16 @@ export type EventoAgenda = {
    */
   senzaRiunione?: true;
   /**
+   * L'APPUNTAMENTO ESISTE SOLO SULLA TRATTATIVA: in calendario non e' stato
+   * creato niente.
+   *
+   * Succede quando l'advisor rimanda la consulenza spostando la fase della
+   * trattativa - che per il CRM e' la cosa che conta - senza spostare anche la
+   * riunione. L'agenda legge le riunioni, quindi quella fascia restava vuota e
+   * la consulenza spariva da tutti e due i sistemi.
+   */
+  soloSulCrm?: true;
+  /**
    * LA CONSULENZA HA CHIUSO: contiene la data in cui la trattativa e' stata
    * vinta.
    *
@@ -798,6 +808,89 @@ async function consulenzeDeiContatti(dalle: number, alle: number): Promise<Map<n
 /** L'orario arrotondato alla mezz'ora piu' vicina, in minuti dalla mezzanotte. */
 function allaMezzOra(minuti: number): number {
   return Math.max(0, Math.min(24 * 60, Math.round(minuti / 30) * 30));
+}
+
+/**
+ * GLI APPUNTAMENTI CHE ESISTONO SOLO SULLA TRATTATIVA.
+ *
+ * Quando un advisor rimanda una consulenza sposta la fase della trattativa a
+ * Ripianificata e indica quando si terra'. Quel "quando" finisce nella Data di
+ * chiusura, e dal 18 settembre 2026 porta anche l'ora, perche' il CRM ora la
+ * pretende. Se pero' nessuno sposta anche la riunione in calendario, l'agenda -
+ * che le riunioni le legge da li' - mostra una fascia vuota: per il CRM
+ * l'appuntamento c'e', per Google no, e quel giorno nessuno lo aspetta.
+ *
+ * La card che ne esce e' azzurra come ogni appuntamento da tenersi, e
+ * tratteggiata perche' in calendario non esiste. Dura un'ora, che e' la misura
+ * di tutte le consulenze: la trattativa non dice quanto durera'.
+ *
+ * NIENTE CARD DOPPIE: se quel cliente e' gia' in agenda quel giorno - perche' la
+ * riunione e' stata spostata davvero - questa si tace.
+ */
+async function appuntamentiSoloSulCrm(
+  token: string,
+  dalle: number,
+  alle: number,
+  proprietari: Record<string, string>
+): Promise<EventoAgenda[]> {
+  const { rows } = await getDb().query<{
+    deal_id: string;
+    quando: Date;
+    proprietario_id: string | null;
+    contact_id: string | null;
+  }>(
+    `SELECT deal_id::text, ripianificata_al AS quando, proprietario_id::text, contact_id::text
+       FROM trattativa
+      WHERE ripianificata_al >= $1::timestamptz AND ripianificata_al < $2::timestamptz
+      ORDER BY ripianificata_al`,
+    [new Date(dalle).toISOString(), new Date(alle).toISOString()]
+  );
+  if (!rows.length) return [];
+
+  // Il nome del cliente sta sul contatto, non sulla trattativa: una lettura a
+  // blocchi per tutti, che di norma sono due o tre.
+  const idContatti = [...new Set(rows.map((r) => r.contact_id).filter(Boolean))] as string[];
+  const nomi = new Map<string, string>();
+  if (idContatti.length) {
+    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/contacts/batch/read`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        properties: ["firstname", "lastname"],
+        inputs: idContatti.map((id) => ({ id }))
+      })
+    });
+    if (res.ok) {
+      const dati = await res.json();
+      for (const c of dati.results ?? []) {
+        const nome = `${c.properties?.firstname ?? ""} ${c.properties?.lastname ?? ""}`.trim();
+        if (nome) nomi.set(String(c.id), nome);
+      }
+    }
+  }
+
+  const out: EventoAgenda[] = [];
+  for (const r of rows) {
+    const operatore = proprietari[String(r.proprietario_id ?? "")] ?? "";
+    const titolo = nomi.get(String(r.contact_id ?? "")) ?? "";
+    if (!operatore || !titolo) continue;
+
+    const da = oraRoma(r.quando.toISOString());
+    if (!da) continue;
+    const fineMin = Math.min(da.minuti + 60, 24 * 60);
+
+    out.push({
+      operatore,
+      titolo,
+      inizioMin: da.minuti,
+      fineMin,
+      inizio: da.testo,
+      fine: `${due(Math.floor(fineMin / 60))}:${due(fineMin % 60)}`,
+      tipo: "appuntamento",
+      soloSulCrm: true
+    });
+  }
+  return out;
 }
 
 /**
@@ -1884,6 +1977,19 @@ export async function GET(req: NextRequest) {
       }
       eventi.push(f.evento);
       idDiEvento.push(f.idTrascrizione);
+    }
+
+    // GLI APPUNTAMENTI CHE STANNO SOLO SULLA TRATTATIVA. Stessa regola dei
+    // doppioni: se quel cliente e' gia' in agenda oggi, la riunione e' stata
+    // spostata davvero e questa card non serve.
+    const soloCrm = await appuntamentiSoloSulCrm(token, dalle, alle, proprietari).catch((err) => {
+      console.error("[advisor-agenda] appuntamenti solo su CRM", err instanceof Error ? err.message : err);
+      return [] as EventoAgenda[];
+    });
+    for (const e of soloCrm) {
+      if (giaInAgenda(e.operatore, e.titolo)) continue;
+      eventi.push(e);
+      idDiEvento.push(undefined);
     }
 
     // L'audio si chiede solo per le trascrizioni che compaiono davvero in

@@ -795,6 +795,19 @@ export default function AgendaGiornaliera({
             <span className="text-xs font-medium text-slate-700">Assente su CRM</span>
           </div>
 
+          {/* L'OPPOSTO DI QUELLA SOPRA, e si legge dal colore: li' la consulenza
+              c'e' stata e sul CRM no, qui il CRM dice che c'e' un appuntamento e
+              in calendario non esiste. Il tratteggio dice la stessa cosa in tutti
+              e due i casi - questa fascia non e' nel piano - e il colore dice
+              quale dei due. */}
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-block h-3 w-3 rounded-[3px]"
+              style={{ background: COLORI.appuntamento.fondo, border: `1px dashed ${COLORI.appuntamento.secondario}` }}
+            />
+            <span className="text-xs font-medium text-slate-700">Assente su Calendar</span>
+          </div>
+
           {/* Non e' un colore ma un segno: le tre tinte dicono lo stato
               dell'appuntamento, e una call ricevuta da un altro advisor resta
               comunque fissata o svolta. Dare a questa casistica un quinto
@@ -949,6 +962,7 @@ export default function AgendaGiornaliera({
                           `${e.ripianificata ? ` · ripianificata al ${e.ripianificata}, la card c'e' anche li'` : ""}` +
                           `${e.appuntamentoDel ? ` · Sul CRM non c'era nessun appuntamento qui: quello del ${e.appuntamentoDel} non e' stato spostato` : ""}` +
                           `${e.senzaRiunione ? " · Sul CRM non esiste nessun appuntamento: card ricavata dalla registrazione, orario arrotondato alla mezz'ora" : ""}` +
+                          `${e.soloSulCrm ? " · Ripianificata qui sulla trattativa, ma in calendario la riunione non e' stata spostata" : ""}` +
                           `${e.vinta ? ` · VINTA il ${e.vinta}` : ""}` +
                           `${apribile ? " · clicca per il dettaglio" : ""}`
                         }
@@ -967,7 +981,7 @@ export default function AgendaGiornaliera({
                           // Sta PRIMA dei bordi laterali di overbooking e
                           // creazione manuale: quelli devono poterlo
                           // sovrascrivere sul loro lato, non il contrario.
-                          ...(e.appuntamentoDel || e.senzaRiunione
+                          ...(e.appuntamentoDel || e.senzaRiunione || e.soloSulCrm
                             ? { border: `1px dashed ${colore.secondario}` }
                             : {}),
                           padding: "2px 6px",

@@ -132,6 +132,33 @@ ALTER TABLE trattativa ADD COLUMN IF NOT EXISTS vinta_ts TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_trattativa_vinta ON trattativa (vinta_ts) WHERE vinta_ts IS NOT NULL;
 
+-- QUANDO E' STATA RIPIANIFICATA LA CONSULENZA, con l'ora.
+--
+-- E' la "Data di chiusura" della trattativa, che su questa pipeline non indica
+-- una chiusura ma l'appuntamento: l'orario finche' e' da svolgere, il momento
+-- della consulenza nuova quando viene ripianificata. Dal 18 settembre 2026 gli
+-- advisor sono obbligati a scrivere anche l'ora, e senza l'ora questo dato non
+-- servirebbe a niente qui - una card in agenda ha bisogno di una fascia.
+--
+-- COSA COPRE: la consulenza rimandata sulla trattativa ma non spostata in
+-- calendario. Per il CRM l'appuntamento esiste, per Google non esiste, e
+-- l'agenda - che legge le riunioni - non lo mostrava. Misurato il 17 settembre
+-- su un caso: ripianificata al giorno dopo, nessuna riunione creata, e la
+-- consulenza persa da tutti e due i sistemi.
+--
+-- Si riempie solo per le trattative che stanno in fase Ripianificata: sulle
+-- altre quella data significa altro.
+ALTER TABLE trattativa ADD COLUMN IF NOT EXISTS ripianificata_al TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_trattativa_ripianificata ON trattativa (ripianificata_al)
+  WHERE ripianificata_al IS NOT NULL;
+
+-- L'ADVISOR DELLA TRATTATIVA: serve a sapere in quale colonna dell'agenda va la
+-- card di una consulenza che esiste solo sul CRM. Il setter, che teniamo gia',
+-- risponde a un'altra domanda - chi l'ha fissato - e le due persone non
+-- coincidono.
+ALTER TABLE trattativa ADD COLUMN IF NOT EXISTS proprietario_id BIGINT;
+
 -- Appuntamenti non onorati.
 --
 -- Tabella a parte e non una colonna di `trattativa` perche' una trattativa puo'
