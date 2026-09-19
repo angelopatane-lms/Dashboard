@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { chiaveNome } from "@/lib/nomi";
+import { PIPELINE_APPUNTAMENTI } from "@/lib/trattative/sync";
 
 // L'agenda di una giornata: i meeting di HubSpot, per persona e per orario.
 //
@@ -838,6 +839,80 @@ function allaMezzOra(minuti: number): number {
 }
 
 /**
+ * Che cosa dice una fase, quando il cambio e' del giorno stesso.
+ *
+ * Si ragiona sulle ETICHETTE e non sugli identificativi, che sono numeri senza
+ * significato e cambierebbero in silenzio: le etichette si leggono dalla
+ * pipeline a ogni richiesta, quindi una rinomina si vede subito.
+ *
+ * "Ripianificata" da sola non dice niente e va letta col motivo: o la consulenza
+ * si e' tenuta e se ne fissa un'altra, o il cliente non si e' presentato. "Da
+ * Svolgere" e "Archiviata" non concludono niente: la prima e' l'attesa, la
+ * seconda un riordino d'archivio che puo' arrivare mesi dopo.
+ */
+function esitoDaFase(etichetta: string, motivo: string): TipoEvento | null {
+  const f = etichetta.trim().toLowerCase();
+  const m = motivo.trim().toLowerCase();
+  if (f === "no show") return "no_show";
+  if (f === "ripianificata") {
+    if (m === "mancata presenza") return "no_show";
+    return m ? "svolta" : null;
+  }
+  if (["vinta", "persa", "semivinta", "semina"].includes(f)) return "svolta";
+  return null;
+}
+
+/** Le etichette delle fasi della pipeline Appuntamenti, per numero. */
+async function etichetteDelleFasi(token: string): Promise<Map<string, string>> {
+  const res = await fetch(`${HUBSPOT_API}/crm/v3/pipelines/deals/${PIPELINE_APPUNTAMENTI}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) return new Map();
+  const dati = await res.json();
+  return new Map<string, string>(
+    (dati.stages ?? []).map((x: { id: string; label: string }) => [String(x.id), String(x.label)])
+  );
+}
+
+/**
+ * GLI ESITI SEGNATI SULLA TRATTATIVA NEL GIORNO GUARDATO.
+ *
+ * IL CASO. Una fascia passata resta azzurra quando nessuno ha segnato niente,
+ * ma anche quando l'advisor ha spostato la trattativa in una fase che il calcolo
+ * delle consulenze svolte non cattura: Persa, Semina, Semivinta. Misurato il 17
+ * settembre - su sette card azzurre, cinque avevano la trattativa gia' andata
+ * avanti e una sola era davvero da esitare.
+ *
+ * LA REGOLA E' IL GIORNO. Se la fase e' cambiata nello stesso giorno della
+ * fascia, quell'esito e' il suo. Se e' cambiata prima riguarda un appuntamento
+ * precedente e la card resta com'e': di un "no show" di due giorni fa non si sa
+ * se volesse dire "annullato", e in quel caso l'advisor avrebbe dovuto
+ * cancellare riunione e trattativa.
+ */
+async function esitiDelGiorno(
+  dalle: number,
+  alle: number
+): Promise<Map<number, Array<{ ts: number; fase: string; motivo: string }>>> {
+  const out = new Map<number, Array<{ ts: number; fase: string; motivo: string }>>();
+  const { rows } = await getDb().query<{ id: string; ts: Date; fase: string | null; motivo: string | null }>(
+    `SELECT COALESCE(a.nuovo_id, t.contact_id) AS id, t.fase_ts AS ts, t.fase, t.motivo
+       FROM trattativa t
+       LEFT JOIN alias_contatto a ON a.vecchio_id = t.contact_id
+      WHERE t.contact_id IS NOT NULL
+        AND t.fase_ts >= $1::timestamptz
+        AND t.fase_ts <  $2::timestamptz`,
+    [new Date(dalle).toISOString(), new Date(alle).toISOString()]
+  );
+  for (const r of rows) {
+    const id = Number(r.id);
+    if (!Number.isFinite(id)) continue;
+    if (!out.has(id)) out.set(id, []);
+    out.get(id)!.push({ ts: r.ts.getTime(), fase: String(r.fase ?? ""), motivo: String(r.motivo ?? "") });
+  }
+  return out;
+}
+
+/**
  * GLI APPUNTAMENTI CHE ESISTONO SOLO SULLA TRATTATIVA.
  *
  * Quando un advisor rimanda una consulenza sposta la fase della trattativa a
@@ -1665,7 +1740,7 @@ export async function GET(req: NextRequest) {
     // Le due letture che dicono quali appuntamenti si sono davvero svolti.
     // Se una delle due non risponde, gli appuntamenti restano "fissati": e'
     // meno informazione, non informazione sbagliata.
-    const [contatti, svolte, disertati, vendite, presenze] = await Promise.all([
+    const [contatti, svolte, disertati, vendite, esitiFase, etichette, presenze] = await Promise.all([
       contattiDeiMeeting(token, grezzi.map((r) => r.id)).catch((err) => {
         console.error("[advisor-agenda] associazioni", err instanceof Error ? err.message : err);
         return new Map<string, number[]>();
@@ -1681,6 +1756,14 @@ export async function GET(req: NextRequest) {
       venditeDeiContatti(dalle, alle).catch((err) => {
         console.error("[advisor-agenda] vendite", err instanceof Error ? err.message : err);
         return new Map<number, number[]>();
+      }),
+      esitiDelGiorno(dalle, alle).catch((err) => {
+        console.error("[advisor-agenda] esiti del giorno", err instanceof Error ? err.message : err);
+        return new Map<number, Array<{ ts: number; fase: string; motivo: string }>>();
+      }),
+      etichetteDelleFasi(token).catch((err) => {
+        console.error("[advisor-agenda] fasi della pipeline", err instanceof Error ? err.message : err);
+        return new Map<string, string>();
       }),
       presenzeDelleRiunioni(grezzi.map((r) => r.id), dalle, alle).catch((err) => {
         console.error("[advisor-agenda] presenze", err instanceof Error ? err.message : err);
@@ -1849,6 +1932,22 @@ export async function GET(req: NextRequest) {
         tipo = "no_show";
       } else if (tsDiserzione !== null) {
         tipo = "no_show";
+      } else if (cominciata) {
+        // ULTIMA FONTE: la fase della trattativa, se e' cambiata oggi.
+        //
+        // Ci si arriva solo quando nessun'altra ha detto niente, e prende i casi
+        // che le altre non vedono: le fasi che non contano come consulenza
+        // svolta - Persa, Semina, Semivinta - e i no show segnati altrove.
+        const suoi = suoiContatti.flatMap((c) => esitiFase.get(c) ?? []);
+        const giorno = giornoRoma(inizioSlot);
+        for (const x of suoi) {
+          if (giornoRoma(x.ts) !== giorno) continue;
+          const esito = esitoDaFase(etichette.get(x.fase) ?? "", x.motivo);
+          if (esito) {
+            tipo = esito;
+            break;
+          }
+        }
       }
 
       const suoi = contatti.get(r.id) ?? [];

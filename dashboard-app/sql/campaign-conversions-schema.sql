@@ -159,6 +159,28 @@ CREATE INDEX IF NOT EXISTS idx_trattativa_ripianificata ON trattativa (ripianifi
 -- coincidono.
 ALTER TABLE trattativa ADD COLUMN IF NOT EXISTS proprietario_id BIGINT;
 
+-- DOVE STA ADESSO LA TRATTATIVA, e da quando.
+--
+-- Serve alle card che restano azzurre su un giorno passato. Oggi una fascia
+-- senza esito e una fascia il cui esito e' stato messo poco prima si
+-- assomigliano: il 17 settembre, su sette card azzurre, cinque avevano la
+-- trattativa gia' andata avanti - No Show, Persa, Semina - e una sola era
+-- davvero da esitare.
+--
+-- La regola e' il giorno: se la fase e' cambiata NELLO STESSO GIORNO della
+-- fascia, quell'esito e' il suo e la card prende il colore che gli spetta. Se e'
+-- cambiata prima, riguarda un appuntamento precedente e la card resta com'e' -
+-- non si puo' sapere se quel "no show" di due giorni fa volesse dire "annullato",
+-- e in quel caso l'advisor avrebbe dovuto cancellare riunione e trattativa.
+--
+-- Il motivo serve a leggere la fase Ripianificata, che da sola non dice niente:
+-- vale consulenza svolta con "Trattativa" e diserzione con "Mancata Presenza".
+ALTER TABLE trattativa ADD COLUMN IF NOT EXISTS fase TEXT;
+ALTER TABLE trattativa ADD COLUMN IF NOT EXISTS fase_ts TIMESTAMPTZ;
+ALTER TABLE trattativa ADD COLUMN IF NOT EXISTS motivo TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_trattativa_fase_ts ON trattativa (fase_ts) WHERE fase_ts IS NOT NULL;
+
 -- Appuntamenti non onorati.
 --
 -- Tabella a parte e non una colonna di `trattativa` perche' una trattativa puo'

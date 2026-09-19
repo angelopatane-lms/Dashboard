@@ -223,6 +223,35 @@ export function ingressiNoShow(
 }
 
 /**
+ * DOVE STA ADESSO LA TRATTATIVA, e da quando.
+ *
+ * L'agenda ne ha bisogno per le fasce che restano azzurre su un giorno passato:
+ * se la fase e' cambiata NELLO STESSO GIORNO, quell'esito appartiene a quella
+ * fascia e la card prende il colore che gli spetta. Il motivo si porta dietro
+ * perche' la fase Ripianificata da sola non dice niente - vale consulenza svolta
+ * con "Trattativa" e diserzione con "Mancata Presenza".
+ */
+export function faseAttuale(
+  correnti: Record<string, string>,
+  storici: Record<string, Voce[]>
+): { fase: string; quando: Date | null; motivo: string } {
+  const fase = (correnti.dealstage ?? "").trim();
+  const motivo = (correnti.motivo ?? "").trim();
+
+  // L'ultima voce della cronologia che porta la fase di adesso: e' il momento in
+  // cui ci e' entrata. Se la cronologia non ce l'ha - capita sulle trattative
+  // piu' vecchie - si resta senza data e la regola del giorno non scatta.
+  let quando: Date | null = null;
+  for (const v of storici.dealstage ?? []) {
+    if ((v.value ?? "").trim() !== fase) continue;
+    const t = new Date(v.timestamp);
+    if (Number.isNaN(t.getTime())) continue;
+    if (!quando || t > quando) quando = t;
+  }
+  return { fase, quando, motivo };
+}
+
+/**
  * QUANDO SI TERRA' LA CONSULENZA RIMANDATA, se la trattativa lo dice.
  *
  * Su questa pipeline "Data di chiusura" non indica una chiusura: e' l'orario
@@ -597,6 +626,7 @@ export async function aggiornaUnaTrattativa(
   const svolta = primaSvolta(gruppi, r.propertiesWithHistory ?? {}, r.properties ?? {}, etichettaFase);
   const vinta = primaVinta(r.propertiesWithHistory ?? {}, idFaseVinta);
   const rinviata = ripianificataAl(r.properties ?? {}, idFaseRipianificata);
+  const stato = faseAttuale(r.properties ?? {}, r.propertiesWithHistory ?? {});
   const proprietario = Number(String(r.properties?.hubspot_owner_id ?? "").trim()) || null;
   const setterId = setterAllaData(r.propertiesWithHistory ?? {}, creata);
   const noShow = ingressiNoShow(r.propertiesWithHistory ?? {}, idFaseNoShow, idFaseRipianificata).map((ts) => ({
@@ -610,8 +640,9 @@ export async function aggiornaUnaTrattativa(
 
   await db.query(
     `INSERT INTO trattativa
-       (deal_id, campagna_id, creata_ts, svolta_ts, vinta_ts, contact_id, setter_id, ripianificata_al, proprietario_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       (deal_id, campagna_id, creata_ts, svolta_ts, vinta_ts, contact_id, setter_id, ripianificata_al,
+        proprietario_id, fase, fase_ts, motivo)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      ON CONFLICT (deal_id) DO UPDATE
        SET campagna_id = EXCLUDED.campagna_id,
            creata_ts   = EXCLUDED.creata_ts,
@@ -621,6 +652,9 @@ export async function aggiornaUnaTrattativa(
            -- trattativa esce da Ripianificata, e quella data non vale piu'.
            ripianificata_al = EXCLUDED.ripianificata_al,
            proprietario_id  = COALESCE(EXCLUDED.proprietario_id, trattativa.proprietario_id),
+           fase    = EXCLUDED.fase,
+           fase_ts = EXCLUDED.fase_ts,
+           motivo  = EXCLUDED.motivo,
            -- Se l'associazione non arriva si tiene quella gia' salvata,
            -- invece di cancellarla con un NULL. Idem per il setter.
            contact_id  = COALESCE(EXCLUDED.contact_id, trattativa.contact_id),
@@ -634,7 +668,10 @@ export async function aggiornaUnaTrattativa(
       contatti.get(String(r.id)) ?? null,
       setterId,
       rinviata,
-      proprietario
+      proprietario,
+      stato.fase || null,
+      stato.quando,
+      stato.motivo || null
     ]
   );
 
@@ -703,6 +740,7 @@ export async function sincronizzaTrattative(
           vinta: Date | null;
           rinviata: Date | null;
           proprietario: number | null;
+          stato: { fase: string; quando: Date | null; motivo: string };
           setterId: number | null;
           noShow: Array<{ ts: Date; setterId: number | null }>;
         }> = [];
@@ -721,6 +759,7 @@ export async function sincronizzaTrattative(
             svolta: primaSvolta(gruppi, r.propertiesWithHistory ?? {}, r.properties ?? {}, etichettaFase),
             vinta: primaVinta(r.propertiesWithHistory ?? {}, idFaseVinta),
             rinviata: ripianificataAl(r.properties ?? {}, idFaseRipianificata),
+            stato: faseAttuale(r.properties ?? {}, r.propertiesWithHistory ?? {}),
             proprietario: Number(String(r.properties?.hubspot_owner_id ?? "").trim()) || null,
             // Il setter di quando l'appuntamento e' stato fissato.
             setterId: setterAllaData(r.propertiesWithHistory ?? {}, creata),
@@ -739,8 +778,9 @@ export async function sincronizzaTrattative(
 
         await db.query(
           `INSERT INTO trattativa
-             (deal_id, campagna_id, creata_ts, svolta_ts, vinta_ts, contact_id, setter_id, ripianificata_al, proprietario_id)
-           SELECT * FROM UNNEST($1::bigint[], $2::int[], $3::timestamptz[], $4::timestamptz[], $5::timestamptz[], $6::bigint[], $7::bigint[], $8::timestamptz[], $9::bigint[])
+             (deal_id, campagna_id, creata_ts, svolta_ts, vinta_ts, contact_id, setter_id, ripianificata_al,
+              proprietario_id, fase, fase_ts, motivo)
+           SELECT * FROM UNNEST($1::bigint[], $2::int[], $3::timestamptz[], $4::timestamptz[], $5::timestamptz[], $6::bigint[], $7::bigint[], $8::timestamptz[], $9::bigint[], $10::text[], $11::timestamptz[], $12::text[])
            ON CONFLICT (deal_id) DO UPDATE
              SET campagna_id = EXCLUDED.campagna_id,
                  creata_ts   = EXCLUDED.creata_ts,
@@ -748,6 +788,9 @@ export async function sincronizzaTrattative(
                  vinta_ts    = EXCLUDED.vinta_ts,
                  ripianificata_al = EXCLUDED.ripianificata_al,
                  proprietario_id  = COALESCE(EXCLUDED.proprietario_id, trattativa.proprietario_id),
+                 fase    = EXCLUDED.fase,
+                 fase_ts = EXCLUDED.fase_ts,
+                 motivo  = EXCLUDED.motivo,
                  -- Se l'associazione non arriva si tiene quella gia' salvata,
                  -- invece di cancellarla con un NULL. Stesso ragionamento per
                  -- il setter: una cronologia vuota non deve azzerare un nome
@@ -763,7 +806,10 @@ export async function sincronizzaTrattative(
             righe.map((x) => x.contactId),
             righe.map((x) => x.setterId),
             righe.map((x) => x.rinviata),
-            righe.map((x) => x.proprietario)
+            righe.map((x) => x.proprietario),
+            righe.map((x) => x.stato.fase || null),
+            righe.map((x) => x.stato.quando),
+            righe.map((x) => x.stato.motivo || null)
           ]
         );
 
