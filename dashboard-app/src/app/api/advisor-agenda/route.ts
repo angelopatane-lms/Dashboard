@@ -1977,10 +1977,20 @@ export async function GET(req: NextRequest) {
       // trattativa non porta la consulenza ma porta la vittoria, e' la vittoria
       // a dire che quella fascia e' stata lavorata.
       const tsChiusura = tsSvolta ?? tsVinta;
+      //
+      // FRA GIORNI DIVERSI vince il piu' vicino alla fascia - vedi sopra.
+      // DENTRO LO STESSO GIORNO vince l'ULTIMO, che e' la correzione: visto il
+      // 18 settembre, una consulenza segnata Semina alle 17:35 e corretta in No
+      // Show alle 17:44. Col criterio della vicinanza vinceva la prima, perche'
+      // le 17:35 distano nove minuti in meno dalle 13:30 della fascia, e la card
+      // restava verde mentre l'advisor aveva appena scritto il contrario.
+      // Quando un advisor si corregge, l'ultima parola e' quella buona.
       const vinceSvolta =
         tsChiusura !== null &&
         (tsDiserzione === null ||
-          Math.abs(tsChiusura - inizioSlot) <= Math.abs(tsDiserzione - inizioSlot));
+          (giornoRoma(tsChiusura) === giornoRoma(tsDiserzione)
+            ? tsChiusura >= tsDiserzione
+            : Math.abs(tsChiusura - inizioSlot) <= Math.abs(tsDiserzione - inizioSlot)));
 
       if (presenza === "presentato") {
         if (tipo !== "svolta") svolteTrovate += 1;
