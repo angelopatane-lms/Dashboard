@@ -1986,8 +1986,25 @@ export async function GET(req: NextRequest) {
       console.error("[advisor-agenda] appuntamenti solo su CRM", err instanceof Error ? err.message : err);
       return [] as EventoAgenda[];
     });
+    // DENTRO LA GIORNATA VINCE LA RIUNIONE, FUORI VINCE LA TRATTATIVA.
+    //
+    // Spostare l'appuntamento trascinando la card su Google e' il gesto
+    // naturale - la riunione su HubSpot si adegua da sola - mentre spostare
+    // anche la fase della trattativa e' un passaggio in piu'. Quindi se quel
+    // cliente quel giorno una riunione ce l'ha, anche a un'ora diversa, quella
+    // e' la verita' e la trattativa e' rimasta indietro di qualche ora.
+    //
+    // Se invece in giornata non c'e' niente, vince la trattativa: la sera
+    // l'advisor e' obbligato a mettere l'esito, e per una ripianificata quella
+    // data e' una scelta deliberata, non una dimenticanza.
+    //
+    // Si guarda il CLIENTE, non la coppia cliente-advisor: un appuntamento
+    // passato a un collega resta lo stesso appuntamento.
+    const clienteGiaInAgenda = (cliente: string): boolean =>
+      eventi.some((e) => chiaveNome(e.titolo) === chiaveNome(cliente));
+
     for (const e of soloCrm) {
-      if (giaInAgenda(e.operatore, e.titolo)) continue;
+      if (clienteGiaInAgenda(e.titolo)) continue;
       eventi.push(e);
       idDiEvento.push(undefined);
     }
