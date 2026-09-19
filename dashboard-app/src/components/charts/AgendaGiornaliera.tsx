@@ -383,6 +383,27 @@ function IconaAudio({ colore }: { colore: string }) {
   );
 }
 
+/**
+ * Il colore del pallino accanto alla fase, preso dalla stessa scala delle card.
+ *
+ * Non si inventa niente: la fase che finisce in vendita ha l'arancione della
+ * Vinta, quella persa il rosa, quella disertata il grigio del No Show. Tutto il
+ * resto - Semina, Semivinta, Ripianificata per trattativa - e' una consulenza
+ * che si e' tenuta e porta il verde. "Da Svolgere" fa eccezione perche' non e'
+ * un esito ma un'attesa, e prende l'azzurro del fissato.
+ *
+ * La "Ripianificata" va letta col motivo, come sempre: rimandata dopo la
+ * consulenza e' verde, rimandata perche' il cliente non c'era e' grigia.
+ */
+function coloreDellaFase(esito: string): string {
+  const f = esito.trim().toLowerCase();
+  if (f.startsWith("vinta")) return COLORE_VINTA.fondo;
+  if (f.startsWith("persa")) return COLORE_PERSA.fondo;
+  if (f.startsWith("no show") || f.includes("mancata presenza")) return COLORI.no_show.fondo;
+  if (f.startsWith("da svolgere")) return COLORI.appuntamento.fondo;
+  return COLORI.svolta.fondo;
+}
+
 /** "crescita_fatturato" non e' una parola: qui torna a esserlo. */
 const leggibile = (v: string): string => {
   const s = v.replace(/_/g, " ").trim();
@@ -467,11 +488,14 @@ function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: (
             {evento.esito || (evento.presenza && evento.presenza !== "non-si-sa") ? (
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                 {evento.esito ? (
-                  // Un grigio della stessa famiglia dell'altra etichetta, un
-                  // gradino piu' scuro: si distingue senza gridare. Il nero
-                  // pesava piu' del titolo della scheda, e in una finestra fatta
-                  // di grigi chiari era l'unica cosa che si vedeva.
-                  <span className="inline-flex items-center rounded-md bg-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-800">
+                  // STESSA FORMA DELL'ALTRA ETICHETTA, e il pallino porta il
+                  // colore della fase: cosi' le due si leggono come una coppia e
+                  // il colore non va imparato, perche' e' lo stesso delle card.
+                  <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700">
+                    <span
+                      className="inline-block h-2.5 w-2.5 rounded-full"
+                      style={{ background: coloreDellaFase(evento.esito) }}
+                    />
                     {evento.esito}
                   </span>
                 ) : null}
