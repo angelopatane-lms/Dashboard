@@ -666,15 +666,25 @@ async function clienteEPratica(
   if (!idDeal.length) return { contatto, deal: null };
 
   const lette = await hubspot<{ results?: Oggetto[] }>(token, "/crm/v3/objects/deals/batch/read", {
-    properties: ["closedate", "pipeline"],
+    properties: ["closedate", "data_appuntamento", "pipeline"],
     inputs: idDeal.slice(0, 100).map((id) => ({ id }))
   }).catch(() => null);
 
+  // DUE DATE, PERCHE' UNA SOLA NON COPRE TUTTI I CASI.
+  //
+  // "Data di chiusura" porta l'orario dell'appuntamento finche' la trattativa e'
+  // aperta, ma quando va in Vinta o in Persa HubSpot ci scrive sopra l'istante
+  // della chiusura: di una consulenza chiusa due giorni dopo quel campo non sa
+  // piu' niente. "Data Appuntamento" invece la scrive l'automazione alla
+  // creazione e nessuno la tocca piu': sopravvive alla chiusura, ma non segue le
+  // ripianificazioni. Le due si coprono a vicenda, e basta che una delle due
+  // cada nel giorno della registrazione.
   for (const d of lette?.results ?? []) {
     if (d.properties.pipeline !== PIPELINE_APPUNTAMENTI) continue;
-    const chiusura = Date.parse(d.properties.closedate ?? "");
-    if (!Number.isFinite(chiusura)) continue;
-    if (giornoRoma(chiusura) === giorno) return { contatto, deal: Number(d.id) };
+    const quando = [d.properties.closedate, d.properties.data_appuntamento]
+      .map((v) => Date.parse(v ?? ""))
+      .filter((t) => Number.isFinite(t));
+    if (quando.some((t) => giornoRoma(t) === giorno)) return { contatto, deal: Number(d.id) };
   }
   return { contatto, deal: null };
 }
