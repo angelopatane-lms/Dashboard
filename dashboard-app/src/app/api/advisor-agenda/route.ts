@@ -354,8 +354,8 @@ const linkTrascrizione = (id: string) => `https://app.fireflies.ai/view/${id}`;
  */
 async function audioDelleTrascrizioni(
   ids: string[]
-): Promise<Map<string, { audio?: string; durataMin?: number }>> {
-  const out = new Map<string, { audio?: string; durataMin?: number }>();
+): Promise<Map<string, { audio?: string; durataMin?: number; sparita?: true }>> {
+  const out = new Map<string, { audio?: string; durataMin?: number; sparita?: true }>();
   const chiave = process.env.FIREFLIES_API_KEY;
   if (!chiave || !ids.length) return out;
 
@@ -384,8 +384,35 @@ async function audioDelleTrascrizioni(
           });
           if (!res.ok) return;
           const dati = await res.json();
-          const url = dati?.data?.transcript?.audio_url;
-          const durata = Number(dati?.data?.transcript?.duration);
+
+          // LA REGISTRAZIONE CANCELLATA, e solo quella.
+          //
+          // Quando qualcuno elimina una registrazione dall'archivio di Fireflies
+          // il collegamento resta scritto in banca dati e porta a una pagina che
+          // non esiste: meglio togliere il pulsante che offrirlo morto. Misurato
+          // il 19 settembre: tre registrazioni cancellate in cinque giorni, tutte
+          // call brevi - tredici, ventuno e ventisei minuti.
+          //
+          // SERVE IL CODICE DELL'ERRORE, non basta che la risposta sia vuota.
+          // Quando si chiedono troppe trascrizioni di fila Fireflies risponde
+          // con transcript a null anche per quelle che esistono: fidandosi di
+          // quel null si cancellerebbero i pulsanti buoni - provato, 49
+          // "sparite" su 96 diventate 3 rifacendo la misura con calma. Solo
+          // `object_not_found` dice davvero che l'oggetto non c'e' piu'.
+          const codici = (dati?.errors ?? []).map(
+            (e: { extensions?: { code?: string }; code?: string }) =>
+              String(e?.extensions?.code ?? e?.code ?? "")
+          );
+          if (codici.includes("object_not_found")) {
+            out.set(id, { sparita: true });
+            return;
+          }
+
+          const risposta = dati?.data?.transcript;
+          if (!risposta) return;
+
+          const url = risposta?.audio_url;
+          const durata = Number(risposta?.duration);
           out.set(id, {
             ...(typeof url === "string" && url.startsWith("http") ? { audio: url } : {}),
             ...(Number.isFinite(durata) && durata > 0 ? { durataMin: Math.round(durata) } : {})
@@ -2018,6 +2045,13 @@ export async function GET(req: NextRequest) {
     eventi.forEach((e, i) => {
       const id = idDiEvento[i];
       const d = id ? audio.get(id) : undefined;
+      // Se la registrazione e' stata cancellata si toglie anche il pulsante
+      // della trascrizione: meglio una card senza bottoni che un bottone che
+      // porta a una pagina inesistente.
+      if (d?.sparita) {
+        delete e.trascrizione;
+        return;
+      }
       if (d?.audio) e.audio = d.audio;
       if (d?.durataMin) e.durataMin = d.durataMin;
     });
