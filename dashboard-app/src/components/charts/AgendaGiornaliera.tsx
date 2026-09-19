@@ -441,32 +441,38 @@ function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: (
                   molto meno o molto piu' di quanto era prenotata. */}
               {evento.durataMin ? ` · call di ${evento.durataMin} min` : ""}
             </div>
-            {/* L'ESITO DELLA PRATICA, sempre in vista.
-                Non e' lo stato della card - quello lo dice il colore e riguarda
-                questa fascia - ma dove e' arrivata la trattativa del cliente:
-                Semina, No Show, Vinta. Le due cose divergono di continuo, e
-                questo e' il posto dove si vedono insieme. */}
-            {evento.esito ? (
+            {/* DOVE STA LA PRATICA E CHI C'ERA IN CALL, sulla stessa riga.
+                Sono due risposte alla stessa domanda - com'e' andata - lette da
+                due parti diverse: la fase la scrive l'advisor, la presenza la
+                dice la registrazione. Messe vicine si confrontano da sole, e
+                quando si contraddicono - "No Show" accanto a "il cliente era in
+                call" - salta all'occhio invece di restare sepolto.
+
+                Il nome della fase sta da solo, senza etichetta: "Semina" o "No
+                Show" si capiscono, e "Esito:" davanti rubava spazio alla riga. */}
+            {evento.esito || (evento.presenza && evento.presenza !== "non-si-sa") ? (
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-2 py-1 text-[11px] font-medium text-white">
-                  Esito: {evento.esito}
-                </span>
-              </div>
-            ) : null}
-            {evento.presenza && evento.presenza !== "non-si-sa" ? (
-              <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700">
-                <span
-                  className="inline-block h-2.5 w-2.5 rounded-full"
-                  style={{
-                    background:
-                      evento.presenza === "presentato"
-                        ? COLORI.svolta.fondo
-                        : COLORI.no_show.fondo
-                  }}
-                />
-                {evento.presenza === "presentato"
-                  ? "Dalla registrazione: il cliente era in call"
-                  : "Dalla registrazione: ha parlato solo l'advisor"}
+                {evento.esito ? (
+                  <span className="inline-flex items-center rounded-md bg-slate-900 px-2 py-1 text-[11px] font-medium text-white">
+                    {evento.esito}
+                  </span>
+                ) : null}
+                {evento.presenza && evento.presenza !== "non-si-sa" ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700">
+                    <span
+                      className="inline-block h-2.5 w-2.5 rounded-full"
+                      style={{
+                        background:
+                          evento.presenza === "presentato"
+                            ? COLORI.svolta.fondo
+                            : COLORI.no_show.fondo
+                      }}
+                    />
+                    {evento.presenza === "presentato"
+                      ? "Dalla registrazione: il cliente era in call"
+                      : "Dalla registrazione: ha parlato solo l'advisor"}
+                  </span>
+                ) : null}
               </div>
             ) : null}
             {evento.prenotatoPer ? (
