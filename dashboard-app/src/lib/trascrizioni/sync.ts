@@ -666,7 +666,13 @@ async function clienteEPratica(
   if (!idDeal.length) return { contatto, deal: null };
 
   const lette = await hubspot<{ results?: Oggetto[] }>(token, "/crm/v3/objects/deals/batch/read", {
-    properties: ["closedate", "data_appuntamento", "pipeline"],
+    properties: [
+      "closedate",
+      "data_appuntamento",
+      "data_e_ora_appuntamento",
+      "nuova_data_e_ora_di_chiusura",
+      "pipeline"
+    ],
     inputs: idDeal.slice(0, 100).map((id) => ({ id }))
   }).catch(() => null);
 
@@ -681,7 +687,12 @@ async function clienteEPratica(
   // cada nel giorno della registrazione.
   for (const d of lette?.results ?? []) {
     if (d.properties.pipeline !== PIPELINE_APPUNTAMENTI) continue;
-    const quando = [d.properties.closedate, d.properties.data_appuntamento]
+    const quando = [
+      d.properties.data_e_ora_appuntamento,
+      d.properties.nuova_data_e_ora_di_chiusura,
+      d.properties.closedate,
+      d.properties.data_appuntamento
+    ]
       .map((v) => Date.parse(v ?? ""))
       .filter((t) => Number.isFinite(t));
     if (quando.some((t) => giornoRoma(t) === giorno)) return { contatto, deal: Number(d.id) };

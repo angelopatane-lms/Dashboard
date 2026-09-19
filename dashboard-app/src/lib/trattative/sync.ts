@@ -245,6 +245,16 @@ export function ripianificataAl(
   if (!idFaseRipianificata) return null;
   if ((correnti.dealstage ?? "").trim() !== idFaseRipianificata) return null;
 
+  // I DUE CAMPI NUOVI VENGONO PRIMA, e senza nessuna verifica sulla forma
+  // dell'orario: li' dentro c'e' quello che l'advisor ha scritto, non un
+  // istante lasciato da un'automazione. "Data e Ora Appuntamento" e' il campo
+  // definitivo - sopravvive anche alla chiusura - e "Nuova Data e Ora di
+  // Chiusura" e' quello che l'advisor compila ripianificando.
+  for (const campo of ["data_e_ora_appuntamento", "nuova_data_e_ora_di_chiusura"]) {
+    const dichiarata = new Date(correnti[campo] ?? "");
+    if (!Number.isNaN(dichiarata.getTime())) return dichiarata;
+  }
+
   const quando = new Date(correnti.closedate ?? "");
   if (Number.isNaN(quando.getTime())) return null;
 
@@ -260,7 +270,8 @@ export function ripianificataAl(
   //
   // Un orario scelto da una persona cade sui cinque minuti e non ha secondi.
   // Mezzanotte esatta in UTC resta fuori a prescindere: e' il vecchio formato
-  // "solo data".
+  // "solo data". Questo controllo vale solo per closedate, cioe' per le
+  // trattative ripianificate prima che i due campi nuovi esistessero.
   if (quando.getUTCSeconds() !== 0 || quando.getUTCMilliseconds() !== 0) return null;
   if (quando.getUTCMinutes() % 5 !== 0) return null;
   if (quando.getTime() % (24 * 60 * 60 * 1000) === 0) return null;
@@ -557,7 +568,7 @@ export async function aggiornaUnaTrattativa(
     method: "POST",
     body: {
       inputs: [{ id: dealId }],
-      properties: [...proprieta, "id_campagna_track", "id_campagna_track_last", "createdate", "closedate", "dealstage", "hubspot_owner_id", "pipeline"],
+      properties: [...proprieta, "id_campagna_track", "id_campagna_track_last", "createdate", "closedate", "dealstage", "hubspot_owner_id", "data_e_ora_appuntamento", "nuova_data_e_ora_di_chiusura", "pipeline"],
       propertiesWithHistory: conStorico
     }
   });
@@ -678,7 +689,7 @@ export async function sincronizzaTrattative(
           method: "POST",
           body: {
             inputs: gruppoIds.map((id) => ({ id })),
-            properties: [...proprieta, "id_campagna_track", "id_campagna_track_last", "createdate", "closedate", "dealstage", "hubspot_owner_id"],
+            properties: [...proprieta, "id_campagna_track", "id_campagna_track_last", "createdate", "closedate", "dealstage", "hubspot_owner_id", "data_e_ora_appuntamento", "nuova_data_e_ora_di_chiusura"],
             propertiesWithHistory: conStorico
           }
         });
