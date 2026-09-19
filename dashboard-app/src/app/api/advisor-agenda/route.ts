@@ -172,6 +172,16 @@ export type EventoAgenda = {
    * da stamattina, e chi guarda la scheda vuole sapere tutte e due.
    */
   esito?: string;
+  /**
+   * LA PRATICA E' STATA PERSA, e la perdita e' arrivata da questa consulenza in
+   * poi.
+   *
+   * Speculare a `vinta`: stessa natura - l'esito commerciale, non lo stato della
+   * fascia - e stesso vincolo, che il movimento non sia anteriore al giorno
+   * dell'appuntamento. Una trattativa persa prima non riguarda una consulenza
+   * che doveva ancora tenersi.
+   */
+  persa?: true;
   /** L'indirizzo della trascrizione su Fireflies, quando si riesce a ricavarlo. */
   trascrizione?: string;
   /** Il file audio della call, da ascoltare direttamente. */
@@ -861,16 +871,18 @@ function allaMezzOra(minuti: number): number {
  */
 async function praticheDeiContatti(
   contatti: number[]
-): Promise<Map<number, Array<{ fase: string; motivo: string; creata: number }>>> {
-  const out = new Map<number, Array<{ fase: string; motivo: string; creata: number }>>();
+): Promise<Map<number, Array<{ fase: string; motivo: string; creata: number; quando: number }>>> {
+  const out = new Map<number, Array<{ fase: string; motivo: string; creata: number; quando: number }>>();
   if (!contatti.length) return out;
   const { rows } = await getDb().query<{
     id: string;
     fase: string | null;
     motivo: string | null;
     creata: Date | null;
+    quando: Date | null;
   }>(
-    `SELECT COALESCE(a.nuovo_id, t.contact_id) AS id, t.fase, t.motivo, t.creata_ts AS creata
+    `SELECT COALESCE(a.nuovo_id, t.contact_id) AS id, t.fase, t.motivo,
+            t.creata_ts AS creata, t.fase_ts AS quando
        FROM trattativa t
        LEFT JOIN alias_contatto a ON a.vecchio_id = t.contact_id
       WHERE COALESCE(a.nuovo_id, t.contact_id) = ANY($1::bigint[])
@@ -884,7 +896,8 @@ async function praticheDeiContatti(
     out.get(id)!.push({
       fase: String(r.fase ?? ""),
       motivo: String(r.motivo ?? ""),
-      creata: r.creata ? r.creata.getTime() : NaN
+      creata: r.creata ? r.creata.getTime() : NaN,
+      quando: r.quando ? r.quando.getTime() : NaN
     });
   }
   return out;
@@ -1851,7 +1864,7 @@ export async function GET(req: NextRequest) {
       }),
       praticheDeiContatti(diGiornata).catch((err) => {
         console.error("[advisor-agenda] pratiche", err instanceof Error ? err.message : err);
-        return new Map<number, Array<{ fase: string; motivo: string; creata: number }>>();
+        return new Map<number, Array<{ fase: string; motivo: string; creata: number; quando: number }>>();
       })
     ]);
 
@@ -2016,7 +2029,7 @@ export async function GET(req: NextRequest) {
       // passata a un altro advisor, e regge meglio di "la piu' recente".
       const nascita = Date.parse(p.hs_createdate ?? "");
       const suePratiche = suoi.flatMap((c) => pratiche.get(c) ?? []);
-      let scelta: { fase: string; motivo: string; creata: number } | null = null;
+      let scelta: { fase: string; motivo: string; creata: number; quando: number } | null = null;
       for (const x of suePratiche) {
         if (!Number.isFinite(x.creata)) continue;
         if (!scelta || Math.abs(x.creata - nascita) < Math.abs(scelta.creata - nascita)) scelta = x;
@@ -2027,6 +2040,15 @@ export async function GET(req: NextRequest) {
           ? `${etichettaFase} (${scelta.motivo})`
           : etichettaFase
         : "";
+
+      // LA PERDITA VALE DA QUESTA CONSULENZA IN POI, come la vittoria: una
+      // trattativa gia' persa prima non riguarda una fascia che doveva ancora
+      // tenersi, e tingerla di rosa direbbe che quella consulenza e' andata
+      // male quando non c'era ancora stata.
+      const persa =
+        etichettaFase.trim().toLowerCase() === "persa" &&
+        Number.isFinite(scelta?.quando as number) &&
+        (scelta as { quando: number }).quando >= dalle;
 
       // L'ANALISI SOLO SU UNA CARD CHE RACCONTA QUALCOSA DI SUCCESSO.
       //
@@ -2125,6 +2147,7 @@ export async function GET(req: NextRequest) {
             }
           : {}),
         ...(esitoDellaPratica ? { esito: esitoDellaPratica } : {}),
+        ...(persa ? { persa: true as const } : {}),
         ...(tipo === "svolta" && tsVinta !== null
           ? {
               vinta: new Date(tsVinta).toLocaleDateString("it-IT", {

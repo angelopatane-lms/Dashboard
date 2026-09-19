@@ -241,6 +241,19 @@ function grigliaOraria(colorata: boolean): string {
  */
 const COLORE_VINTA = { fondo: "#fdba74", testo: "#7c2d12", secondario: "#9a3412" };
 
+/**
+ * IL ROSA DELLA PERSA, speculare all'arancione della vinta.
+ *
+ * ROSA E NON ROSSO. In questa scala i fondi sono tinte medie e il rosso pieno
+ * griderebbe piu' del verde e dell'arancione: una consulenza persa e' un esito
+ * da leggere, non un allarme, e su una giornata storta l'agenda diventerebbe
+ * illeggibile. Il rosa cipria si distingue dall'arancione della vinta - l'uno
+ * tira al magenta, l'altro al giallo - e resta nella stessa famiglia di toni.
+ *
+ * Il testo e' il rosso scuro dello stesso colore, come per tutte le altre.
+ */
+const COLORE_PERSA = { fondo: "#fda4af", testo: "#881337", secondario: "#9f1239" };
+
 const COLORE_RICEVUTO = "#475569";
 
 /**
@@ -267,6 +280,7 @@ const LEGENDA: Array<{ chiave: string; label: string; fondo: string }> = [
   { chiave: "appuntamento", label: "Fissata", fondo: COLORI.appuntamento.fondo },
   { chiave: "svolta", label: "Svolta", fondo: COLORI.svolta.fondo },
   { chiave: "vinta", label: "Vinta", fondo: COLORE_VINTA.fondo },
+  { chiave: "persa", label: "Persa", fondo: COLORE_PERSA.fondo },
   { chiave: "no_show", label: "No Show", fondo: COLORI.no_show.fondo }
 ];
 
@@ -949,9 +963,16 @@ export default function AgendaGiornaliera({
                   }}
                 >
                   {c.eventi.map((e, i) => {
-                    // La vendita vince sullo stato: e' lo stesso fatto detto
-                    // meglio, non un fatto diverso.
-                    const colore = e.vinta ? COLORE_VINTA : COLORI[e.tipo];
+                    // L'esito commerciale vince sullo stato della fascia: e' lo
+                    // stesso fatto detto meglio, non un fatto diverso. Fra i due,
+                    // la vittoria viene prima - una pratica non e' vinta e persa
+                    // insieme, ma se i dati si contraddicessero la vendita e' la
+                    // notizia piu' forte.
+                    const colore = e.vinta
+                      ? COLORE_VINTA
+                      : e.persa
+                        ? COLORE_PERSA
+                        : COLORI[e.tipo];
                     const largo = (larghezzaCol - 6) / c.corsie;
                     const alto = Math.max(y(e.fineMin) - y(e.inizioMin) - 2, 14);
                     // SI APRE SOLO QUELLO CHE HA DENTRO QUALCOSA. Una card che
@@ -993,6 +1014,7 @@ export default function AgendaGiornaliera({
                           `${e.senzaRiunione ? " · Sul CRM non esiste nessun appuntamento: card ricavata dalla registrazione, orario arrotondato alla mezz'ora" : ""}` +
                           `${e.soloSulCrm ? " · Ripianificata qui sulla trattativa, ma in calendario la riunione non e' stata spostata" : ""}` +
                           `${e.vinta ? ` · VINTA il ${e.vinta}` : ""}` +
+                          `${e.persa ? " · PERSA" : ""}` +
                           `${apribile ? " · clicca per il dettaglio" : ""}`
                         }
                         style={{
