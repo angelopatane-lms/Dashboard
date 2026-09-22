@@ -63,8 +63,12 @@ export default async function Page() {
     ? operatoriRowsOggi.filter((r) => allowedOperatorSet!.has(chiaveNome((r["Operatore"] ?? "").toString())))
     : operatoriRowsOggi;
 
-  const operators = uniqueValues(operatoriRowsFiltered, "Operatore");
-  const campaigns = uniqueValues(operatoriRowsFiltered, "Campagna");
+  // I menu si costruiscono su storico E oggi: una campagna partita stamattina
+  // sta solo nel foglio di oggi, e prendendo lo storico soltanto non compariva
+  // nel filtro fino al giorno dopo, pur essendo gia' contata in tabella.
+  const righeMenu = [...operatoriRowsFiltered, ...operatoriRowsOggiFiltered];
+  const operators = uniqueValues(righeMenu, "Operatore");
+  const campaigns = uniqueValues(righeMenu, "Campagna");
 
   return (
     <Container>
