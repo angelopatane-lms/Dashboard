@@ -940,6 +940,122 @@ async function etichetteDelleFasi(token: string): Promise<Map<string, string>> {
 }
 
 /**
+ * I PASSAGGI DI FASE DELLE PRATICHE DI GIORNATA.
+ *
+ * Serve all'etichetta della card, che deve dire la fase MESSA SU QUESTA
+ * CONSULENZA: dalla mezzanotte del giorno dell'appuntamento fino alla vigilia
+ * di quello successivo, quando la consulenza e' stata ripianificata.
+ *
+ * PERCHE' NON BASTA LA FASE DI ADESSO. La riga di `trattativa` dice dove la
+ * pratica e' arrivata, che su una consulenza di sei giorni fa e' un'altra cosa:
+ * il No Show segnato quella mattina non c'e' piu' se intanto la trattativa e'
+ * stata ripianificata e vinta. Lo storico dei passaggi tiene tutte e tre le
+ * tappe, e ognuna finisce sulla card della sua giornata.
+ *
+ * PERCHE' DALLA MEZZANOTTE E NON DALL'ORA DELLA CALL. Capita di sapere prima
+ * della consulenza come andra' a finire: l'appuntamento e' alle 17:00 e alle
+ * 09:30 qualcuno lo mette gia' in No Show. Quel movimento riguarda questa
+ * fascia anche se arriva con sette ore di anticipo.
+ *
+ * Si porta dietro la trattativa e la sua data di nascita perche' un cliente puo'
+ * avere piu' pratiche aperte: la scelta di quale guardare e' la stessa del resto
+ * della card - la nata insieme a questo appuntamento.
+ */
+async function passaggiDaMezzanotte(
+  contatti: number[]
+): Promise<Map<number, Array<{ dealId: number; creata: number; ts: number; fase: string; motivo: string }>>> {
+  const out = new Map<number, Array<{ dealId: number; creata: number; ts: number; fase: string; motivo: string }>>();
+  if (!contatti.length) return out;
+  const { rows } = await getDb().query<{
+    id: string;
+    deal_id: string;
+    creata: Date | null;
+    ts: Date;
+    fase: string;
+    motivo: string | null;
+  }>(
+    `SELECT COALESCE(a.nuovo_id, t.contact_id) AS id, t.deal_id, t.creata_ts AS creata,
+            s.ts, s.fase, s.motivo
+       FROM fase_storia s
+       JOIN trattativa t ON t.deal_id = s.deal_id
+       LEFT JOIN alias_contatto a ON a.vecchio_id = t.contact_id
+      WHERE COALESCE(a.nuovo_id, t.contact_id) = ANY($1::bigint[])
+      ORDER BY s.ts`,
+    [contatti]
+  );
+  for (const r of rows) {
+    const id = Number(r.id);
+    if (!Number.isFinite(id)) continue;
+    if (!out.has(id)) out.set(id, []);
+    out.get(id)!.push({
+      dealId: Number(r.deal_id),
+      creata: r.creata ? r.creata.getTime() : NaN,
+      ts: r.ts.getTime(),
+      fase: String(r.fase ?? ""),
+      motivo: String(r.motivo ?? "")
+    });
+  }
+  return out;
+}
+
+/**
+ * QUANDO SI TERRA' LA CONSULENZA SUCCESSIVA, per chiudere la finestra.
+ *
+ * Senza un limite in avanti, una consulenza del 16 si prenderebbe la Vinta del
+ * 22, e siccome una pratica ripianificata ha una card in ogni giorno in cui e'
+ * stata fissata, TUTTE le card vecchie di quel cliente finirebbero per mostrare
+ * l'ultima fase. Dal giorno della consulenza nuova in poi l'esito e' suo.
+ *
+ * DUE FONTI, perche' nessuna delle due basta da sola:
+ * - `ripianificata_al`, che l'automazione scrive quando l'advisor rimanda. C'e'
+ *   finche' la pratica resta in quella fase, e sparisce appena la consulenza
+ *   nuova si tiene.
+ * - le call registrate, che invece restano: se la consulenza nuova c'e' stata
+ *   davvero, il suo orario e' qui.
+ *
+ * Restano fuori le consulenze successive che non sono state registrate e la cui
+ * pratica e' gia' andata avanti: in quel caso la finestra resta aperta e la card
+ * vecchia puo' mostrare una fase decisa dopo. E' il caso raro, e sbaglia per
+ * eccesso di informazione, non inventandola.
+ */
+async function consulenzeSuccessive(
+  contatti: number[],
+  dalle: number
+): Promise<Map<number, Array<{ dealId: number | null; quando: number }>>> {
+  const out = new Map<number, Array<{ dealId: number | null; quando: number }>>();
+  if (!contatti.length) return out;
+  const da = new Date(dalle).toISOString();
+  // La pratica viaggia con la data quando c'e': una ripianificazione riguarda
+  // la SUA trattativa, e chiudere la finestra di una card usando l'appuntamento
+  // nuovo di un'altra pratica dello stesso cliente sarebbe un taglio a caso.
+  // Le call registrate invece sono legate al contatto e basta: valgono per
+  // tutte le sue pratiche, che e' il comportamento giusto - una call e' una
+  // call, e la consulenza dopo quella e' un altro appuntamento comunque.
+  const { rows } = await getDb().query<{ id: string; deal_id: string | null; quando: Date }>(
+    `SELECT COALESCE(a.nuovo_id, t.contact_id) AS id, t.deal_id, t.ripianificata_al AS quando
+       FROM trattativa t
+       LEFT JOIN alias_contatto a ON a.vecchio_id = t.contact_id
+      WHERE COALESCE(a.nuovo_id, t.contact_id) = ANY($1::bigint[])
+        AND t.ripianificata_al >= $2::timestamptz
+     UNION ALL
+     SELECT pc.contatto_id AS id, NULL AS deal_id, pc.call_ts AS quando
+       FROM presenza_call pc
+      WHERE pc.contatto_id = ANY($1::bigint[])
+        AND pc.call_ts >= $2::timestamptz`,
+    [contatti, da]
+  );
+  for (const r of rows) {
+    const id = Number(r.id);
+    const quando = r.quando ? r.quando.getTime() : NaN;
+    if (!Number.isFinite(id) || !Number.isFinite(quando)) continue;
+    if (!out.has(id)) out.set(id, []);
+    out.get(id)!.push({ dealId: r.deal_id === null ? null : Number(r.deal_id), quando });
+  }
+  for (const lista of out.values()) lista.sort((a, b) => a.quando - b.quando);
+  return out;
+}
+
+/**
  * GLI ESITI SEGNATI SULLA TRATTATIVA NEL GIORNO GUARDATO.
  *
  * IL CASO. Una fascia passata resta azzurra quando nessuno ha segnato niente,
@@ -1853,7 +1969,7 @@ export async function GET(req: NextRequest) {
     });
 
     const diGiornata = Array.from(new Set(Array.from(contatti.values()).flat()));
-    const [analisi, trascrizioni, pratiche] = await Promise.all([
+    const [analisi, trascrizioni, pratiche, passaggi, prossime] = await Promise.all([
       analisiDeiContatti(token, diGiornata, giorno).catch((err) => {
         console.error("[advisor-agenda] analisi call", err instanceof Error ? err.message : err);
         return new Map<number, AnalisiCall>();
@@ -1865,6 +1981,14 @@ export async function GET(req: NextRequest) {
       praticheDeiContatti(diGiornata).catch((err) => {
         console.error("[advisor-agenda] pratiche", err instanceof Error ? err.message : err);
         return new Map<number, Array<{ fase: string; motivo: string; creata: number; quando: number }>>();
+      }),
+      passaggiDaMezzanotte(diGiornata).catch((err) => {
+        console.error("[advisor-agenda] passaggi di fase", err instanceof Error ? err.message : err);
+        return new Map<number, Array<{ dealId: number; creata: number; ts: number; fase: string; motivo: string }>>();
+      }),
+      consulenzeSuccessive(diGiornata, dalle).catch((err) => {
+        console.error("[advisor-agenda] consulenze successive", err instanceof Error ? err.message : err);
+        return new Map<number, Array<{ dealId: number | null; quando: number }>>();
       })
     ]);
 
@@ -2044,7 +2168,68 @@ export async function GET(req: NextRequest) {
         if (!Number.isFinite(x.creata)) continue;
         if (!scelta || Math.abs(x.creata - nascita) < Math.abs(scelta.creata - nascita)) scelta = x;
       }
-      const etichettaFase = scelta ? etichette.get(scelta.fase) ?? "" : "";
+
+      // LA FASE DI QUESTA GIORNATA, non quella di adesso.
+      //
+      // La finestra va dalla mezzanotte del giorno della card fino alla
+      // mezzanotte del giorno della consulenza successiva, esclusa - e fino
+      // all'ora della consulenza successiva quando cade nello stesso giorno.
+      // Dentro vince l'ULTIMO passaggio: quando un advisor si corregge - una
+      // Semina alle 17:35 diventata No Show alle 17:44 - l'ultima parola e'
+      // quella buona, ed e' lo stesso criterio del colore della fascia.
+      //
+      // Fuori dalla finestra non si prende niente: meglio una card senza
+      // etichetta di una che mostra l'esito di un altro appuntamento.
+      const suoiPassaggi = suoi.flatMap((c) => passaggi.get(c) ?? []);
+      // La pratica e' la stessa scelta dal resto della card: la nata insieme a
+      // questo appuntamento.
+      let praticaDelGiorno: { dealId: number; creata: number } | null = null;
+      for (const x of suoiPassaggi) {
+        if (!Number.isFinite(x.creata)) continue;
+        if (!praticaDelGiorno || Math.abs(x.creata - nascita) < Math.abs(praticaDelGiorno.creata - nascita)) {
+          praticaDelGiorno = { dealId: x.dealId, creata: x.creata };
+        }
+      }
+
+      const fineFascia = inizioSlot + Math.max(1, fineMin - da.minuti) * 60 * 1000;
+      const prossima = suoi
+        .flatMap((c) => prossime.get(c) ?? [])
+        .filter((x) => x.quando > fineFascia)
+        .filter((x) => x.dealId === null || !praticaDelGiorno || x.dealId === praticaDelGiorno.dealId)
+        .map((x) => x.quando)
+        .sort((a, b) => a - b)[0];
+      // La finestra si chiude a mezzanotte del giorno della consulenza nuova,
+      // salvo quando quella cade nello stesso giorno: li' la mezzanotte non
+      // separa niente e il confine e' la consulenza stessa.
+      const fineFinestra =
+        prossima === undefined
+          ? Number.POSITIVE_INFINITY
+          : giornoRoma(prossima) === giorno
+            ? prossima
+            : istanteRoma(giornoRoma(prossima), 0, 0);
+
+      let dellaGiornata: { fase: string; motivo: string } | null = null;
+      for (const x of suoiPassaggi) {
+        if (praticaDelGiorno && x.dealId !== praticaDelGiorno.dealId) continue;
+        if (x.ts < dalle || x.ts >= fineFinestra) continue;
+        dellaGiornata = { fase: x.fase, motivo: x.motivo };
+      }
+
+      // LO STORICO DECIDE ANCHE IL SILENZIO. Se la pratica ha i suoi passaggi
+      // salvati e nessuno cade nella finestra, la card resta senza etichetta:
+      // e' il caso della consulenza tenuta e poi rimandata, dove tutto quello
+      // che e' successo dopo appartiene alla consulenza nuova.
+      //
+      // La fase di adesso resta come ripiego SOLO per le pratiche di cui non
+      // abbiamo storico - quelle piu' vecchie del riempimento - altrimenti una
+      // card muta non si distinguerebbe da una di cui non sappiamo niente.
+      const senzaStorico = !praticaDelGiorno;
+      const etichettaFase = dellaGiornata
+        ? etichette.get(dellaGiornata.fase) ?? ""
+        : senzaStorico && scelta
+          ? etichette.get(scelta.fase) ?? ""
+          : "";
+      const motivoFase = dellaGiornata ? dellaGiornata.motivo : senzaStorico ? scelta?.motivo ?? "" : "";
       // IL MOTIVO SI MOSTRA SOLO SU "RIPIANIFICATA", che e' l'unica fase dove
       // serve a distinguere: consulenza tenuta e rimandata, oppure cliente che
       // non si e' presentato. Altrove e' un residuo - HubSpot non lo cancella
@@ -2052,8 +2237,8 @@ export async function GET(req: NextRequest) {
       // come "No Show (Trattativa)": il motivo era stato scritto il giorno prima
       // passando da Ripianificata, ed e' rimasto li'.
       const esitoDellaPratica = etichettaFase
-        ? etichettaFase.trim().toLowerCase() === "ripianificata" && scelta?.motivo
-          ? `${etichettaFase} (${scelta.motivo})`
+        ? etichettaFase.trim().toLowerCase() === "ripianificata" && motivoFase
+          ? `${etichettaFase} (${motivoFase})`
           : etichettaFase
         : "";
 
@@ -2061,10 +2246,13 @@ export async function GET(req: NextRequest) {
       // trattativa gia' persa prima non riguarda una fascia che doveva ancora
       // tenersi, e tingerla di rosa direbbe che quella consulenza e' andata
       // male quando non c'era ancora stata.
+      //
+      // Con lo storico questo controllo e' gia' nella finestra - fuori non si
+      // prende niente - e resta esplicito solo per le pratiche senza storico.
       const persa =
         etichettaFase.trim().toLowerCase() === "persa" &&
-        Number.isFinite(scelta?.quando as number) &&
-        (scelta as { quando: number }).quando >= dalle;
+        (dellaGiornata !== null ||
+          (Number.isFinite(scelta?.quando as number) && (scelta as { quando: number }).quando >= dalle));
 
       // L'ANALISI SOLO SU UNA CARD CHE RACCONTA QUALCOSA DI SUCCESSO.
       //

@@ -223,6 +223,38 @@ export function ingressiNoShow(
 }
 
 /**
+ * TUTTI I PASSAGGI DI FASE, in ordine di tempo.
+ *
+ * La cronologia di HubSpot arriva gia' scaricata - serve a contare no show e
+ * consulenze svolte - e finora veniva usata e buttata. Qui si traduce nelle
+ * righe da salvare, cosi' di una consulenza di sei giorni fa si sa ancora che
+ * cosa era stato segnato quel giorno, e non solo dove la pratica e' arrivata.
+ *
+ * IL MOTIVO E' QUELLO DI QUEL MOMENTO. Letto dallo stato attuale sarebbe un
+ * residuo: HubSpot non lo cancella quando la trattativa va avanti, e si
+ * otterrebbero accostamenti falsi come "No Show (Trattativa)", dove il motivo
+ * era stato scritto il giorno prima passando da Ripianificata.
+ *
+ * I DOPPIONI SULLO STESSO ISTANTE SI SCARTANO, tenendo l'ultimo: la chiave
+ * della tabella e' (trattativa, istante), e due voci con lo stesso timestamp -
+ * capita quando un'automazione sposta la fase due volte nello stesso secondo -
+ * farebbero fallire l'inserimento dell'intero blocco.
+ */
+export function passaggiDiFase(
+  storici: Record<string, Voce[]>
+): Array<{ ts: Date; fase: string; motivo: string }> {
+  const per = new Map<number, { ts: Date; fase: string; motivo: string }>();
+  for (const v of storici.dealstage ?? []) {
+    const t = new Date(v.timestamp).getTime();
+    if (!Number.isFinite(t)) continue;
+    const fase = (v.value ?? "").trim();
+    if (!fase) continue;
+    per.set(t, { ts: new Date(t), fase, motivo: valoreAl(storici.motivo ?? [], t) });
+  }
+  return [...per.values()].sort((a, b) => a.ts.getTime() - b.ts.getTime());
+}
+
+/**
  * DOVE STA ADESSO LA TRATTATIVA, e da quando.
  *
  * L'agenda ne ha bisogno per le fasce che restano azzurre su un giorno passato:
@@ -383,10 +415,12 @@ export function setterAllaData(storici: Record<string, Voce[]>, quando: Date): n
 async function* cercaTrattative(
   token: string,
   daIso: string,
-  tipo: TipoSyncTrattative
+  tipo: TipoSyncTrattative,
+  perModifica = false
 ): AsyncGenerator<string[]> {
   const daMs = new Date(daIso).getTime();
-  const proprietaData = tipo === "incrementale" ? "hs_lastmodifieddate" : "createdate";
+  const proprietaData =
+    tipo === "incrementale" || perModifica ? "hs_lastmodifieddate" : "createdate";
   let ultimoId = 0;
 
   while (true) {
@@ -475,6 +509,20 @@ export type EsitoTrattative = {
 export type OpzioniTrattative = {
   daIso?: string;
   onProgresso?: (s: EsitoTrattative) => void;
+  /**
+   * Seleziona per DATA DI MODIFICA invece che di creazione.
+   *
+   * Serve a riempire lo storico delle fasi su un periodo: la pratica di una
+   * consulenza di settembre spesso e' nata prima - quella di Maria Paola
+   * Zenzani, vinta il 16 settembre, era del 27 agosto - e con il filtro sulla
+   * creazione resterebbe fuori proprio mentre la sua card aspetta l'etichetta.
+   * Chi ha cambiato fase in un periodo risulta modificato in quel periodo,
+   * comunque sia nato.
+   *
+   * Vale solo sul giro completo: l'incrementale usa gia' questo criterio, con
+   * il suo tetto.
+   */
+  perModifica?: boolean;
 };
 
 // Un giro incrementale gira dentro una funzione Vercel da 60 secondi. A ~34
@@ -675,6 +723,27 @@ export async function aggiornaUnaTrattativa(
     ]
   );
 
+  // I passaggi di fase di questa trattativa, riscritti per intero come nel giro
+  // completo. E' il punto in cui l'agenda vede l'aggiornamento subito: il
+  // webhook scatta al cambio di fase, quindi la card della giornata ha la sua
+  // etichetta nel giro di secondi invece che al prossimo giro incrementale.
+  const passaggi = passaggiDiFase(r.propertiesWithHistory ?? {});
+  await db.query(`DELETE FROM fase_storia WHERE deal_id = $1`, [Number(r.id)]);
+  if (passaggi.length) {
+    await db.query(
+      `INSERT INTO fase_storia (deal_id, ts, fase, motivo)
+       SELECT * FROM UNNEST($1::bigint[], $2::timestamptz[], $3::text[], $4::text[])
+       ON CONFLICT (deal_id, ts) DO UPDATE
+         SET fase = EXCLUDED.fase, motivo = EXCLUDED.motivo`,
+      [
+        passaggi.map(() => Number(r.id)),
+        passaggi.map((p) => p.ts),
+        passaggi.map((p) => p.fase),
+        passaggi.map((p) => p.motivo || null)
+      ]
+    );
+  }
+
   // Come nel giro completo: si cancella e si reinserisce, cosi' sparisce anche
   // un no show che non risulta piu' nella cronologia.
   await db.query(`DELETE FROM no_show WHERE deal_id = $1`, [Number(r.id)]);
@@ -716,7 +785,7 @@ export async function sincronizzaTrattative(
   const esito: EsitoTrattative = { trattative: 0, svolte: 0, noShow: 0, senzaCampagna: 0, troncato: false };
 
   try {
-    for await (const blocco of cercaTrattative(token, daIso, tipo)) {
+    for await (const blocco of cercaTrattative(token, daIso, tipo, opzioni.perModifica)) {
       // Una chiamata per blocco, non una per trattativa.
       const contatti = await leggiContatti(token, blocco);
 
@@ -743,6 +812,7 @@ export async function sincronizzaTrattative(
           stato: { fase: string; quando: Date | null; motivo: string };
           setterId: number | null;
           noShow: Array<{ ts: Date; setterId: number | null }>;
+          passaggi: Array<{ ts: Date; fase: string; motivo: string }>;
         }> = [];
         for (const r of d.results ?? []) {
           const creata = new Date(r.properties?.createdate ?? "");
@@ -769,7 +839,8 @@ export async function sincronizzaTrattative(
             noShow: ingressiNoShow(r.propertiesWithHistory ?? {}, idFaseNoShow, idFaseRipianificata).map((ts) => ({
               ts,
               setterId: setterAllaData(r.propertiesWithHistory ?? {}, ts)
-            }))
+            })),
+            passaggi: passaggiDiFase(r.propertiesWithHistory ?? {})
           });
         }
         if (!righe.length) continue;
@@ -843,6 +914,27 @@ export async function sincronizzaTrattative(
           );
         }
         esito.noShow += eventiNs.length;
+
+        // I PASSAGGI DI FASE, con lo stesso criterio dei no-show: si cancella e
+        // si riscrive per trattativa, cosi' due corse danno lo stesso risultato
+        // e una voce sparita dalla cronologia sparisce anche da qui.
+        await db.query(`DELETE FROM fase_storia WHERE deal_id = ANY($1::bigint[])`, [dealIds]);
+
+        const passaggi = righe.flatMap((x) => x.passaggi.map((p) => ({ dealId: x.dealId, ...p })));
+        if (passaggi.length) {
+          await db.query(
+            `INSERT INTO fase_storia (deal_id, ts, fase, motivo)
+             SELECT * FROM UNNEST($1::bigint[], $2::timestamptz[], $3::text[], $4::text[])
+             ON CONFLICT (deal_id, ts) DO UPDATE
+               SET fase = EXCLUDED.fase, motivo = EXCLUDED.motivo`,
+            [
+              passaggi.map((p) => p.dealId),
+              passaggi.map((p) => p.ts),
+              passaggi.map((p) => p.fase),
+              passaggi.map((p) => p.motivo || null)
+            ]
+          );
+        }
 
         esito.trattative += righe.length;
         esito.svolte += righe.filter((x) => x.svolta).length;

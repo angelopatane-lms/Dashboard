@@ -181,6 +181,38 @@ ALTER TABLE trattativa ADD COLUMN IF NOT EXISTS motivo TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_trattativa_fase_ts ON trattativa (fase_ts) WHERE fase_ts IS NOT NULL;
 
+-- TUTTI I PASSAGGI DI FASE, non solo l'ultimo.
+--
+-- Le colonne qui sopra dicono dove sta la trattativa ADESSO. Basta a colorare
+-- una fascia di oggi, non basta a dire che cosa e' stato segnato su una
+-- consulenza di sei giorni fa: se quella pratica nel frattempo e' andata
+-- avanti, del No Show messo quella mattina non resta traccia. Misurato il 23
+-- settembre: su 36.080 trattative solo 4.347 hanno la data della fase attuale,
+-- e in ogni caso e' una data sola.
+--
+-- Serve all'agenda, che a ogni card deve dare la fase della SUA giornata: dalla
+-- mezzanotte del giorno dell'appuntamento fino alla vigilia di quello dopo,
+-- quando la consulenza e' stata ripianificata. Fuori da quella finestra il
+-- movimento appartiene a un altro appuntamento.
+--
+-- NON COSTA NIENTE IN PIU'. Il sync scarica gia' la cronologia di `dealstage` e
+-- di `motivo` per ogni trattativa - le servono per contare no show e consulenze
+-- svolte - e poi la scarta tenendo solo l'ultimo valore. Qui la si scrive
+-- invece di buttarla.
+--
+-- Il motivo e' quello LETTO AL MOMENTO DEL PASSAGGIO, non quello di oggi:
+-- HubSpot non lo cancella quando la trattativa va avanti, e preso dallo stato
+-- attuale produce accostamenti falsi come "No Show (Trattativa)".
+CREATE TABLE IF NOT EXISTS fase_storia (
+  deal_id BIGINT      NOT NULL,
+  ts      TIMESTAMPTZ NOT NULL,
+  fase    TEXT        NOT NULL,
+  motivo  TEXT,
+  PRIMARY KEY (deal_id, ts)
+);
+
+CREATE INDEX IF NOT EXISTS idx_fase_storia_ts ON fase_storia (ts);
+
 -- Appuntamenti non onorati.
 --
 -- Tabella a parte e non una colonna di `trattativa` perche' una trattativa puo'

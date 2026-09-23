@@ -11,6 +11,7 @@
 //
 // Uso: npm run bootstrap:trattative
 //      npm run bootstrap:trattative -- --da 2026-06-01
+//      npm run bootstrap:trattative -- --modificate-dal 2026-01-01
 
 import { richiedi } from "./env";
 import { sincronizzaTrattative } from "../src/lib/trattative/sync";
@@ -20,20 +21,33 @@ function hhmmss(ms: number): string {
   return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
 }
 
-function leggiDa(argv: string[]): string {
-  const i = argv.indexOf("--da");
-  if (i === -1) return "2026-01-01";
+function leggiData(argv: string[], opzione: string): string | null {
+  const i = argv.indexOf(opzione);
+  if (i === -1) return null;
   const v = argv[i + 1] ?? "";
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error(`--da richiede una data AAAA-MM-GG (ricevuto: ${v || "niente"})`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v))
+    throw new Error(`${opzione} richiede una data AAAA-MM-GG (ricevuto: ${v || "niente"})`);
   return v;
 }
 
 async function main() {
-  const daIso = leggiDa(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  // --modificate-dal seleziona per data di MODIFICA invece che di creazione.
+  //
+  // Serve a riempire lo storico delle fasi: la pratica di una consulenza di
+  // settembre e' spesso nata prima, e con il filtro sulla creazione resterebbe
+  // fuori mentre la sua card aspetta l'etichetta. Chi ha cambiato fase nel
+  // periodo risulta modificato nel periodo, comunque sia nato.
+  const modificateDal = leggiData(argv, "--modificate-dal");
+  const daIso = modificateDal ?? leggiData(argv, "--da") ?? "2026-01-01";
   const token = richiedi("HUBSPOT_PRIVATE_APP_TOKEN");
   richiedi("DATABASE_URL");
 
-  console.log(`[trattative] sincronizzazione dalle trattative create dal ${daIso}.`);
+  console.log(
+    modificateDal
+      ? `[trattative] sincronizzazione dalle trattative modificate dal ${daIso}.`
+      : `[trattative] sincronizzazione dalle trattative create dal ${daIso}.`
+  );
   console.log("[trattative] criteri di 'svolta' letti dal workflow su HubSpot.\n");
 
   const iniziato = Date.now();
@@ -41,6 +55,7 @@ async function main() {
 
   const esito = await sincronizzaTrattative(token, "bootstrap", {
     daIso,
+    perModifica: Boolean(modificateDal),
     onProgresso: (s) => {
       const ora = Date.now();
       if (ora - ultimaStampa < 5000) return;
