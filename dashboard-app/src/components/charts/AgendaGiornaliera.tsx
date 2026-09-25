@@ -531,14 +531,15 @@ function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: (
                         : "Dedotto da come se ne parla nella registrazione"
                     }
                   >
-                    <span className="text-slate-500">Programma</span>
-                    {evento.programma}
-                    {/* Da dove viene il dato, in chiaro: un programma dedotto
-                        dalla call non e' la stessa cosa di un prodotto firmato,
-                        e chi legge deve poterlo distinguere senza chiedere. */}
-                    <span className="font-normal text-slate-400">
-                      {evento.programmaVenduto ? "venduto" : "dalla call"}
+                    {/* DA DOVE VIENE IL DATO, dentro l'etichetta stessa. Un
+                        programma argomentato in call non e' la stessa cosa di
+                        un prodotto firmato, e chi legge deve distinguerli senza
+                        chiedere: lo dice la parola davanti al nome, non una
+                        sigla accanto che si impara a memoria. */}
+                    <span className="text-slate-500">
+                      {evento.programmaVenduto ? "Programma venduto" : "Programma argomentato in call"}
                     </span>
+                    {evento.programma}
                   </span>
                 ) : null}
                 {evento.presenza && evento.presenza !== "non-si-sa" ? (

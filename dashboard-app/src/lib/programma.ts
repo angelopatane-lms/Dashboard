@@ -35,7 +35,12 @@ export type FraseDetta = { testo: string };
  */
 const SEGNALI: Array<{ programma: string; re: RegExp; soglia: number }> = [
   // I nomi dei dipendenti artificiali e il nome del prodotto.
-  { programma: "Imprenditoria", re: /\bcesare\b|\boriana\b|\bgu?glielmo\b|dipendent[ei] artificial[ei]|agenti artificiali|vendite artificiali|marketing artificiale/gi, soglia: 3 },
+  //
+  // SI CHIAMA COME LO CHIAMANO IN CALL, non come si chiama la categoria.
+  // "Imprenditoria" e' l'etichetta della linea di campagne, e qui si dice di
+  // che cosa hanno parlato: se l'advisor ha argomentato Cesare e Oriana, ha
+  // argomentato i Dipendenti Artificiali.
+  { programma: "Dipendenti Artificiali", re: /\bcesare\b|\boriana\b|\bgu?glielmo\b|dipendent[ei] artificial[ei]|agenti artificiali|vendite artificiali|marketing artificiale/gi, soglia: 3 },
   { programma: "REM", re: /\brem\s?2|real estate master|aste immobiliar|\bflipping\b/gi, soglia: 2 },
   { programma: "REM", re: /\basta\b|\baste\b|immobil/gi, soglia: 15 },
   { programma: "ICMD", re: /\bicmd\b|io creo il mio destino/gi, soglia: 3 },
