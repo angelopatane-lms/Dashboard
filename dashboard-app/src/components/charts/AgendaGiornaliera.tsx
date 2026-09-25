@@ -553,9 +553,13 @@ function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: (
                             : COLORI.no_show.fondo
                       }}
                     />
+                    {/* SENZA "Dalla registrazione:" DAVANTI. Che venga di li'
+                        si capisce da solo - nessun'altra fonte sa chi ha
+                        parlato - e quelle due parole raddoppiavano la lunghezza
+                        dell'etichetta in una riga dove ce ne stanno tre. */}
                     {evento.presenza === "presentato"
-                      ? "Dalla registrazione: il cliente era in call"
-                      : "Dalla registrazione: ha parlato solo l'advisor"}
+                      ? "Il cliente era in call"
+                      : "Ha parlato solo l'advisor"}
                   </span>
                 ) : null}
               </div>
