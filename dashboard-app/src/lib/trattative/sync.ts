@@ -645,7 +645,7 @@ export async function aggiornaUnaTrattativa(
     method: "POST",
     body: {
       inputs: [{ id: dealId }],
-      properties: [...proprieta, "id_campagna_track", "id_campagna_track_last", "createdate", "closedate", "dealstage", "hubspot_owner_id", "data_e_ora_appuntamento", "nuova_data_e_ora_di_chiusura", "pipeline"],
+      properties: [...proprieta, "id_campagna_track", "id_campagna_track_last", "createdate", "closedate", "dealstage", "hubspot_owner_id", "data_e_ora_appuntamento", "nuova_data_e_ora_di_chiusura", "pipeline", "prodotto_"],
       propertiesWithHistory: conStorico
     }
   });
@@ -689,8 +689,8 @@ export async function aggiornaUnaTrattativa(
   await db.query(
     `INSERT INTO trattativa
        (deal_id, campagna_id, creata_ts, svolta_ts, vinta_ts, contact_id, setter_id, ripianificata_al,
-        proprietario_id, fase, fase_ts, motivo)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        proprietario_id, fase, fase_ts, motivo, prodotto)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      ON CONFLICT (deal_id) DO UPDATE
        SET campagna_id = EXCLUDED.campagna_id,
            creata_ts   = EXCLUDED.creata_ts,
@@ -703,6 +703,7 @@ export async function aggiornaUnaTrattativa(
            fase    = EXCLUDED.fase,
            fase_ts = EXCLUDED.fase_ts,
            motivo  = EXCLUDED.motivo,
+           prodotto = EXCLUDED.prodotto,
            -- Se l'associazione non arriva si tiene quella gia' salvata,
            -- invece di cancellarla con un NULL. Idem per il setter.
            contact_id  = COALESCE(EXCLUDED.contact_id, trattativa.contact_id),
@@ -719,7 +720,8 @@ export async function aggiornaUnaTrattativa(
       proprietario,
       stato.fase || null,
       stato.quando,
-      stato.motivo || null
+      stato.motivo || null,
+      (r.properties?.prodotto_ ?? "").trim() || null
     ]
   );
 
@@ -795,7 +797,7 @@ export async function sincronizzaTrattative(
           method: "POST",
           body: {
             inputs: gruppoIds.map((id) => ({ id })),
-            properties: [...proprieta, "id_campagna_track", "id_campagna_track_last", "createdate", "closedate", "dealstage", "hubspot_owner_id", "data_e_ora_appuntamento", "nuova_data_e_ora_di_chiusura"],
+            properties: [...proprieta, "id_campagna_track", "id_campagna_track_last", "createdate", "closedate", "dealstage", "hubspot_owner_id", "data_e_ora_appuntamento", "nuova_data_e_ora_di_chiusura", "prodotto_"],
             propertiesWithHistory: conStorico
           }
         });
@@ -813,6 +815,7 @@ export async function sincronizzaTrattative(
           setterId: number | null;
           noShow: Array<{ ts: Date; setterId: number | null }>;
           passaggi: Array<{ ts: Date; fase: string; motivo: string }>;
+          prodotto: string | null;
         }> = [];
         for (const r of d.results ?? []) {
           const creata = new Date(r.properties?.createdate ?? "");
@@ -840,7 +843,14 @@ export async function sincronizzaTrattative(
               ts,
               setterId: setterAllaData(r.propertiesWithHistory ?? {}, ts)
             })),
-            passaggi: passaggiDiFase(r.propertiesWithHistory ?? {})
+            passaggi: passaggiDiFase(r.propertiesWithHistory ?? {}),
+            // IL PRODOTTO VENDUTO, quando c'e'. HubSpot lo compila solo sulle
+            // trattative vinte - verificato: tutte le 444 con prodotto REM e
+            // tutte le 104 con prodotto D.A. stanno in fase Vinta - quindi qui
+            // e' NULL per la stragrande maggioranza. Dove c'e', pero', e' la
+            // parola definitiva su che cosa e' stato venduto, e batte sia la
+            // campagna sia quello che si sente in registrazione.
+            prodotto: (r.properties?.prodotto_ ?? "").trim() || null
           });
         }
         if (!righe.length) continue;
@@ -850,8 +860,8 @@ export async function sincronizzaTrattative(
         await db.query(
           `INSERT INTO trattativa
              (deal_id, campagna_id, creata_ts, svolta_ts, vinta_ts, contact_id, setter_id, ripianificata_al,
-              proprietario_id, fase, fase_ts, motivo)
-           SELECT * FROM UNNEST($1::bigint[], $2::int[], $3::timestamptz[], $4::timestamptz[], $5::timestamptz[], $6::bigint[], $7::bigint[], $8::timestamptz[], $9::bigint[], $10::text[], $11::timestamptz[], $12::text[])
+              proprietario_id, fase, fase_ts, motivo, prodotto)
+           SELECT * FROM UNNEST($1::bigint[], $2::int[], $3::timestamptz[], $4::timestamptz[], $5::timestamptz[], $6::bigint[], $7::bigint[], $8::timestamptz[], $9::bigint[], $10::text[], $11::timestamptz[], $12::text[], $13::text[])
            ON CONFLICT (deal_id) DO UPDATE
              SET campagna_id = EXCLUDED.campagna_id,
                  creata_ts   = EXCLUDED.creata_ts,
@@ -862,6 +872,7 @@ export async function sincronizzaTrattative(
                  fase    = EXCLUDED.fase,
                  fase_ts = EXCLUDED.fase_ts,
                  motivo  = EXCLUDED.motivo,
+                 prodotto = EXCLUDED.prodotto,
                  -- Se l'associazione non arriva si tiene quella gia' salvata,
                  -- invece di cancellarla con un NULL. Stesso ragionamento per
                  -- il setter: una cronologia vuota non deve azzerare un nome
@@ -880,7 +891,8 @@ export async function sincronizzaTrattative(
             righe.map((x) => x.proprietario),
             righe.map((x) => x.stato.fase || null),
             righe.map((x) => x.stato.quando),
-            righe.map((x) => x.stato.motivo || null)
+            righe.map((x) => x.stato.motivo || null),
+            righe.map((x) => x.prodotto)
           ]
         );
 

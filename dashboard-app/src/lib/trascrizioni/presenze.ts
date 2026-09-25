@@ -1,6 +1,7 @@
 import { getDb } from "@/lib/db";
 import { leggiFrasi } from "@/lib/fireflies";
 import { chiEraInCall, type Frase } from "@/lib/presenza";
+import { programmaDallaConversazione } from "@/lib/programma";
 import type { Abbinamento, Registrazione } from "@/lib/abbinamento";
 
 /**
@@ -83,6 +84,8 @@ export async function registraPresenze(
     }
 
     const p = chiEraInCall(frasi, x.daSec, x.aSec, x.riunione.contattoNome);
+    // Di che programma si e' parlato: stesse frasi, nessuna lettura in piu'.
+    const programma = programmaDallaConversazione(frasi);
 
     try {
       // LA DURATA SI SALVA ANCHE SE OGGI NON LA USA NESSUNO. La colonna Resa
@@ -97,8 +100,8 @@ export async function registraPresenze(
 
       await db.query(
         `INSERT INTO presenza_call
-           (riunione_id, contatto_id, trascrizione, esito, motivo, voci, quota_secondo, inizio_ts, durata_min, call_ts, aggiornato_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+           (riunione_id, contatto_id, trascrizione, esito, motivo, voci, quota_secondo, inizio_ts, durata_min, call_ts, programma, aggiornato_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
          ON CONFLICT (riunione_id) DO UPDATE
            SET contatto_id = EXCLUDED.contatto_id,
                trascrizione = EXCLUDED.trascrizione,
@@ -109,6 +112,7 @@ export async function registraPresenze(
                inizio_ts = EXCLUDED.inizio_ts,
                durata_min = EXCLUDED.durata_min,
                call_ts = EXCLUDED.call_ts,
+               programma = EXCLUDED.programma,
                aggiornato_at = now()`,
         [
           x.riunione.id,
@@ -123,7 +127,8 @@ export async function registraPresenze(
           // Quando la call si e' tenuta davvero: quasi sempre coincide con
           // l'appuntamento, ma non quando la consulenza e' stata rimandata
           // senza spostare la data in calendario.
-          new Date(x.registrazione.inizio)
+          new Date(x.registrazione.inizio),
+          programma
         ]
       );
       esito.nuove++;

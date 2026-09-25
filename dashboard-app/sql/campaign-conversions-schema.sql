@@ -21,9 +21,15 @@
 -- Meglio fermarsi qui con un messaggio chiaro che scoprirlo dopo ore.
 DO $$
 BEGIN
+  -- SOLO NELLO SCHEMA public: senza questo filtro il controllo guarda anche le
+  -- viste di `letture`, che espongono la campagna per nome proprio perche' chi
+  -- legge da fuori non deve ricostruirsela dall'id. Quella colonna e' voluta, e
+  -- faceva scattare il salvagente su un database perfettamente sano.
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'eventi_conversione' AND column_name = 'campagna'
+    WHERE table_schema = 'public'
+      AND table_name = 'eventi_conversione'
+      AND column_name = 'campagna'
   ) THEN
     RAISE EXCEPTION 'Esiste gia una tabella eventi_conversione con lo schema VECCHIO (colonna testuale "campagna"). Questo file crea lo schema NUOVO e non puo convertirla da solo. Se non contiene dati da conservare (il bootstrap li ricostruisce da HubSpot), esegui prima: DROP TABLE eventi_conversione;';
   END IF;
@@ -181,6 +187,16 @@ ALTER TABLE trattativa ADD COLUMN IF NOT EXISTS motivo TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_trattativa_fase_ts ON trattativa (fase_ts) WHERE fase_ts IS NOT NULL;
 
+-- IL PRODOTTO VENDUTO, quando la trattativa e' stata vinta.
+--
+-- HubSpot compila "Prodotto_" solo a vendita fatta: verificato, tutte le 444
+-- trattative con un prodotto REM e tutte le 104 con un prodotto D.A. stanno in
+-- fase Vinta, nessuna altrove. Quindi questa colonna e' vuota sulla grande
+-- maggioranza delle righe, e dove c'e' e' la parola definitiva su che cosa e'
+-- stato venduto: batte la campagna, che dice solo da dove arriva il contatto, e
+-- batte il programma dedotto dalla registrazione.
+ALTER TABLE trattativa ADD COLUMN IF NOT EXISTS prodotto TEXT;
+
 -- TUTTI I PASSAGGI DI FASE, non solo l'ultimo.
 --
 -- Le colonne qui sopra dicono dove sta la trattativa ADESSO. Basta a colorare
@@ -271,6 +287,20 @@ CREATE INDEX IF NOT EXISTS idx_no_show_setter ON no_show (setter_id) WHERE sette
 ALTER TABLE presenza_call ADD COLUMN IF NOT EXISTS call_ts TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_presenza_call_ts ON presenza_call (call_ts) WHERE call_ts IS NOT NULL;
+
+-- DI QUALE PROGRAMMA SI E' PARLATO IN CALL.
+--
+-- La campagna dice da dove arriva il contatto, non che cosa gli e' stato
+-- proposto: misurato su 85 consulenze registrate, i Dipendenti Artificiali
+-- vengono nominati in 22 e solo 11 di quelle hanno campagna Imprenditoria - le
+-- altre arrivano da MBE, REM, Diventa Coach e ICMD. Su meta' di quelle
+-- consulenze la campagna direbbe un programma sbagliato.
+--
+-- Si ricava contando i nomi dei prodotti dentro la registrazione, che il
+-- riconoscimento delle presenze scarica gia': vedi src/lib/programma.ts. Resta
+-- NULL quando la call non nomina nessun programma - il 41% dei casi - e li'
+-- l'agenda mostra solo la campagna.
+ALTER TABLE presenza_call ADD COLUMN IF NOT EXISTS programma TEXT;
 
 -- LE CONSULENZE CHE ESISTONO SOLO COME REGISTRAZIONE.
 --

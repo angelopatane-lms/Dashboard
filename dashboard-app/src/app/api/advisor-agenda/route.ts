@@ -173,6 +173,25 @@ export type EventoAgenda = {
    */
   esito?: string;
   /**
+   * LA CAMPAGNA DA CUI ARRIVA IL CONTATTO.
+   *
+   * E' la provenienza, non cio' che gli e' stato proposto: su meta' delle
+   * consulenze in cui si vendono i Dipendenti Artificiali la campagna dice
+   * un'altra linea. Per questo sta in un'etichetta sua, accanto al programma e
+   * non al posto suo.
+   */
+  campagna?: string;
+  /**
+   * IL PROGRAMMA DI CUI SI E' PARLATO.
+   *
+   * Dal prodotto della trattativa quando la vendita e' stata fatta, altrimenti
+   * dai nomi pronunciati in registrazione. Manca quando la call non nomina
+   * nessun programma - il 41% dei casi - e quando la registrazione non c'e'.
+   */
+  programma?: string;
+  /** Il programma e' il prodotto venduto, non una deduzione dalla call. */
+  programmaVenduto?: boolean;
+  /**
    * LA PRATICA E' STATA PERSA, e la perdita e' arrivata da questa consulenza in
    * poi.
    *
@@ -869,10 +888,22 @@ function allaMezzOra(minuti: number): number {
  * La data di creazione serve a scegliere: un cliente puo' avere piu' pratiche, e
  * quella di questo appuntamento e' la nata insieme a lui.
  */
+/** La pratica di un contatto, come serve alla card. */
+type Pratica = {
+  fase: string;
+  motivo: string;
+  creata: number;
+  quando: number;
+  /** Da dove arriva il contatto. Non e' cio' che gli viene proposto. */
+  campagna: string;
+  /** Il prodotto venduto: c'e' solo a vendita fatta, ed e' definitivo. */
+  prodotto: string;
+};
+
 async function praticheDeiContatti(
   contatti: number[]
-): Promise<Map<number, Array<{ fase: string; motivo: string; creata: number; quando: number }>>> {
-  const out = new Map<number, Array<{ fase: string; motivo: string; creata: number; quando: number }>>();
+): Promise<Map<number, Array<Pratica>>> {
+  const out = new Map<number, Array<Pratica>>();
   if (!contatti.length) return out;
   const { rows } = await getDb().query<{
     id: string;
@@ -880,11 +911,15 @@ async function praticheDeiContatti(
     motivo: string | null;
     creata: Date | null;
     quando: Date | null;
+    campagna: string | null;
+    prodotto: string | null;
   }>(
     `SELECT COALESCE(a.nuovo_id, t.contact_id) AS id, t.fase, t.motivo,
-            t.creata_ts AS creata, t.fase_ts AS quando
+            t.creata_ts AS creata, t.fase_ts AS quando,
+            c.nome AS campagna, t.prodotto
        FROM trattativa t
        LEFT JOIN alias_contatto a ON a.vecchio_id = t.contact_id
+       LEFT JOIN campagna c ON c.id = t.campagna_id
       WHERE COALESCE(a.nuovo_id, t.contact_id) = ANY($1::bigint[])
         AND t.fase IS NOT NULL`,
     [contatti]
@@ -897,7 +932,9 @@ async function praticheDeiContatti(
       fase: String(r.fase ?? ""),
       motivo: String(r.motivo ?? ""),
       creata: r.creata ? r.creata.getTime() : NaN,
-      quando: r.quando ? r.quando.getTime() : NaN
+      quando: r.quando ? r.quando.getTime() : NaN,
+      campagna: String(r.campagna ?? ""),
+      prodotto: String(r.prodotto ?? "")
     });
   }
   return out;
@@ -1402,10 +1439,10 @@ async function presenzeDelleRiunioni(
   ids: string[],
   dalle: number,
   alle: number
-): Promise<Map<string, { esito: string; trascrizione: string; nelGiorno: boolean }>> {
+): Promise<Map<string, { esito: string; trascrizione: string; programma: string; nelGiorno: boolean }>> {
   if (!ids.length) return new Map();
   const r = await getDb().query(
-    `SELECT riunione_id, esito, trascrizione, call_ts, inizio_ts
+    `SELECT riunione_id, esito, trascrizione, programma, call_ts, inizio_ts
        FROM presenza_call WHERE riunione_id = ANY($1::text[])`,
     [ids]
   );
@@ -1415,6 +1452,7 @@ async function presenzeDelleRiunioni(
         riunione_id: string;
         esito: string;
         trascrizione: string;
+        programma: string | null;
         call_ts: Date | null;
         inizio_ts: Date | null;
       }) => {
@@ -1429,6 +1467,9 @@ async function presenzeDelleRiunioni(
           {
             esito: nelGiorno ? String(x.esito) : "",
             trascrizione: nelGiorno ? String(x.trascrizione ?? "") : "",
+            // Il programma di cui si e' parlato vale solo per la call di questa
+            // giornata, come tutto il resto che arriva dalla registrazione.
+            programma: nelGiorno ? String(x.programma ?? "") : "",
             nelGiorno
           }
         ];
@@ -1948,7 +1989,7 @@ export async function GET(req: NextRequest) {
       }),
       presenzeDelleRiunioni(grezzi.map((r) => r.id), dalle, alle).catch((err) => {
         console.error("[advisor-agenda] presenze", err instanceof Error ? err.message : err);
-        return new Map<string, { esito: string; trascrizione: string; nelGiorno: boolean }>();
+        return new Map<string, { esito: string; trascrizione: string; programma: string; nelGiorno: boolean }>();
       })
     ]);
 
@@ -1980,7 +2021,7 @@ export async function GET(req: NextRequest) {
       }),
       praticheDeiContatti(diGiornata).catch((err) => {
         console.error("[advisor-agenda] pratiche", err instanceof Error ? err.message : err);
-        return new Map<number, Array<{ fase: string; motivo: string; creata: number; quando: number }>>();
+        return new Map<number, Array<Pratica>>();
       }),
       passaggiDaMezzanotte(diGiornata).catch((err) => {
         console.error("[advisor-agenda] passaggi di fase", err instanceof Error ? err.message : err);
@@ -2163,7 +2204,7 @@ export async function GET(req: NextRequest) {
       // passata a un altro advisor, e regge meglio di "la piu' recente".
       const nascita = Date.parse(p.hs_createdate ?? "");
       const suePratiche = suoi.flatMap((c) => pratiche.get(c) ?? []);
-      let scelta: { fase: string; motivo: string; creata: number; quando: number } | null = null;
+      let scelta: Pratica | null = null;
       for (const x of suePratiche) {
         if (!Number.isFinite(x.creata)) continue;
         if (!scelta || Math.abs(x.creata - nascita) < Math.abs(scelta.creata - nascita)) scelta = x;
@@ -2241,6 +2282,23 @@ export async function GET(req: NextRequest) {
           ? `${etichettaFase} (${motivoFase})`
           : etichettaFase
         : "";
+
+      // DA DOVE ARRIVA IL CONTATTO E DI CHE COSA SI E' PARLATO.
+      //
+      // Sono due cose diverse e vanno mostrate come tali. La campagna e' la
+      // provenienza; il programma e' cio' che l'advisor ha proposto, e i due
+      // divergono spesso: misurato su 85 consulenze registrate, i Dipendenti
+      // Artificiali si nominano in 22 e solo 11 di quelle hanno campagna
+      // Imprenditoria - le altre vengono da MBE, REM, Diventa Coach e ICMD.
+      //
+      // L'ORDINE DELLE FONTI. Il prodotto sulla trattativa vinta e' definitivo:
+      // e' quello che il cliente ha comprato. Sotto, quello che si sente in
+      // registrazione. Piu' in basso non si scende: la campagna resta nella sua
+      // etichetta, e non travestita da programma.
+      const campagnaDellaPratica = scelta?.campagna ?? "";
+      const prodottoVenduto = scelta?.prodotto ?? "";
+      const programmaDetto = presenze.get(r.id)?.programma ?? "";
+      const programma = prodottoVenduto || programmaDetto;
 
       // LA PERDITA VALE DA QUESTA CONSULENZA IN POI, come la vittoria: una
       // trattativa gia' persa prima non riguarda una fascia che doveva ancora
@@ -2351,6 +2409,10 @@ export async function GET(req: NextRequest) {
             }
           : {}),
         ...(esitoDellaPratica ? { esito: esitoDellaPratica } : {}),
+        ...(campagnaDellaPratica ? { campagna: campagnaDellaPratica } : {}),
+        ...(programma
+          ? { programma, programmaVenduto: Boolean(prodottoVenduto) }
+          : {}),
         ...(persa ? { persa: true as const } : {}),
         ...(tipo === "svolta" && tsVinta !== null
           ? {

@@ -485,7 +485,10 @@ function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: (
 
                 Il nome della fase sta da solo, senza etichetta: "Semina" o "No
                 Show" si capiscono, e "Esito:" davanti rubava spazio alla riga. */}
-            {evento.esito || (evento.presenza && evento.presenza !== "non-si-sa") ? (
+            {evento.esito ||
+            evento.campagna ||
+            evento.programma ||
+            (evento.presenza && evento.presenza !== "non-si-sa") ? (
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                 {evento.esito ? (
                   // STESSA FORMA DELL'ALTRA ETICHETTA, e il pallino porta il
@@ -497,6 +500,45 @@ function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: (
                       style={{ background: coloreDellaFase(evento.esito) }}
                     />
                     {evento.esito}
+                  </span>
+                ) : null}
+                {/* CAMPAGNA E PROGRAMMA, nella stessa forma della fase.
+                    Sono due domande diverse: da dove arriva il contatto, e di
+                    che cosa gli hanno parlato. Tenerle separate e' il punto -
+                    su meta' delle consulenze in cui si vendono i Dipendenti
+                    Artificiali la campagna dice un'altra linea, e una sola
+                    etichetta farebbe credere a chi guarda che siano la stessa
+                    cosa.
+
+                    Niente pallino colorato qui: il colore in questa scheda
+                    significa "com'e' andata", e usarlo per una linea di
+                    prodotto gli toglierebbe quel significato. */}
+                {evento.campagna ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700"
+                    title="La campagna da cui arriva il contatto"
+                  >
+                    <span className="text-slate-500">Campagna</span>
+                    {evento.campagna}
+                  </span>
+                ) : null}
+                {evento.programma ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700"
+                    title={
+                      evento.programmaVenduto
+                        ? "Il prodotto venduto, scritto sulla trattativa"
+                        : "Dedotto da come se ne parla nella registrazione"
+                    }
+                  >
+                    <span className="text-slate-500">Programma</span>
+                    {evento.programma}
+                    {/* Da dove viene il dato, in chiaro: un programma dedotto
+                        dalla call non e' la stessa cosa di un prodotto firmato,
+                        e chi legge deve poterlo distinguere senza chiedere. */}
+                    <span className="font-normal text-slate-400">
+                      {evento.programmaVenduto ? "venduto" : "dalla call"}
+                    </span>
                   </span>
                 ) : null}
                 {evento.presenza && evento.presenza !== "non-si-sa" ? (
@@ -1003,7 +1045,9 @@ export default function AgendaGiornaliera({
                     // Si apre se c'e' qualcosa da vedere: l'analisi, la
                     // trascrizione o l'audio.
                     // Si apre anche solo per leggere l'esito della pratica...
-                    const apribile = Boolean(e.analisi || e.trascrizione || e.audio || e.esito);
+                    const apribile = Boolean(
+                      e.analisi || e.trascrizione || e.audio || e.esito || e.campagna || e.programma
+                    );
                     // ...ma IL PUNTINO RESTA PER CIO' CHE SI ASCOLTA O SI LEGGE.
                     // E' un richiamo, e richiamare su ogni card di una giornata
                     // piena - l'esito ce l'hanno quasi tutte - vorrebbe dire
