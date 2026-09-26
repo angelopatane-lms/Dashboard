@@ -544,15 +544,18 @@ function SchedaAnalisi({ evento, onChiudi }: { evento: EventoAgenda; onChiudi: (
                 ) : null}
                 {evento.presenza && evento.presenza !== "non-si-sa" ? (
                   <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700">
-                    <span
-                      className="inline-block h-2.5 w-2.5 rounded-full"
-                      style={{
-                        background:
-                          evento.presenza === "presentato"
-                            ? COLORI.svolta.fondo
-                            : COLORI.no_show.fondo
-                      }}
-                    />
+                    {/* NIENTE PALLINO SU "Il cliente era in call": il verde
+                        qui dentro e' il colore della fase Svolta, e appeso a
+                        un'altra etichetta faceva credere che quella frase
+                        dicesse com'e' andata la consulenza. Dice solo chi ha
+                        parlato. Il pallino resta dov'e' un codice da leggere,
+                        cioe' sulla fase. */}
+                    {evento.presenza !== "presentato" ? (
+                      <span
+                        className="inline-block h-2.5 w-2.5 rounded-full"
+                        style={{ background: COLORI.no_show.fondo }}
+                      />
+                    ) : null}
                     {/* SENZA "Dalla registrazione:" DAVANTI. Che venga di li'
                         si capisce da solo - nessun'altra fonte sa chi ha
                         parlato - e quelle due parole raddoppiavano la lunghezza
