@@ -33,7 +33,9 @@ export type FraseDetta = { testo: string };
  * dati veri: con queste, le call riconosciute come REM hanno campagna REM nel
  * 96% dei casi (25 su 26).
  */
-const SEGNALI: Array<{ programma: string; re: RegExp; soglia: number }> = [
+type Segnale = { programma: string; re: RegExp; soglia: number };
+
+const SEGNALI: Segnale[] = [
   // I nomi dei dipendenti artificiali e il nome del prodotto.
   //
   // SI CHIAMA COME LO CHIAMANO IN CALL, non come si chiama la categoria.
@@ -51,6 +53,28 @@ const SEGNALI: Array<{ programma: string; re: RegExp; soglia: number }> = [
 ];
 
 /**
+ * I SEGNALI DEBOLI, buoni solo quando nessun prodotto viene nominato.
+ *
+ * "Coach" non e' il nome di un prodotto: e' un mestiere, e in una consulenza
+ * Diventa Coach ricorre in continuazione - misurate 61 volte, 49, 37, 33 -
+ * mentre altrove capita di sfuggita. Prendendo le call che la dicono almeno
+ * dieci volte se ne trovano 31, e 21 hanno campagna Diventa Coach: da solo
+ * sbaglierebbe una volta su tre.
+ *
+ * Per questo vale SOLO in seconda battuta. Le altre dieci call sono consulenze
+ * REM o Dipendenti Artificiali in cui si e' parlato anche di coaching: hanno un
+ * nome di prodotto dentro, quindi vengono decise prima di arrivare qui e
+ * tengono la loro etichetta.
+ *
+ * MBE, MEP e ICMD restano fuori: in quelle call non si nomina nessuna parola
+ * che le distingua. Si dice "percorso", "master", "marketing" - che valgono per
+ * qualunque linea - e il nome del prodotto non arriva mai.
+ */
+const SEGNALI_DEBOLI: Segnale[] = [
+  { programma: "DIV COACH", re: /\bcoach\w*/gi, soglia: 10 }
+];
+
+/**
  * Il programma di cui si e' parlato, o null quando la call non lo nomina.
  *
  * Vince chi supera la propria soglia di piu', in proporzione: cosi' un nome
@@ -61,12 +85,19 @@ export function programmaDallaConversazione(frasi: FraseDetta[]): string | null 
   const testo = frasi.map((f) => f.testo).join(" ");
   if (testo.trim().length < 200) return null;
 
-  let miglior: { programma: string; forza: number } | null = null;
-  for (const s of SEGNALI) {
-    const quante = (testo.match(s.re) ?? []).length;
-    if (quante < s.soglia) continue;
-    const forza = quante / s.soglia;
-    if (!miglior || forza > miglior.forza) miglior = { programma: s.programma, forza };
-  }
-  return miglior?.programma ?? null;
+  const vincitore = (segnali: Segnale[]): string | null => {
+    let miglior: { programma: string; forza: number } | null = null;
+    for (const s of segnali) {
+      const quante = (testo.match(s.re) ?? []).length;
+      if (quante < s.soglia) continue;
+      const forza = quante / s.soglia;
+      if (!miglior || forza > miglior.forza) miglior = { programma: s.programma, forza };
+    }
+    return miglior?.programma ?? null;
+  };
+
+  // I nomi di prodotto decidono da soli. I segnali deboli intervengono solo se
+  // nessuno ha parlato: mescolarli farebbe vincere "coach" detto sessanta volte
+  // su "Oriana" detta tre, che e' l'esatto contrario di quanto valgono.
+  return vincitore(SEGNALI) ?? vincitore(SEGNALI_DEBOLI);
 }
