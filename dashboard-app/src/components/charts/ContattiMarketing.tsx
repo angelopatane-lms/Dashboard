@@ -24,7 +24,7 @@ type Dati = {
   inAttesa: number;
   totale: number;
   soglia: number;
-  storico: Array<{ giorno: string; reali: number; in_attesa: number }>;
+  storico: Array<{ giorno: string; reali: number; in_attesa: number; presoAlle: string }>;
 };
 
 function Riquadro({
@@ -86,10 +86,17 @@ export default function ContattiMarketing() {
 
   // I DECLASSATI DEL GIORNO SONO UNA DIFFERENZA, non un dato che HubSpot
   // fornisce: quanti contatti in piu' risultano "in attesa del rinnovo" rispetto
-  // alla fotografia di ieri notte. Il primo giorno la riga non c'e' ancora e la
+  // alla fotografia notturna. Il primo giorno la riga non c'e' ancora e la
   // casella lo dice invece di mostrare uno zero, che sarebbe una bugia.
-  const ieri = dati.storico[0];
-  const declassatiOggi = ieri ? dati.inAttesa - ieri.in_attesa : null;
+  //
+  // LA FOTOGRAFIA DEVE ESSERE DI NOTTE. Il lavoro automatico scatta alle 00:10,
+  // ma la primissima riga e' stata presa a mano nel pomeriggio: confrontarsi con
+  // quella dava "1 declassato", che non e' la giornata ma i venti minuti
+  // precedenti. Quando lo scatto non e' notturno la casella lo dichiara.
+  const base = dati.storico[0];
+  const declassatiOggi = base ? dati.inAttesa - base.in_attesa : null;
+  const oraBase = base ? Number(base.presoAlle.slice(0, 2)) : 0;
+  const baseNotturna = oraBase < 4;
 
   return (
     <section>
@@ -118,7 +125,9 @@ export default function ContattiMarketing() {
           nota={
             declassatiOggi === null
               ? "serve la fotografia di stanotte"
-              : `rispetto alla notte del ${ieri.giorno.split("-").reverse().slice(0, 2).join("/")}`
+              : baseNotturna
+                ? `da mezzanotte, fotografia delle ${base.presoAlle}`
+                : `solo dalle ${base.presoAlle} di oggi: la misura piena parte domani`
           }
         />
       </div>

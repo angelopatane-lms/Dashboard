@@ -62,16 +62,21 @@ export async function GET() {
 
     // Le fotografie delle ultime due settimane: servono a dire quanti ne sono
     // usciti oggi e a far vedere se il numero sale o scende.
-    let storico: Array<{ giorno: string; reali: number; in_attesa: number }> = [];
+    let storico: Array<{ giorno: string; reali: number; in_attesa: number; presoAlle: string }> = [];
     try {
-      const { rows } = await getDb().query<{ giorno: Date; reali: number; in_attesa: number }>(
-        `SELECT giorno, reali, in_attesa FROM marketing_snapshot
+      const { rows } = await getDb().query<{ giorno: Date; reali: number; in_attesa: number; preso_at: Date }>(
+        `SELECT giorno, reali, in_attesa, preso_at FROM marketing_snapshot
           ORDER BY giorno DESC LIMIT 14`
       );
+      // L'ORA DELLA FOTOGRAFIA VIAGGIA CON LA RIGA. Il confronto "declassati
+      // oggi" vale come misura della giornata solo se lo scatto e' di notte:
+      // una fotografia presa nel pomeriggio misura mezz'ora, non un giorno, e
+      // chi legge deve vederlo scritto invece di dedurlo da un numero strano.
       storico = rows.map((r) => ({
         giorno: r.giorno.toISOString().slice(0, 10),
         reali: Number(r.reali),
-        in_attesa: Number(r.in_attesa)
+        in_attesa: Number(r.in_attesa),
+        presoAlle: r.preso_at.toLocaleTimeString("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" })
       }));
     } catch (e) {
       // Senza fotografie la pagina mostra comunque i numeri di adesso: e' il
