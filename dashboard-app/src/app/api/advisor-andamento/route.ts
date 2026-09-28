@@ -45,6 +45,10 @@ import { nomiPerRotta } from "@/lib/proprietari";
  * hs_lastmodifieddate fermo al giorno prima dentro la risposta. Meglio pagare
  * ogni volta la chiamata che servire un dato vecchio senza accorgersene.
  */
+// Le ricerche passano dal modulo condiviso, che le mette in fila e aspetta
+// davvero quando HubSpot risponde 429: vedi src/lib/hubspotRicerca.ts.
+import { sfogliaRicerca } from "@/lib/hubspotRicerca";
+
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
@@ -77,45 +81,6 @@ export type AdvisorAndamentoRow = {
  * senza pausa la ricerca si prende un 429 a meta' strada. Al 429 si aspetta e
  * si riprova, invece di perdere tutto quello che si e' gia' letto.
  */
-async function sfoglia(
-  token: string,
-  url: string,
-  corpo: Record<string, unknown>
-): Promise<Array<{ properties: Record<string, string | null> }>> {
-  const out: Array<{ properties: Record<string, string | null> }> = [];
-  let after: string | undefined;
-
-  do {
-    let tentativi = 0;
-    let data: { results?: Array<{ properties: Record<string, string | null> }>; paging?: { next?: { after?: string } } } | null = null;
-
-    while (tentativi < 4) {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ ...corpo, limit: 100, ...(after ? { after } : {}) })
-      });
-      if (res.ok) {
-        data = await res.json();
-        break;
-      }
-      if (res.status === 429) {
-        tentativi += 1;
-        await new Promise((r) => setTimeout(r, 500 * tentativi));
-        continue;
-      }
-      throw new Error(`HubSpot ${res.status}: ${await res.text()}`);
-    }
-    if (!data) throw new Error("HubSpot: troppi tentativi");
-
-    out.push(...(data.results ?? []));
-    after = data.paging?.next?.after;
-    if (after) await new Promise((r) => setTimeout(r, 60));
-  } while (after);
-
-  return out;
-}
-
 /**
  * I mesi coperti dalla finestra, uno per uno.
  *
@@ -200,7 +165,7 @@ export async function GET(req: NextRequest) {
       // copiata perche' i due numeri devono coincidere.
       Promise.all(
         finestre.map((f) =>
-          sfoglia(token, `${HUBSPOT_API}/crm/v3/objects/deals/search`, {
+          sfogliaRicerca(token, `${HUBSPOT_API}/crm/v3/objects/deals/search`, {
             filterGroups: [
               {
                 filters: [
@@ -220,7 +185,7 @@ export async function GET(req: NextRequest) {
       // campagne. Il mese e' quello in cui i soldi sono arrivati.
       Promise.all(
         finestre.map((f) =>
-          sfoglia(token, `${HUBSPOT_API}/crm/v3/objects/${BOOM_OBJECT_ID}/search`, {
+          sfogliaRicerca(token, `${HUBSPOT_API}/crm/v3/objects/${BOOM_OBJECT_ID}/search`, {
             filterGroups: [
               {
                 filters: [

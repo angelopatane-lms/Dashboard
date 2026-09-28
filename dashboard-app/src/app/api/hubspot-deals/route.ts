@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { RawDealRecord } from "@/app/api/hubspot-data/route";
 import { nomiPerRotta } from "@/lib/proprietari";
+// La ricerca passa dal modulo condiviso: fila unica e attesa vera sul 429.
+// Prima ogni rotta aveva la sua ripetizione, e sommandosi superavano il tetto
+// al secondo di HubSpot - la colonna Appuntamenti restava a zero.
+import { ricercaHubSpot } from "@/lib/hubspotRicerca";
 
 /**
  * NESSUNA RISPOSTA MEMORIZZATA.
@@ -35,30 +39,6 @@ const HUBSPOT_API = "https://api.hubapi.com";
 // solo mese erano sette persone, fra cui chi aveva fissato 38 appuntamenti poi
 // disertati.
 
-async function searchWithRetry(
-  token: string,
-  url: string,
-  body: Record<string, unknown>
-): Promise<{ results: Array<{ properties: Record<string, string | null> }>; paging?: { next?: { after: string } } }> {
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-    if (res.ok) return res.json();
-    if (res.status === 429 && attempt < 3) {
-      const wait = 1000 * (attempt + 1);
-      console.warn(`[hubspot-deals] 429 rate limit, retrying in ${wait}ms`);
-      await new Promise((r) => setTimeout(r, wait));
-      continue;
-    }
-    const err = await res.text();
-    throw new Error(`HubSpot search ${res.status}: ${err}`);
-  }
-  throw new Error("Max retries exceeded");
-}
-
 export async function GET(req: NextRequest) {
   const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
   if (!token) return NextResponse.json({ error: "HUBSPOT_PRIVATE_APP_TOKEN not set" }, { status: 500 });
@@ -90,7 +70,7 @@ export async function GET(req: NextRequest) {
         ...(after ? { after } : {})
       };
 
-      const data = await searchWithRetry(token, `${HUBSPOT_API}/crm/v3/objects/deals/search`, body);
+      const data = await ricercaHubSpot(token, `${HUBSPOT_API}/crm/v3/objects/deals/search`, body, "hubspot-deals");
 
       const rawResults = data.results ?? [];
       for (const r of rawResults) {
@@ -110,7 +90,6 @@ export async function GET(req: NextRequest) {
       }
 
       after = data.paging?.next?.after;
-      if (after) await new Promise((r) => setTimeout(r, 200));
     } while (after);
 
     const uniqueOperatori = [...new Set(records.map((r) => r.operatore || "(empty)"))];

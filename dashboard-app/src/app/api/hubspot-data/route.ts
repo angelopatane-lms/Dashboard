@@ -3,6 +3,8 @@ import { getDb } from "@/lib/db";
 import { RE_SUFFISSO_VARIANTE, sqlEMarcatoreInstant, sqlNomeBase } from "@/lib/campagne";
 import { nomiPerRotta } from "@/lib/proprietari";
 import { campagnaEffettiva } from "@/lib/campagnaEffettiva";
+// Stessa fila delle altre ricerche: vedi src/lib/hubspotRicerca.ts.
+import { ricercaHubSpot } from "@/lib/hubspotRicerca";
 
 /**
  * NESSUNA RISPOSTA MEMORIZZATA.
@@ -76,30 +78,6 @@ export type RawDealRecord = {
 // solo mese erano sette persone, fra cui chi aveva fissato 38 appuntamenti poi
 // disertati.
 
-async function searchWithRetry(
-  token: string,
-  url: string,
-  body: Record<string, unknown>
-): Promise<{ results: Array<{ properties: Record<string, string | null> }>; paging?: { next?: { after: string } } }> {
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-    if (res.ok) return res.json();
-    if (res.status === 429 && attempt < 3) {
-      const wait = 1000 * (attempt + 1);
-      console.warn(`[hubspot-data] 429 rate limit, retrying in ${wait}ms`);
-      await new Promise((r) => setTimeout(r, wait));
-      continue;
-    }
-    const err = await res.text();
-    throw new Error(`HubSpot search ${res.status}: ${err}`);
-  }
-  throw new Error("Max retries exceeded");
-}
-
 async function fetchBoomRecords(
   token: string,
   fromMs: number,
@@ -128,7 +106,7 @@ async function fetchBoomRecords(
       ...(after ? { after } : {})
     };
 
-    const data = await searchWithRetry(token, `${HUBSPOT_API}/crm/v3/objects/${BOOM_OBJECT_ID}/search`, body);
+    const data = await ricercaHubSpot<any>(token, `${HUBSPOT_API}/crm/v3/objects/${BOOM_OBJECT_ID}/search`, body, "hubspot-data");
 
     for (const r of data.results ?? []) {
       const p = r.properties;
@@ -162,7 +140,7 @@ async function fetchBoomRecords(
       });
     }
     after = data.paging?.next?.after;
-    if (after) await new Promise((r) => setTimeout(r, 200));
+
   } while (after);
 
   return records;
