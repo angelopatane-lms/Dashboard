@@ -74,7 +74,7 @@ async function postHubSpot<T>(token: string, url: string, body: unknown): Promis
   throw new Error("Troppi tentativi");
 }
 
-type Chiamata = { id: string; ts: Date; connessa: boolean };
+type Chiamata = { id: string; ts: Date; connessa: boolean; proprietario: number | null };
 
 /**
  * Chiamate del periodo, paginate per hs_object_id crescente invece che con il
@@ -94,7 +94,12 @@ async function* cercaChiamate(
   while (true) {
     const d = await postHubSpot<any>(token, `${HUBSPOT_API}/crm/v3/objects/calls/search`, {
       limit: 100,
-      properties: ["hs_call_disposition", "hs_timestamp"],
+      // hubspot_owner_id: CHI HA CHIAMATO. Serve a contare Chiamate e
+      // Connessioni per advisor senza passare dal foglio, che va compilato a
+      // mano e non sempre lo e' - misurato il 28 settembre: un advisor con 136
+      // lead assegnati e 3 chiamate segnate, che mandava la percentuale di
+      // appuntamento al 400%.
+      properties: ["hs_call_disposition", "hs_timestamp", "hubspot_owner_id"],
       sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }],
       filterGroups: [
         {
@@ -112,7 +117,8 @@ async function* cercaChiamate(
       .map((r) => ({
         id: r.id,
         ts: new Date(r.properties?.hs_timestamp ?? ""),
-        connessa: r.properties?.hs_call_disposition === DISPOSIZIONE_CONNESSO
+        connessa: r.properties?.hs_call_disposition === DISPOSIZIONE_CONNESSO,
+        proprietario: Number(String(r.properties?.hubspot_owner_id ?? "").trim()) || null
       }))
       .filter((c) => !Number.isNaN(c.ts.getTime()));
 
@@ -245,19 +251,23 @@ export async function sincronizzaChiamate(
 
       if (conContatto.length) {
         await db.query(
-          `INSERT INTO chiamata (call_id, contact_id, campagna_id, ts, connessa)
-           SELECT * FROM UNNEST($1::bigint[], $2::bigint[], $3::int[], $4::timestamptz[], $5::boolean[])
+          `INSERT INTO chiamata (call_id, contact_id, campagna_id, ts, connessa, proprietario_id)
+           SELECT * FROM UNNEST($1::bigint[], $2::bigint[], $3::int[], $4::timestamptz[], $5::boolean[], $6::bigint[])
            ON CONFLICT (call_id) DO UPDATE
              SET contact_id  = EXCLUDED.contact_id,
                  campagna_id = EXCLUDED.campagna_id,
                  ts          = EXCLUDED.ts,
-                 connessa    = EXCLUDED.connessa`,
+                 connessa    = EXCLUDED.connessa,
+                 -- Il proprietario non si azzera se una lettura non lo porta:
+                 -- meglio quello di ieri che nessuno.
+                 proprietario_id = COALESCE(EXCLUDED.proprietario_id, chiamata.proprietario_id)`,
           [
             conContatto.map((c) => Number(c.id)),
             conContatto.map((c) => contatti.get(c.id)!),
             campagne,
             conContatto.map((c) => c.ts),
-            conContatto.map((c) => c.connessa)
+            conContatto.map((c) => c.connessa),
+            conContatto.map((c) => c.proprietario)
           ]
         );
       }

@@ -1,6 +1,7 @@
 import { fetchCsv } from "@/lib/csv";
 import Container from "@/components/ui/Container";
 import ContactEventsTimeline from "@/components/charts/ContactEventsTimeline";
+import ContattiMarketing from "@/components/charts/ContattiMarketing";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,11 @@ export default async function Page() {
 
   return (
     <Container>
+      {/* IN CIMA, perche' e' l'unica cosa di questa pagina che puo' costare
+          soldi: superata la soglia l'abbonamento sale di scaglione. */}
+      <div className="mb-8">
+        <ContattiMarketing />
+      </div>
       <div id="timeline-eventi" className="scroll-mt-6">
         <ContactEventsTimeline rows={trackingEventiRows} />
       </div>

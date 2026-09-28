@@ -394,6 +394,21 @@ CREATE TABLE IF NOT EXISTS chiamata (
   connessa    BOOLEAN NOT NULL
 );
 
+-- CHI HA FATTO LA CHIAMATA.
+--
+-- Serve a contare Chiamate e Connessioni per advisor leggendole da HubSpot
+-- invece che dal foglio Operatori, che va compilato a mano e non sempre lo e':
+-- misurato il 28 settembre, un advisor con 136 lead assegnati e 3 chiamate
+-- segnate - con gli appuntamenti che invece arrivano da HubSpot, la percentuale
+-- di appuntamento gli usciva al 400%.
+--
+-- Resta NULL sulle chiamate lette prima che questa colonna esistesse, finche'
+-- non si rilancia il bootstrap.
+ALTER TABLE chiamata ADD COLUMN IF NOT EXISTS proprietario_id BIGINT;
+
+CREATE INDEX IF NOT EXISTS idx_chiamata_proprietario
+  ON chiamata (proprietario_id, ts) WHERE proprietario_id IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_chiamata_ts ON chiamata (ts);
 
 -- Log delle esecuzioni del sync (bootstrap, full e incrementale), per monitoraggio.
@@ -421,4 +436,23 @@ CREATE TABLE IF NOT EXISTS sync_checkpoint (
   contatti      INT NOT NULL DEFAULT 0,
   eventi        INT NOT NULL DEFAULT 0,
   aggiornato_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- LA FOTOGRAFIA NOTTURNA DEI CONTATTI DI MARKETING.
+--
+-- HubSpot non sa dire quanti contatti un flusso ha declassato: l'API dei flussi
+-- risponde se sono attivi e basta, e la proprieta' "Contatti di Marketing fino
+-- al prossimo aggiornamento" non porta la data in cui e' cambiata. Contando
+-- ogni notte, la differenza fra due righe e' il numero di declassati del
+-- giorno - l'unica misura onesta che si possa avere.
+--
+-- `reali` sono i contatti di marketing veri; `in_attesa` quelli gia' declassati
+-- che aspettano il rinnovo per uscire davvero. La somma e' il numero che si
+-- legge su HubSpot, e da solo inganna: il 28 settembre diceva 344.249 mentre i
+-- contatti veri erano 194.477, sotto la soglia di 240.000.
+CREATE TABLE IF NOT EXISTS marketing_snapshot (
+  giorno    DATE PRIMARY KEY,
+  reali     INT NOT NULL,
+  in_attesa INT NOT NULL,
+  preso_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
