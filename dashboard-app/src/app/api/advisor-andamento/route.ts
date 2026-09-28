@@ -50,6 +50,10 @@ import { nomiPerRotta } from "@/lib/proprietari";
 import { sfogliaRicerca } from "@/lib/hubspotRicerca";
 
 export const dynamic = "force-dynamic";
+// Gli incassi si leggono ancora da HubSpot, mese per mese: su una finestra di un
+// anno sono decine di pagine e il tempo di default non basta. Era il motivo per
+// cui il grafico restava su "Caricamento dei dati in corso" per sempre.
+export const maxDuration = 300;
 export const fetchCache = "force-no-store";
 
 const HUBSPOT_API = "https://api.hubapi.com";
@@ -159,48 +163,32 @@ export async function GET(req: NextRequest) {
       fine: Math.min(m.fine, toMs)
     }));
 
-    const [perMeseDeal, perMeseIncassi] = await Promise.all([
-      // Appuntamenti: le trattative NATE nel mese, attribuite al setter se c'e'
-      // e altrimenti al proprietario. E' la regola di /api/hubspot-trattative,
-      // copiata perche' i due numeri devono coincidere.
-      Promise.all(
-        finestre.map((f) =>
-          sfogliaRicerca(token, `${HUBSPOT_API}/crm/v3/objects/deals/search`, {
-            filterGroups: [
-              {
-                filters: [
-                  { propertyName: "createdate", operator: "GTE", value: String(f.inizio) },
-                  { propertyName: "createdate", operator: "LTE", value: String(f.fine) },
-                  { propertyName: "pipeline", operator: "EQ", value: PIPELINE_ID }
-                ]
-              }
-            ],
-            // "createdate" serve anche fra le proprieta' e non solo nel filtro:
-            // senza, si sa che il deal e' nella finestra ma non in quale mese.
-            properties: ["setter", "hubspot_owner_id", "createdate"]
-          })
-        )
-      ),
-      // Chiusure e incassi: per DATA DI PAGAMENTO, come nel grafico delle
-      // campagne. Il mese e' quello in cui i soldi sono arrivati.
-      Promise.all(
-        finestre.map((f) =>
-          sfogliaRicerca(token, `${HUBSPOT_API}/crm/v3/objects/${BOOM_OBJECT_ID}/search`, {
-            filterGroups: [
-              {
-                filters: [
-                  { propertyName: "data_di_pagamento", operator: "GTE", value: String(f.inizio) },
-                  { propertyName: "data_di_pagamento", operator: "LTE", value: String(f.fine) }
-                ]
-              }
-            ],
-            properties: ["data_di_pagamento", "importo", "hubspot_owner_id", "setter"]
-          })
-        )
+    // GLI APPUNTAMENTI DAL NOSTRO DATABASE, non da HubSpot.
+    //
+    // Sono le stesse trattative: `trattativa` contiene la pipeline Appuntamenti
+    // e il sync la tiene allineata. Ma qui la finestra e' di dodici mesi, e
+    // sfogliare HubSpot mese per mese voleva dire un centinaio di chiamate a
+    // quattro al secondo: il grafico non finiva di caricare e rispondeva 502.
+    // Postgres risponde in millisecondi e raggruppa da solo.
+    //
+    // Verificato prima di cambiare: sui mesi confrontabili i due conteggi
+    // coincidono a meno di una o tre righe su milleduecento.
+    const perMeseIncassi = await Promise.all(
+      finestre.map((f) =>
+        sfogliaRicerca(token, `${HUBSPOT_API}/crm/v3/objects/${BOOM_OBJECT_ID}/search`, {
+          filterGroups: [
+            {
+              filters: [
+                { propertyName: "data_di_pagamento", operator: "GTE", value: String(f.inizio) },
+                { propertyName: "data_di_pagamento", operator: "LTE", value: String(f.fine) }
+              ]
+            }
+          ],
+          properties: ["data_di_pagamento", "importo", "hubspot_owner_id", "setter"]
+        })
       )
-    ]);
+    );
 
-    const deal = perMeseDeal.flat();
     const incassi = perMeseIncassi.flat();
 
     const per = new Map<string, AdvisorAndamentoRow>();
@@ -213,17 +201,20 @@ export async function GET(req: NextRequest) {
       return nuova;
     };
 
-    let dealSenzaPersona = 0;
-    for (const d of deal) {
-      const p = d.properties;
-      const id = (p.setter ?? "").trim() || (p.hubspot_owner_id ?? "").trim();
-      const operatore = id ? owners[id] ?? id : "";
-      const ms = quandoMs(p.createdate);
-      if (!operatore || !ms) {
-        dealSenzaPersona += 1;
-        continue;
-      }
-      tocca(mese(ms), operatore).appuntamenti += 1;
+    // Attribuzione al setter se c'e', altrimenti al proprietario: e' la regola
+    // di /api/hubspot-trattative, e i due numeri devono coincidere.
+    let appuntamentiLetti = 0;
+    const { rows: righeDeal } = await getDb().query<{ mese: string; persona: string; n: string }>(
+      `SELECT to_char(t.creata_ts, 'YYYY-MM') AS mese, p.nome AS persona, COUNT(*)::text AS n
+         FROM trattativa t
+         JOIN proprietario p ON p.id = COALESCE(t.setter_id, t.proprietario_id)
+        WHERE t.creata_ts >= $1::date AND t.creata_ts < ($2::date + INTERVAL '1 day')
+        GROUP BY 1, 2`,
+      [from, to]
+    );
+    for (const r of righeDeal) {
+      tocca(r.mese, r.persona).appuntamenti += Number(r.n);
+      appuntamentiLetti += Number(r.n);
     }
 
     let incassiSenzaPersona = 0;
@@ -272,7 +263,7 @@ export async function GET(req: NextRequest) {
 
     console.log(
       `[advisor-andamento] ${from} -> ${to} | vista:${perSetter ? "setter" : "advisor"} | ` +
-        `deal:${deal.length} (senza persona ${dealSenzaPersona}) ` +
+        `appuntamenti:${appuntamentiLetti} (dal database) ` +
         `incassi:${incassi.length} (senza persona ${incassiSenzaPersona})`
     );
 
