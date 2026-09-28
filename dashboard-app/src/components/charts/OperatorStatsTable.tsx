@@ -25,6 +25,23 @@ function rateBg(rate: number | null): string {
   return `rgba(245, 158, 11, ${(0.1 + pct * 0.45).toFixed(2)})`;
 }
 
+/**
+ * UNA PERCENTUALE NON PASSA IL 100%, nemmeno quando i numeri lo direbbero.
+ *
+ * Visto il 28 settembre: 400% di appuntamenti per un advisor con 4 appuntamenti
+ * e una sola connessione registrata. Il numeratore e il denominatore vengono da
+ * due posti diversi - gli appuntamenti da HubSpot, le connessioni dal foglio -
+ * e quando le chiamate non vengono segnate il rapporto esplode. Mostrarlo com'e'
+ * fa sembrare rotta la dashboard invece del dato che manca.
+ *
+ * Si taglia a 100, e la cella lo dice passandoci sopra col mouse: il valore
+ * vero resta leggibile a chi va a cercarlo, senza sporcare la colonna per
+ * tutti gli altri.
+ */
+function taglia(x: number | null): number | null {
+  return x === null ? null : Math.min(x, 1);
+}
+
 function tassoPresa(appt: number, conn: number): number | null {
   return conn > 0 ? appt / conn : null;
 }
@@ -380,7 +397,7 @@ export default function OperatorStatsTable({
     { label: "Chiamate", valore: (r) => r.chiamate },
     { label: "Connessioni", valore: (r) => r.connessioni },
     { label: "Appuntamenti", valore: (r) => effAppuntamenti(r) },
-    { label: "% Appuntamento", valore: (r) => tassoPresa(effAppuntamenti(r), r.connessioni) },
+    { label: "% Appuntamento", valore: (r) => taglia(tassoPresa(effAppuntamenti(r), r.connessioni)) },
     {
       label: isSetterView ? "No Show" : "Consulenze",
       valore: (r) => (isSetterView ? effNoShow(r) : effConsulenze(r))
@@ -399,12 +416,12 @@ export default function OperatorStatsTable({
             label: "% Consulenza",
             // Degli appuntamenti che ha fissato, quanti si sono tenuti. E' il
             // suo tasso di presentazione, la misura di quanto qualifica bene.
-            valore: (r: OperatorSummary) => tassoPresa(effConsulenzeChiusura(r), effAppuntamenti(r))
+            valore: (r: OperatorSummary) => taglia(tassoPresa(effConsulenzeChiusura(r), effAppuntamenti(r)))
           }
         ]
       : []),
     { label: "Chiusure", valore: (r) => effChiusure(r) },
-    { label: "% Chiusura", valore: (r) => tassoChiusura(effChiusure(r), effConsulenzeChiusura(r)) },
+    { label: "% Chiusura", valore: (r) => taglia(tassoChiusura(effChiusure(r), effConsulenzeChiusura(r))) },
     { label: "Boom", valore: (r) => effBoom(r) }
   ];
 
@@ -561,9 +578,14 @@ export default function OperatorStatsTable({
                 </td>
                 <td
                   className="border-r border-white px-2 py-1.5 text-right font-semibold tabular-nums"
-                  style={{ background: rateBg(tp) }}
+                  style={{ background: rateBg(taglia(tp)) }}
+                  title={
+                    tp !== null && tp > 1
+                      ? `${formatInt(effAppuntamenti(r))} appuntamenti su ${formatInt(r.connessioni)} connessioni: le chiamate non risultano registrate sul foglio. Valore reale ${formatPct(tp, 2)}.`
+                      : undefined
+                  }
                 >
-                  {tp !== null ? formatPct(tp, 2) : <span className="text-slate-400">–</span>}
+                  {tp !== null ? formatPct(taglia(tp) as number, 2) : <span className="text-slate-400">–</span>}
                 </td>
                 <td
                   className="border-r border-white px-2 py-1.5 text-right tabular-nums"
@@ -581,12 +603,17 @@ export default function OperatorStatsTable({
                     </td>
                     <td
                       className="border-r border-white px-2 py-1.5 text-right font-semibold tabular-nums"
-                      style={{ background: trattativeLoading ? undefined : rateBg(pc) }}
+                      style={{ background: trattativeLoading ? undefined : rateBg(taglia(pc)) }}
+                      title={
+                        pc !== null && pc > 1
+                          ? `${formatInt(effConsulenzeChiusura(r))} consulenze su ${formatInt(effAppuntamenti(r))} appuntamenti. Valore reale ${formatPct(pc, 2)}.`
+                          : undefined
+                      }
                     >
                       {trattativeLoading ? (
                         <span className="text-slate-400">–</span>
                       ) : pc !== null ? (
-                        formatPct(pc, 2)
+                        formatPct(taglia(pc) as number, 2)
                       ) : (
                         <span className="text-slate-400">–</span>
                       )}
@@ -601,9 +628,14 @@ export default function OperatorStatsTable({
                 </td>
                 <td
                   className="border-r border-white px-2 py-1.5 text-right font-semibold tabular-nums"
-                  style={{ background: hubspotLoading ? undefined : rateBg(tc) }}
+                  style={{ background: hubspotLoading ? undefined : rateBg(taglia(tc)) }}
+                  title={
+                    tc !== null && tc > 1
+                      ? `${formatInt(effChiusure(r))} chiusure su ${formatInt(effConsulenzeChiusura(r))} consulenze. Valore reale ${formatPct(tc, 2)}.`
+                      : undefined
+                  }
                 >
-                  {hubspotLoading ? <span className="text-slate-400">–</span> : tc !== null ? formatPct(tc, 2) : <span className="text-slate-400">–</span>}
+                  {hubspotLoading ? <span className="text-slate-400">–</span> : tc !== null ? formatPct(taglia(tc) as number, 2) : <span className="text-slate-400">–</span>}
                 </td>
                 <td
                   className="border-r border-white px-2 py-1.5 text-right tabular-nums"
@@ -665,20 +697,20 @@ export default function OperatorStatsTable({
             <td className="border-r border-white px-2 py-2 text-right tabular-nums">{formatInt(totals.connessioni)}</td>
             <td className="border-r border-white px-2 py-2 text-right tabular-nums">{trattativeLoading ? <span className="font-normal text-slate-400">–</span> : formatInt(totals.appuntamenti)}</td>
             <td className="border-r border-white px-2 py-2 text-right tabular-nums">
-              {trattativeLoading ? <span className="font-normal text-slate-400">–</span> : totalTp !== null ? formatPct(totalTp, 2) : <span className="font-normal text-slate-400">–</span>}
+              {trattativeLoading ? <span className="font-normal text-slate-400">–</span> : totalTp !== null ? formatPct(taglia(totalTp) as number, 2) : <span className="font-normal text-slate-400">–</span>}
             </td>
             <td className="border-r border-white px-2 py-2 text-right tabular-nums">{formatInt(totals.consulenze)}</td>  {/* consulenze or noShow */}
             {isSetterView ? (
               <>
                 <td className="border-r border-white px-2 py-2 text-right tabular-nums">{formatInt(totals.svolte)}</td>
                 <td className="border-r border-white px-2 py-2 text-right tabular-nums">
-                  {trattativeLoading ? <span className="font-normal text-slate-400">–</span> : totalPc !== null ? formatPct(totalPc, 2) : <span className="font-normal text-slate-400">–</span>}
+                  {trattativeLoading ? <span className="font-normal text-slate-400">–</span> : totalPc !== null ? formatPct(taglia(totalPc) as number, 2) : <span className="font-normal text-slate-400">–</span>}
                 </td>
               </>
             ) : null}
             <td className="border-r border-white px-2 py-2 text-right tabular-nums">{hubspotLoading ? <span className="font-normal text-slate-400">–</span> : formatInt(totals.chiusure)}</td>
             <td className="border-r border-white px-2 py-2 text-right tabular-nums">
-              {hubspotLoading ? <span className="font-normal text-slate-400">–</span> : totalTc !== null ? formatPct(totalTc, 2) : <span className="font-normal text-slate-400">–</span>}
+              {hubspotLoading ? <span className="font-normal text-slate-400">–</span> : totalTc !== null ? formatPct(taglia(totalTc) as number, 2) : <span className="font-normal text-slate-400">–</span>}
             </td>
             <td className="border-r border-white px-2 py-2 text-right tabular-nums">{hubspotLoading ? <span className="font-normal text-slate-400">–</span> : formatEur(totals.boom)}</td>
             {isSetterView ? null : (
