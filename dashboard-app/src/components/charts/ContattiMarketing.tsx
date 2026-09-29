@@ -29,7 +29,7 @@ type Dati = {
    *  non e' leggibile, che e' diverso da zero. */
   coda: number | null;
   codaExtra: number | null;
-  storico: Array<{ giorno: string; reali: number; in_attesa: number; marcatiStretto: number | null; presoAlle: string }>;
+  storico: Array<{ giorno: string; reali: number; in_attesa: number; marcatiStretto: number | null; declassatiStima: number | null; presoAlle: string }>;
 };
 
 export default function ContattiMarketing() {
@@ -144,8 +144,22 @@ export default function ContattiMarketing() {
                     <td className="px-3 py-1.5 text-slate-500">
                       {r.marcatiStretto === null ? "—" : formatInt(r.marcatiStretto)}
                     </td>
+                    {/* Quando la misura non c'e' - la prima notte, senza
+                        fotografie - si mostra la stima con la tilde davanti,
+                        cosi' nessuno la scambia per un numero contato. */}
                     <td className="px-3 py-1.5 text-slate-500">
-                      {delta === null ? "—" : delta > 0 ? `+${formatInt(delta)}` : formatInt(delta)}
+                      {delta !== null ? (
+                        delta > 0 ? `+${formatInt(delta)}` : formatInt(delta)
+                      ) : r.declassatiStima !== null ? (
+                        <span
+                          className="text-slate-400"
+                          title="Stima: quella notte non era ancora attiva la fotografia. Ricavata dal conteggio delle 23:30 pubblicato da HubSpot e dal ritmo di ingresso del giorno dopo."
+                        >
+                          ~{formatInt(r.declassatiStima)}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                   </tr>
                 );

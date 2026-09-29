@@ -71,10 +71,15 @@ export async function GET(req: NextRequest) {
 
   // DUE MOMENTI DIVERSI, UNA ROTTA SOLA.
   //
-  // Alle 23:45 si conta chi il flusso stretto ha appena marcato: dopo le 00:00
-  // quella proprieta' torna vuota, quindi o si guarda in quella mezz'ora o il
-  // dato e' perso per sempre. Alle 00:25 si contano i contatti di marketing, a
-  // flussi finiti.
+  // Alle 23:45 si fotografa il PRIMA: quanti contatti di marketing ci sono
+  // mentre i flussi non hanno ancora lavorato, e quanti ne ha appena marcati il
+  // flusso stretto - quella marcatura dopo le 00:00 sparisce, quindi o la si
+  // guarda in quella mezz'ora o e' persa. Alle 00:25 si fotografa il DOPO.
+  //
+  // Con le due misure il declassamento della notte e' una sottrazione esatta.
+  // Con il solo "dopo" era la differenza fra due notti, e ci finivano dentro
+  // anche gli iscritti della giornata: per la notte del 28 settembre si e'
+  // dovuto stimare, fra cento e trecento.
   //
   // Gli orari qui sono quelli italiani e non quelli del cron, che va a
   // Greenwich: ogni momento ha due programmazioni - una per l'ora legale e una
@@ -96,14 +101,30 @@ export async function GET(req: NextRequest) {
 
   if (momento === "marcatura") {
     try {
-      const marcati = await conta(token, [{ propertyName: "pulizia_stretta_attiva", operator: "EQ", value: "true" }]);
+      const [marcati, preReali, preInAttesa] = await Promise.all([
+        conta(token, [{ propertyName: "pulizia_stretta_attiva", operator: "EQ", value: "true" }]),
+        conta(token, [
+          { propertyName: "hs_marketable_status", operator: "EQ", value: "true" },
+          { propertyName: "hs_marketable_until_renewal", operator: "NEQ", value: "true" }
+        ]),
+        conta(token, [
+          { propertyName: "hs_marketable_status", operator: "EQ", value: "true" },
+          { propertyName: "hs_marketable_until_renewal", operator: "EQ", value: "true" }
+        ])
+      ]);
+      // I campi `reali` e `in_attesa` restano a zero: li scrivera' la
+      // fotografia delle 00:25, che e' quella del dopo. Qui si riempie solo il
+      // prima, cosi' una riga porta le due facce della stessa nottata.
       await getDb().query(
-        `INSERT INTO marketing_snapshot (giorno, reali, in_attesa, marcati_stretto, preso_at)
-         VALUES ($1::date, 0, 0, $2, now())
-         ON CONFLICT (giorno) DO UPDATE SET marcati_stretto = EXCLUDED.marcati_stretto`,
-        [notte, marcati]
+        `INSERT INTO marketing_snapshot (giorno, reali, in_attesa, marcati_stretto, pre_reali, pre_in_attesa, preso_at)
+         VALUES ($1::date, 0, 0, $2, $3, $4, now())
+         ON CONFLICT (giorno) DO UPDATE
+           SET marcati_stretto = EXCLUDED.marcati_stretto,
+               pre_reali = EXCLUDED.pre_reali,
+               pre_in_attesa = EXCLUDED.pre_in_attesa`,
+        [notte, marcati, preReali, preInAttesa]
       );
-      return NextResponse.json({ momento, notte, marcatiDalFlussoStretto: marcati });
+      return NextResponse.json({ momento, notte, marcatiDalFlussoStretto: marcati, preReali, preInAttesa });
     } catch (e) {
       console.error("[marketing-snapshot] marcatura:", e instanceof Error ? e.message : e);
       return NextResponse.json({ error: "Conteggio dei marcati non riuscito" }, { status: 500 });

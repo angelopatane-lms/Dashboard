@@ -480,3 +480,27 @@ ALTER TABLE marketing_snapshot ADD COLUMN IF NOT EXISTS coda_extra INT;
 -- interviene, e NULL dice "non ha lavorato" mentre uno zero direbbe "ha
 -- lavorato e non ha trovato nessuno".
 ALTER TABLE marketing_snapshot ADD COLUMN IF NOT EXISTS marcati_stretto INT;
+
+-- IL PRIMA DELLA NOTTATA, misurato alle 23:45.
+--
+-- Con il solo "dopo" il numero dei declassati si ricava dalla differenza fra
+-- due notti, e ci finisce dentro anche chi si e' iscritto durante il giorno:
+-- per la notte del 28 settembre si e' dovuto stimare, e la stima ballava fra
+-- cento e trecento. Misurando anche il prima, il declassamento di ogni notte
+-- e' una sottrazione esatta - e la differenza fra il dopo di una notte e il
+-- prima della successiva diventa il numero di nuovi contatti della giornata,
+-- che finora non avevamo.
+ALTER TABLE marketing_snapshot ADD COLUMN IF NOT EXISTS pre_reali INT;
+ALTER TABLE marketing_snapshot ADD COLUMN IF NOT EXISTS pre_in_attesa INT;
+
+-- UNA STIMA, QUANDO LA MISURA NON C'E'.
+--
+-- La prima notte non aveva fotografie: il declassamento del 28 settembre si e'
+-- ricavato dalla serie che HubSpot pubblica ogni mattina su Slack - il
+-- conteggio delle 23:30, prima dei flussi - piu' il ritmo di ingresso misurato
+-- il giorno dopo. Vale come ordine di grandezza, non come cifra, e la dashboard
+-- lo mostra con la tilde davanti perche' nessuno lo scambi per un dato.
+--
+-- Da riempire solo a mano e solo sulle notti senza misura: le altre restano
+-- NULL e il numero si calcola dalle fotografie.
+ALTER TABLE marketing_snapshot ADD COLUMN IF NOT EXISTS declassati_stima INT;
