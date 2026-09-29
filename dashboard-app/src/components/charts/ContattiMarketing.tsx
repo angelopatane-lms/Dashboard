@@ -119,11 +119,11 @@ export default function ContattiMarketing() {
           <table className="text-sm">
             <thead>
               <tr className="text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <th className="py-2 pr-4 text-left">Data esecuzione</th>
-                <th className="px-3 py-2">Marketing veri</th>
-                <th className="px-3 py-2">In attesa</th>
-                <th className="px-3 py-2">Declassati</th>
+                <th className="py-2 pr-4 text-left">Data e ora</th>
+                <th className="px-3 py-2">Contatti di marketing</th>
+                <th className="px-3 py-2">In attesa di rinnovo</th>
                 <th className="px-3 py-2">Declassati extra</th>
+                <th className="px-3 py-2">Declassati totali</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -132,16 +132,20 @@ export default function ContattiMarketing() {
                 const delta = prima ? r.in_attesa - prima.in_attesa : null;
                 return (
                   <tr key={r.giorno} className="text-right tabular-nums">
+                    {/* L'ORA ACCANTO ALLA DATA: due righe possono essere dello
+                        stesso giorno con fotografie prese a ore diverse, e senza
+                        l'ora non si capirebbe quale finestra misurano. */}
                     <td className="py-1.5 pr-4 text-left text-slate-700">
-                      {r.giorno.split("-").reverse().join("/")}
+                      {r.giorno.split("-").reverse().join("/")}{" "}
+                      <span className="text-slate-400">{r.presoAlle}</span>
                     </td>
                     <td className="px-3 py-1.5">{formatInt(r.reali)}</td>
                     <td className="px-3 py-1.5">{formatInt(r.in_attesa)}</td>
                     <td className="px-3 py-1.5 text-slate-500">
-                      {delta === null ? "—" : delta > 0 ? `+${formatInt(delta)}` : formatInt(delta)}
+                      {r.marcatiStretto === null ? "—" : formatInt(r.marcatiStretto)}
                     </td>
                     <td className="px-3 py-1.5 text-slate-500">
-                      {r.marcatiStretto === null ? "—" : formatInt(r.marcatiStretto)}
+                      {delta === null ? "—" : delta > 0 ? `+${formatInt(delta)}` : formatInt(delta)}
                     </td>
                   </tr>
                 );
