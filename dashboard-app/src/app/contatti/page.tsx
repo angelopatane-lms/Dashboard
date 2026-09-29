@@ -19,7 +19,7 @@ export default async function Page() {
     <Container>
       {/* IN CIMA, perche' e' l'unica cosa di questa pagina che puo' costare
           soldi: superata la soglia l'abbonamento sale di scaglione. */}
-      <div className="mb-8">
+      <div id="stato-contatti-marketing" className="mb-8 scroll-mt-6">
         <ContattiMarketing />
       </div>
       <div id="timeline-eventi" className="scroll-mt-6">
