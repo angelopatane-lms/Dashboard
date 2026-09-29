@@ -86,10 +86,12 @@ export default function ContattiMarketing() {
 
   // QUANTI NE HA DECLASSATI L'ULTIMA NOTTE, non "da stamattina".
   //
-  // I flussi di HubSpot girano alle 02:00 e la fotografia scatta subito dopo:
-  // quando qualcuno apre la pagina, il lavoro della notte e' gia' dentro lo
-  // scatto, e un conteggio "da mezzanotte a adesso" trova sempre zero. Visto il
-  // 29 settembre: 284 declassati nella notte, e la casella diceva 0.
+  // I due flussi girano a cavallo della mezzanotte: alle 23:30 quello stretto
+  // marca i contatti se siamo fuori soglia, alle 00:00 il principale declassa
+  // quelli marcati insieme al segmento Declassabili. La fotografia scatta dopo,
+  // quindi quando qualcuno apre la pagina il lavoro della notte e' gia' dentro
+  // lo scatto e un conteggio "da mezzanotte a adesso" trova sempre zero. Visto
+  // il 29 settembre: 284 declassati nella notte, e la casella diceva 0.
   //
   // La misura giusta e' la differenza fra le ultime due fotografie: e' il
   // risultato di una nottata intera, ed e' il numero che dice se i flussi

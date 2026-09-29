@@ -6,9 +6,13 @@
 // cambiata. L'unico modo di misurare il lavoro dei flussi e' contare ogni notte
 // e guardare la differenza fra due notti.
 //
-// QUANDO. Alle 00:10, cioe' dopo che i flussi notturni hanno finito il loro
-// giro delle 02:00 del giorno precedente e prima che ricominci la giornata. La
-// riga porta la data del giorno in cui e' stata presa.
+// QUANDO. Dopo che i flussi hanno finito: alle 23:30 quello stretto marca i
+// contatti se siamo fuori soglia, alle 00:00 il principale li declassa insieme
+// al segmento Declassabili. La fotografia e' programmata alle 00:10 UTC, che in
+// Italia sono le 02:10 - i cron di Vercel vanno a UTC, e questo lascia due ore
+// buone di margine perche' i flussi finiscano. La riga porta la data del giorno
+// in cui e' stata presa, quindi la differenza con quella del giorno prima e' il
+// lavoro di quella nottata.
 //
 // SI PUO' RILANCIARE: la chiave e' il giorno, quindi una seconda esecuzione
 // aggiorna la riga invece di aggiungerne una.
