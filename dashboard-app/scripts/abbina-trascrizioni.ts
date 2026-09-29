@@ -10,7 +10,9 @@
 //
 // Uso:  npm run abbina -- --da 2026-08-01 --a 2026-09-13
 //       npm run abbina -- --giorni 14
+//       npm run abbina -- --da 2026-05-25 --a 2026-05-31 --dump elenco.json
 
+import { writeFileSync } from "node:fs";
 import { richiedi } from "./env";
 import {
   abbina,
@@ -405,6 +407,28 @@ async function main() {
   }
   console.log(`  gia' riferiti alla STESSA consulenza, quindi da non toccare: ${stessaConsulenza}`);
   console.log(`  scritture effettive che farebbe: ${abbinamenti.length - stessaConsulenza}`);
+
+  // L'ELENCO COMPLETO SU FILE, quando serve analizzarlo altrove.
+  //
+  // A schermo se ne stampano venti: bastano per un controllo a occhio, non per
+  // confrontare due periodi fra loro. Con --dump l'elenco esce intero in JSON,
+  // con l'identificativo della trascrizione, e da li' si possono riprendere le
+  // frasi e misurare come sono andate le call.
+  const dump = argomento("dump");
+  if (dump) {
+    const righe = abbinamenti.map((x) => ({
+      trascrizione: x.registrazione.id,
+      stanza: x.registrazione.stanza,
+      inizio: new Date(x.registrazione.inizio).toISOString(),
+      durataMin: Math.round(x.registrazione.durataMin),
+      criterio: x.criterio,
+      contattoId: x.riunione.contattoId ?? null,
+      contattoNome: x.riunione.contattoNome ?? null,
+      advisor: nome(x.riunione.advisorEffettivo)
+    }));
+    writeFileSync(dump, JSON.stringify(righe));
+    console.log(`\nelenco completo (${righe.length} abbinamenti) scritto in ${dump}`);
+  }
 
   console.log("\n=== PRIMI VENTI ABBINAMENTI ===");
   for (const x of abbinamenti.slice(0, 20)) {
