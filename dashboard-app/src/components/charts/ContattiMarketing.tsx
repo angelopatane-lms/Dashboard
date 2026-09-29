@@ -28,7 +28,7 @@ type Dati = {
    *  non e' leggibile, che e' diverso da zero. */
   coda: number | null;
   codaExtra: number | null;
-  storico: Array<{ giorno: string; reali: number; in_attesa: number; presoAlle: string }>;
+  storico: Array<{ giorno: string; reali: number; in_attesa: number; marcatiStretto: number | null; presoAlle: string }>;
 };
 
 function Riquadro({
@@ -136,6 +136,12 @@ export default function ContattiMarketing() {
             declassatiNotte === null
               ? "serve una seconda fotografia"
               : `notte del ${ultima.giorno.split("-").reverse().slice(0, 2).join("/")}` +
+                // Quanti ne ha marcati il flusso stretto, contati nella mezz'ora
+                // in cui la proprieta' e' popolata. Quando non ha lavorato - cioe'
+                // quando siamo dentro soglia - il dato manca e non si scrive
+                // niente, invece di un "0 dallo stretto" che sembrerebbe un
+                // fallimento.
+                (ultima.marcatiStretto ? `, ${formatInt(ultima.marcatiStretto)} dal flusso stretto` : "") +
                 (daAllora !== 0 ? `, ${daAllora > 0 ? "+" : ""}${formatInt(daAllora)} da allora` : "")
           }
         />
@@ -171,6 +177,7 @@ export default function ContattiMarketing() {
                 <th className="px-3 py-2">Marketing veri</th>
                 <th className="px-3 py-2">In attesa</th>
                 <th className="px-3 py-2">Declassati</th>
+                <th className="px-3 py-2">Flusso stretto</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -186,6 +193,9 @@ export default function ContattiMarketing() {
                     <td className="px-3 py-1.5">{formatInt(r.in_attesa)}</td>
                     <td className="px-3 py-1.5 text-slate-500">
                       {delta === null ? "—" : delta > 0 ? `+${formatInt(delta)}` : formatInt(delta)}
+                    </td>
+                    <td className="px-3 py-1.5 text-slate-500">
+                      {r.marcatiStretto === null ? "—" : formatInt(r.marcatiStretto)}
                     </td>
                   </tr>
                 );

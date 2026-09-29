@@ -466,3 +466,17 @@ CREATE TABLE IF NOT EXISTS marketing_snapshot (
 -- notte avra' da lavorare molto o niente.
 ALTER TABLE marketing_snapshot ADD COLUMN IF NOT EXISTS coda INT;
 ALTER TABLE marketing_snapshot ADD COLUMN IF NOT EXISTS coda_extra INT;
+
+-- QUANTI NE HA MARCATI IL FLUSSO STRETTO, quella notte.
+--
+-- Il flusso delle 23:30 segna i contatti sulla proprieta' "Pulizia Stretta
+-- Attiva" e alle 00:00 il principale li declassa: fuori da quella mezz'ora la
+-- proprieta' e' vuota, quindi l'unico modo di sapere quanti erano e' contarli
+-- mentre sono marcati. Ci pensa una seconda fotografia alle 23:45, che scrive
+-- sulla riga del GIORNO DOPO - cosi' il marcato e il declassato della stessa
+-- nottata stanno sulla stessa riga.
+--
+-- Resta NULL nelle notti in cui siamo dentro soglia: li' il flusso stretto non
+-- interviene, e NULL dice "non ha lavorato" mentre uno zero direbbe "ha
+-- lavorato e non ha trovato nessuno".
+ALTER TABLE marketing_snapshot ADD COLUMN IF NOT EXISTS marcati_stretto INT;

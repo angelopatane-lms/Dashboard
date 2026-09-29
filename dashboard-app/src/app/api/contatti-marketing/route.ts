@@ -85,10 +85,10 @@ export async function GET() {
 
     // Le fotografie delle ultime due settimane: servono a dire quanti ne sono
     // usciti oggi e a far vedere se il numero sale o scende.
-    let storico: Array<{ giorno: string; reali: number; in_attesa: number; presoAlle: string }> = [];
+    let storico: Array<{ giorno: string; reali: number; in_attesa: number; marcatiStretto: number | null; presoAlle: string }> = [];
     try {
-      const { rows } = await getDb().query<{ giorno: Date; reali: number; in_attesa: number; preso_at: Date }>(
-        `SELECT giorno, reali, in_attesa, preso_at FROM marketing_snapshot
+      const { rows } = await getDb().query<{ giorno: Date; reali: number; in_attesa: number; marcati_stretto: number | null; preso_at: Date }>(
+        `SELECT giorno, reali, in_attesa, marcati_stretto, preso_at FROM marketing_snapshot
           ORDER BY giorno DESC LIMIT 14`
       );
       // L'ORA DELLA FOTOGRAFIA VIAGGIA CON LA RIGA. Il confronto "declassati
@@ -99,6 +99,7 @@ export async function GET() {
         giorno: r.giorno.toISOString().slice(0, 10),
         reali: Number(r.reali),
         in_attesa: Number(r.in_attesa),
+        marcatiStretto: r.marcati_stretto === null ? null : Number(r.marcati_stretto),
         presoAlle: r.preso_at.toLocaleTimeString("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" })
       }));
     } catch (e) {

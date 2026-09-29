@@ -69,14 +69,45 @@ export async function GET(req: NextRequest) {
   const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
   if (!token) return NextResponse.json({ error: "HUBSPOT_PRIVATE_APP_TOKEN non impostato" }, { status: 500 });
 
-  // Passa solo la chiamata che cade nella mezz'ora giusta italiana: l'altra
-  // esce senza toccare niente. Senza questo controllo, una delle due
-  // scatterebbe prima dei flussi e sovrascriverebbe la foto buona con una
-  // presa troppo presto.
+  // DUE MOMENTI DIVERSI, UNA ROTTA SOLA.
+  //
+  // Alle 23:45 si conta chi il flusso stretto ha appena marcato: dopo le 00:00
+  // quella proprieta' torna vuota, quindi o si guarda in quella mezz'ora o il
+  // dato e' perso per sempre. Alle 00:25 si contano i contatti di marketing, a
+  // flussi finiti.
+  //
+  // Gli orari qui sono quelli italiani e non quelli del cron, che va a
+  // Greenwich: ogni momento ha due programmazioni - una per l'ora legale e una
+  // per quella solare - e questo controllo lascia passare solo quella giusta.
   const adesso = new Date().toLocaleTimeString("it-IT", { timeZone: "Europe/Rome", hour12: false });
   const [ore, minuti] = adesso.split(":").map(Number);
-  if (!(ore === 0 && minuti >= 15 && minuti < 55)) {
-    return NextResponse.json({ saltato: true, oraItaliana: adesso });
+  const momento = ore === 23 && minuti >= 35 ? "marcatura" : ore === 0 && minuti >= 15 && minuti < 55 ? "conteggio" : null;
+  if (!momento) return NextResponse.json({ saltato: true, oraItaliana: adesso });
+
+  // Il giorno di Roma: una fotografia delle 00:25 italiane non deve finire sul
+  // giorno prima solo perche' il server ragiona in UTC. Quella delle 23:45 si
+  // scrive invece sulla riga di DOMANI, perche' appartiene alla nottata che sta
+  // cominciando.
+  const oggiRoma = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
+  const notte =
+    momento === "marcatura"
+      ? new Date(Date.parse(`${oggiRoma}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10)
+      : oggiRoma;
+
+  if (momento === "marcatura") {
+    try {
+      const marcati = await conta(token, [{ propertyName: "pulizia_stretta_attiva", operator: "EQ", value: "true" }]);
+      await getDb().query(
+        `INSERT INTO marketing_snapshot (giorno, reali, in_attesa, marcati_stretto, preso_at)
+         VALUES ($1::date, 0, 0, $2, now())
+         ON CONFLICT (giorno) DO UPDATE SET marcati_stretto = EXCLUDED.marcati_stretto`,
+        [notte, marcati]
+      );
+      return NextResponse.json({ momento, notte, marcatiDalFlussoStretto: marcati });
+    } catch (e) {
+      console.error("[marketing-snapshot] marcatura:", e instanceof Error ? e.message : e);
+      return NextResponse.json({ error: "Conteggio dei marcati non riuscito" }, { status: 500 });
+    }
   }
 
   try {
@@ -93,20 +124,16 @@ export async function GET(req: NextRequest) {
       dimensioneLista(token, LISTA_DECLASSABILI_EXTRA)
     ]);
 
-    // Il giorno e' quello di Roma: una fotografia presa alle 00:10 italiane non
-    // deve finire sul giorno prima solo perche' il server ragiona in UTC.
-    const giorno = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
-
     await getDb().query(
       `INSERT INTO marketing_snapshot (giorno, reali, in_attesa, coda, coda_extra, preso_at)
        VALUES ($1::date, $2, $3, $4, $5, now())
        ON CONFLICT (giorno) DO UPDATE
          SET reali = EXCLUDED.reali, in_attesa = EXCLUDED.in_attesa,
              coda = EXCLUDED.coda, coda_extra = EXCLUDED.coda_extra, preso_at = now()`,
-      [giorno, reali, inAttesa, coda, codaExtra]
+      [notte, reali, inAttesa, coda, codaExtra]
     );
 
-    return NextResponse.json({ giorno, reali, inAttesa, coda, codaExtra, totale: reali + inAttesa });
+    return NextResponse.json({ momento, giorno: notte, reali, inAttesa, coda, codaExtra, totale: reali + inAttesa });
   } catch (e) {
     console.error("[marketing-snapshot]", e instanceof Error ? e.message : e);
     return NextResponse.json({ error: "Fotografia non riuscita" }, { status: 500 });
