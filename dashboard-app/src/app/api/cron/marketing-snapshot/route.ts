@@ -6,13 +6,19 @@
 // cambiata. L'unico modo di misurare il lavoro dei flussi e' contare ogni notte
 // e guardare la differenza fra due notti.
 //
-// QUANDO. Dopo che i flussi hanno finito: alle 23:30 quello stretto marca i
-// contatti se siamo fuori soglia, alle 00:00 il principale li declassa insieme
-// al segmento Declassabili. La fotografia e' programmata alle 00:10 UTC, che in
-// Italia sono le 02:10 - i cron di Vercel vanno a UTC, e questo lascia due ore
-// buone di margine perche' i flussi finiscano. La riga porta la data del giorno
-// in cui e' stata presa, quindi la differenza con quella del giorno prima e' il
-// lavoro di quella nottata.
+// QUANDO, E PERCHE' DUE ORARI PER UNA FOTOGRAFIA SOLA. I flussi girano a
+// cavallo della mezzanotte: alle 23:30 quello stretto marca i contatti se siamo
+// fuori soglia, alle 00:00 il principale li declassa insieme al segmento
+// Declassabili. La foto va scattata subito dopo - alle 00:25 - perche' un
+// ritardo di ore vorrebbe dire accorgersi solo la mattina dopo che i flussi non
+// hanno lavorato.
+//
+// I cron di Vercel pero' vanno a orario di Greenwich, che da noi e' due ore
+// indietro d'estate e una d'inverno: un orario fisso scatterebbe alle 00:25 per
+// meta' anno e alle 23:25 per l'altra meta', cioe' PRIMA dei flussi, misurando
+// la notte sbagliata. Per questo ce ne sono due, alle 22:25 e alle 23:25 di
+// Greenwich, e a decidere quale vale e' il controllo qui sotto sull'ora
+// italiana: ne passa sempre e solo uno.
 //
 // SI PUO' RILANCIARE: la chiave e' il giorno, quindi una seconda esecuzione
 // aggiorna la riga invece di aggiungerne una.
@@ -41,6 +47,16 @@ export async function GET(req: NextRequest) {
   }
   const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
   if (!token) return NextResponse.json({ error: "HUBSPOT_PRIVATE_APP_TOKEN non impostato" }, { status: 500 });
+
+  // Passa solo la chiamata che cade nella mezz'ora giusta italiana: l'altra
+  // esce senza toccare niente. Senza questo controllo, una delle due
+  // scatterebbe prima dei flussi e sovrascriverebbe la foto buona con una
+  // presa troppo presto.
+  const adesso = new Date().toLocaleTimeString("it-IT", { timeZone: "Europe/Rome", hour12: false });
+  const [ore, minuti] = adesso.split(":").map(Number);
+  if (!(ore === 0 && minuti >= 15 && minuti < 55)) {
+    return NextResponse.json({ saltato: true, oraItaliana: adesso });
+  }
 
   try {
     const [reali, inAttesa] = await Promise.all([
