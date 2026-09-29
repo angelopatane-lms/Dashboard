@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import SectionTitle from "@/components/ui/SectionTitle";
+import SogliaMarketing from "@/components/charts/SogliaMarketing";
 import { formatInt } from "@/lib/format";
 
 /**
@@ -30,29 +31,6 @@ type Dati = {
   codaExtra: number | null;
   storico: Array<{ giorno: string; reali: number; in_attesa: number; marcatiStretto: number | null; presoAlle: string }>;
 };
-
-function Riquadro({
-  etichetta,
-  valore,
-  nota,
-  tono = "neutro"
-}: {
-  etichetta: string;
-  valore: string;
-  nota?: string;
-  tono?: "neutro" | "buono" | "allarme";
-}) {
-  const fondo =
-    tono === "allarme" ? "bg-rose-50 border-rose-200" : tono === "buono" ? "bg-emerald-50 border-emerald-200" : "bg-white border-slate-200";
-  const testo = tono === "allarme" ? "text-rose-900" : tono === "buono" ? "text-emerald-900" : "text-slate-900";
-  return (
-    <div className={`rounded-lg border px-4 py-3 ${fondo}`}>
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{etichetta}</div>
-      <div className={`mt-1 text-2xl font-semibold tabular-nums ${testo}`}>{valore}</div>
-      {nota ? <div className="mt-0.5 text-xs text-slate-500">{nota}</div> : null}
-    </div>
-  );
-}
 
 export default function ContattiMarketing() {
   const [dati, setDati] = useState<Dati | null>(null);
@@ -85,9 +63,6 @@ export default function ContattiMarketing() {
     );
   }
 
-  const margine = dati.soglia - dati.reali;
-  const fuoriSoglia = margine < 0;
-
   // QUANTI NE HA DECLASSATI L'ULTIMA NOTTE, non "da stamattina".
   //
   // I due flussi girano a cavallo della mezzanotte: alle 23:30 quello stretto
@@ -110,42 +85,17 @@ export default function ContattiMarketing() {
 
   return (
     <section>
-      <SectionTitle>Contatti di Marketing</SectionTitle>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Riquadro
-          etichetta="Contatti di marketing veri"
-          valore={formatInt(dati.reali)}
-          nota={`Soglia ${formatInt(dati.soglia)}`}
-          tono={fuoriSoglia ? "allarme" : "buono"}
-        />
-        <Riquadro
-          etichetta={fuoriSoglia ? "Oltre la soglia di" : "Margine sulla soglia"}
-          valore={formatInt(Math.abs(margine))}
-          nota={fuoriSoglia ? "servono altri declassamenti" : "spazio ancora disponibile"}
-          tono={fuoriSoglia ? "allarme" : "buono"}
-        />
-        <Riquadro
-          etichetta="Declassati, in attesa del rinnovo"
-          valore={formatInt(dati.inAttesa)}
-          nota="usciranno al prossimo aggiornamento"
-        />
-        <Riquadro
-          etichetta="Declassati nell'ultima notte"
-          valore={declassatiNotte === null ? "—" : formatInt(declassatiNotte)}
-          nota={
-            declassatiNotte === null
-              ? "serve una seconda fotografia"
-              : `notte del ${ultima.giorno.split("-").reverse().slice(0, 2).join("/")}` +
-                // Quanti ne ha marcati il flusso stretto, contati nella mezz'ora
-                // in cui la proprieta' e' popolata. Quando non ha lavorato - cioe'
-                // quando siamo dentro soglia - il dato manca e non si scrive
-                // niente, invece di un "0 dallo stretto" che sembrerebbe un
-                // fallimento.
-                (ultima.marcatiStretto ? `, ${formatInt(ultima.marcatiStretto)} dal flusso stretto` : "") +
-                (daAllora !== 0 ? `, ${daAllora > 0 ? "+" : ""}${formatInt(daAllora)} da allora` : "")
-          }
-        />
-      </div>
+      {/* Le carte e la barra delle soglie stanno in un componente a parte, che
+          non sa niente di come i numeri sono stati presi: cosi' si e' potuto
+          provarlo in anteprima con valori inventati, compresi quelli fuori
+          soglia che nella realta' speriamo di non vedere mai. */}
+      <SogliaMarketing
+        reali={dati.reali}
+        inAttesa={dati.inAttesa}
+        declassatiNotte={declassatiNotte}
+        marcatiStretto={ultima?.marcatiStretto ?? null}
+        barraNellaCarta={false}
+      />
 
       <p className="mt-2 text-xs text-slate-500">
         {/* LA RISERVA NON E' UNA CODA. Il segmento Declassabili viene lavorato
