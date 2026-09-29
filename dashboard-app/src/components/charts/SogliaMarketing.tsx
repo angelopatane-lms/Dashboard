@@ -125,7 +125,10 @@ export default function SogliaMarketing({
       {/* LA BARRA STA SOTTO LE CARTE: i numeri si leggono per primi, la barra
           e' il commento che dice dove stanno rispetto ai limiti. Le larghezze
           sono quote della scala, non percentuali del valore. */}
-      <div className="mt-5">
+      {/* Lo stesso passo fra tutti i blocchi della sezione - carte, barra, nota,
+          tabella - cosi' non sembra che qualcosa sia appiccicato e altro
+          lontano. */}
+      <div className="mt-4">
         {/* GLI ULTIMI DIECIMILA HANNO UN COLORE LORO.
             Il grigio del margine si ferma a 240.000, e la fascia fra soglia e
             limite resta rosa chiaro in ogni stato: e' lo spazio che non

@@ -97,7 +97,7 @@ export default function ContattiMarketing() {
         barraNellaCarta={false}
       />
 
-      <p className="mt-2 text-xs text-slate-500">
+      <p className="mt-4 text-xs text-slate-500">
         {/* LA RISERVA NON E' UNA CODA. Il segmento Declassabili viene lavorato
             ogni notte; quello Extra lo tocca il flusso stretto soltanto se
             siamo fuori soglia, quindi finche' il margine regge resta fermo - e
