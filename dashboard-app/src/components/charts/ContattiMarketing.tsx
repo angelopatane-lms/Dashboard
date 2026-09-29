@@ -46,7 +46,7 @@ export default function ContattiMarketing() {
   if (errore) {
     return (
       <section>
-        <SectionTitle>Contatti di Marketing</SectionTitle>
+        <SectionTitle>Stato Contatti di Marketing</SectionTitle>
         <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
           Dati non disponibili: {errore}
         </div>
@@ -57,7 +57,7 @@ export default function ContattiMarketing() {
   if (!dati) {
     return (
       <section>
-        <SectionTitle>Contatti di Marketing</SectionTitle>
+        <SectionTitle>Stato Contatti di Marketing</SectionTitle>
         <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-400">Lettura da HubSpot…</div>
       </section>
     );

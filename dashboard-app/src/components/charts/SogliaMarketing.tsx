@@ -87,7 +87,7 @@ export default function SogliaMarketing({
 
   return (
     <section>
-      <SectionTitle>Contatti di Marketing</SectionTitle>
+      <SectionTitle>Stato Contatti di Marketing</SectionTitle>
 
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -146,14 +146,14 @@ export default function SogliaMarketing({
             riga rossa sottile, sopra la barra, dice esattamente dove sta il
             confine da non passare. Sta in posizione assoluta cosi' resta
             ferma anche quando le fasce cambiano larghezza. */}
-        <div className="relative flex h-9 overflow-hidden rounded-lg border border-slate-200">
+        <div className="relative flex h-10 overflow-hidden rounded-lg border border-slate-200">
           <div
             className="pointer-events-none absolute inset-y-0 z-10 w-[2px]"
             style={{ left: `${quota(SOGLIA_SICUREZZA)}%`, background: "#e11d48" }}
           />
           {!dentroLimite ? (
             <div
-              className="flex items-center justify-center text-[11px] font-semibold uppercase tracking-wide tabular-nums text-white"
+              className="flex items-center justify-center text-[13px] font-semibold uppercase tracking-wide tabular-nums text-white"
               style={{ width: "100%", background: "#9f1239" }}
             >
               {formatInt(reali)} - limite superato di {formatInt(reali - LIMITE_HUBSPOT)}
@@ -161,7 +161,7 @@ export default function SogliaMarketing({
           ) : (
             <>
               <div
-                className="flex items-center justify-center text-[11px] font-semibold uppercase tracking-wide tabular-nums text-white"
+                className="flex items-center justify-center text-[13px] font-semibold uppercase tracking-wide tabular-nums text-white"
                 style={{ width: `${quota(reali)}%`, background: dentroSicurezza ? "#0f172a" : "#ef8f1c" }}
               >
                 {dentroSicurezza
@@ -170,7 +170,7 @@ export default function SogliaMarketing({
               </div>
               {finoASicurezza > 0 ? (
                 <div
-                  className="flex items-center justify-center bg-slate-200 text-[11px] font-semibold uppercase tracking-wide tabular-nums text-slate-600"
+                  className="flex items-center justify-center bg-slate-200 text-[13px] font-semibold uppercase tracking-wide tabular-nums text-slate-600"
                   style={{ width: `${quota(finoASicurezza)}%` }}
                 >
                   {finoASicurezza > 25_000 ? `${formatInt(finoASicurezza)} - margine` : ""}
