@@ -360,6 +360,41 @@ export function abbina(
   const riunioniUsate = new Set<string>();
   const registrazioniUsate = new Set<string>();
 
+  const padroneDi = proprietariDelleStanze(riunioni);
+
+  /**
+   * L'APPUNTAMENTO E' STATO PASSATO A UN ALTRO ADVISOR.
+   *
+   * La riunione resta intestata a chi l'aveva in agenda e conserva il SUO
+   * collegamento Meet, ma la call la tiene qualcun altro, nella propria stanza.
+   * Nella stanza di partenza, a quell'ora, c'e' quindi la call di un cliente
+   * diverso - l'advisor originale sta lavorando.
+   *
+   * IL DANNO CHE EVITA. Senza questo controllo l'appuntamento resta nel gruppo
+   * della stanza di partenza e i criteri per orario gli assegnano la
+   * registrazione che trovano li': la trascrizione di un estraneo finisce sulla
+   * scheda del cliente, e da quella nasce anche l'analisi della call. Visto il
+   * 22 settembre: a Lorenza Minguzzi e' stata attribuita la registrazione delle
+   * 15:00 nella stanza di Mattia Primo, mentre la sua consulenza vera era
+   * quella delle 15:05 nella stanza di Manuel Cuccu, che e' chi l'ha tenuta.
+   *
+   * Questi appuntamenti escono dal raggruppamento per stanza e restano
+   * disponibili solo per il criterio "overbooking", che li cerca nella stanza
+   * dell'advisor di destinazione. Se li' non si trova niente il contatto resta
+   * senza collegamento, ed e' il risultato giusto: meglio nessuna trascrizione
+   * che quella di un altro.
+   *
+   * Il controllo sul padrone della stanza serve a non escludere i casi in cui
+   * la riunione e' gia' nata nella stanza di chi la tiene: li' la discordanza
+   * fra intestatario e proprietario della trattativa non sposta niente.
+   */
+  const passataAdAltri = (m: Riunione): boolean =>
+    !!m.stanza &&
+    !!m.advisorPrenotato &&
+    !!m.advisorEffettivo &&
+    m.advisorEffettivo !== m.advisorPrenotato &&
+    padroneDi.get(m.stanza) === m.advisorPrenotato;
+
   // Un gruppo per stanza e giornata: e' l'unita' in cui l'ordine dei fatti ha
   // senso. Confrontare registrazioni di stanze diverse non significherebbe
   // niente, e attraverso la mezzanotte nemmeno.
@@ -370,7 +405,10 @@ export function abbina(
     return gruppi.get(k)!;
   };
   for (const r of registrazioni) prendi(chiave(r.stanza, r.inizio)).reg.push(r);
-  for (const m of riunioni) if (m.stanza) prendi(chiave(m.stanza, m.inizio)).riu.push(m);
+  for (const m of riunioni) {
+    if (!m.stanza || passataAdAltri(m)) continue;
+    prendi(chiave(m.stanza, m.inizio)).riu.push(m);
+  }
 
   for (const gruppo of gruppi.values()) {
     gruppo.reg.sort((a, b) => a.inizio - b.inizio);
@@ -456,7 +494,10 @@ export function abbina(
   // stanza di B corrisponde a una riunione intestata ad A la cui trattativa e'
   // di B. E' l'unico criterio che esce dalla stanza, ed esce seguendo un dato
   // esplicito scritto a mano in HubSpot invece che una somiglianza.
-  const padroneDi = proprietariDelleStanze(riunioni);
+  //
+  // Da quando gli appuntamenti passati ad altri non entrano piu' nel gruppo
+  // della stanza di partenza (vedi `passataAdAltri` piu' sopra), questo
+  // criterio non raccoglie piu' gli avanzi: e' l'unica strada che hanno.
   for (const r of registrazioni) {
     if (registrazioniUsate.has(r.id)) continue;
     // Qui non c'e' il filtro della sovrapposizione a proteggerci, perche' la
