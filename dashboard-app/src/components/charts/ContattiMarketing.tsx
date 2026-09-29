@@ -112,10 +112,6 @@ export default function ContattiMarketing() {
             Declassabili Extra: e' la riserva, e il flusso stretto la usa solo se si supera la soglia.{" "}
           </>
         ) : null}
-        Su HubSpot il totale dei contatti di marketing risulta{" "}
-        <span className="font-medium text-slate-700 tabular-nums">{formatInt(dati.totale)}</span>: quel numero comprende
-        anche i {formatInt(dati.inAttesa)} gia' declassati, che escono soltanto al rinnovo. Per la soglia conta la prima
-        cifra.
       </p>
 
       {dati.storico.length > 1 ? (

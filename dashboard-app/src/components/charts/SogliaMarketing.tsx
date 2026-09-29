@@ -150,7 +150,7 @@ export default function SogliaMarketing({
           />
           {!dentroLimite ? (
             <div
-              className="flex items-center justify-center text-[11px] font-medium tabular-nums text-white"
+              className="flex items-center justify-center text-[11px] font-medium uppercase tracking-wide tabular-nums text-white"
               style={{ width: "100%", background: "#9f1239" }}
             >
               {formatInt(reali)} — limite superato di {formatInt(reali - LIMITE_HUBSPOT)}
@@ -158,7 +158,7 @@ export default function SogliaMarketing({
           ) : (
             <>
               <div
-                className="flex items-center justify-center text-[11px] tabular-nums text-white"
+                className="flex items-center justify-center text-[11px] uppercase tracking-wide tabular-nums text-white"
                 style={{ width: `${quota(reali)}%`, background: dentroSicurezza ? "#0f172a" : "#ef8f1c" }}
               >
                 {dentroSicurezza
@@ -167,7 +167,7 @@ export default function SogliaMarketing({
               </div>
               {finoASicurezza > 0 ? (
                 <div
-                  className="flex items-center justify-center bg-slate-200 text-[11px] tabular-nums text-slate-600"
+                  className="flex items-center justify-center bg-slate-200 text-[11px] uppercase tracking-wide tabular-nums text-slate-600"
                   style={{ width: `${quota(finoASicurezza)}%` }}
                 >
                   {finoASicurezza > 25_000 ? `${formatInt(finoASicurezza)} di margine` : ""}
@@ -190,12 +190,12 @@ export default function SogliaMarketing({
           <div className="absolute -translate-x-1/2 text-center" style={{ left: `${quota(SOGLIA_SICUREZZA)}%` }}>
             <div className="mx-auto h-1.5 w-px bg-slate-300" />
             <div className="text-[11px] font-semibold tabular-nums text-slate-600">240K</div>
-            <div className="text-[10px] text-slate-400">Soglia</div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-400">Soglia</div>
           </div>
           <div className="absolute -translate-x-1/2 text-center" style={{ left: `${quota(LIMITE_HUBSPOT)}%` }}>
             <div className="mx-auto h-1.5 w-px bg-slate-300" />
             <div className="text-[11px] font-semibold tabular-nums text-slate-700">250K</div>
-            <div className="text-[10px] text-slate-400">Limite</div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-400">Limite</div>
           </div>
         </div>
       </div>
