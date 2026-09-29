@@ -503,8 +503,31 @@ async function main() {
         const t = dentro ? Date.parse(dentro) : NaN;
         return Number.isFinite(t) ? t : NaN;
       };
+      /**
+       * LA TRASCRIZIONE SCRITTA ADESSO, se l'indirizzo ne porta una.
+       *
+       * Vale sia per la forma nostra (app.fireflies.ai/view/<id>) sia per il
+       * ponte della dashboard (/api/trascrizione/<id>). Sui valori lasciati dal
+       * flusso Zapier, che puntavano al file su S3, non c'e' nessun
+       * identificativo: li' torna null e il confronto resta quello di prima.
+       */
+      const trascrizioneDi = (valore: string | null | undefined): string | null =>
+        (valore ?? "").match(/(?:view|trascrizione)\/([A-Z0-9]{20,})/i)?.[1] ?? null;
+
       const gia = appuntamentoDi(attuale.link_trascrizione_fireflies);
-      if (Number.isFinite(gia) && Math.abs(gia - x.riunione.inizio) < 30 * MIN) {
+      const giaTr = trascrizioneDi(attuale.link_trascrizione_fireflies);
+      // STESSO APPUNTAMENTO MA ALTRA REGISTRAZIONE: e' una correzione, si scrive.
+      //
+      // Il confronto per data protegge dai doppioni, ma da solo tratta come
+      // "gia' fatta" anche una consulenza a cui era stata attaccata la
+      // registrazione di un altro cliente: la data e' quella giusta - e' lo
+      // stesso appuntamento - e cambia solo la trascrizione. Succedeva con gli
+      // appuntamenti passati a un altro advisor, dove si prendeva la
+      // registrazione della stanza di partenza. Visti a settembre: Michele
+      // Carlucci e Lorenza Minguzzi, entrambi con la voce di un cliente
+      // diverso dentro la loro trascrizione.
+      const correzione = giaTr !== null && giaTr !== x.registrazione.id;
+      if (Number.isFinite(gia) && Math.abs(gia - x.riunione.inizio) < 30 * MIN && !correzione) {
         invariati++;
         continue;
       }
