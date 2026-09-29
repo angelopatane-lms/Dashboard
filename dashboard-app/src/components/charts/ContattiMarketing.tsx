@@ -84,19 +84,23 @@ export default function ContattiMarketing() {
   const margine = dati.soglia - dati.reali;
   const fuoriSoglia = margine < 0;
 
-  // I DECLASSATI DEL GIORNO SONO UNA DIFFERENZA, non un dato che HubSpot
-  // fornisce: quanti contatti in piu' risultano "in attesa del rinnovo" rispetto
-  // alla fotografia notturna. Il primo giorno la riga non c'e' ancora e la
-  // casella lo dice invece di mostrare uno zero, che sarebbe una bugia.
+  // QUANTI NE HA DECLASSATI L'ULTIMA NOTTE, non "da stamattina".
   //
-  // LA FOTOGRAFIA DEVE ESSERE DI NOTTE. Il lavoro automatico scatta alle 00:10,
-  // ma la primissima riga e' stata presa a mano nel pomeriggio: confrontarsi con
-  // quella dava "1 declassato", che non e' la giornata ma i venti minuti
-  // precedenti. Quando lo scatto non e' notturno la casella lo dichiara.
-  const base = dati.storico[0];
-  const declassatiOggi = base ? dati.inAttesa - base.in_attesa : null;
-  const oraBase = base ? Number(base.presoAlle.slice(0, 2)) : 0;
-  const baseNotturna = oraBase < 4;
+  // I flussi di HubSpot girano alle 02:00 e la fotografia scatta subito dopo:
+  // quando qualcuno apre la pagina, il lavoro della notte e' gia' dentro lo
+  // scatto, e un conteggio "da mezzanotte a adesso" trova sempre zero. Visto il
+  // 29 settembre: 284 declassati nella notte, e la casella diceva 0.
+  //
+  // La misura giusta e' la differenza fra le ultime due fotografie: e' il
+  // risultato di una nottata intera, ed e' il numero che dice se i flussi
+  // stanno tenendo il passo delle nuove iscrizioni.
+  const ultima = dati.storico[0];
+  const precedente = dati.storico[1];
+  const declassatiNotte = ultima && precedente ? ultima.in_attesa - precedente.in_attesa : null;
+  // Quello che si e' mosso DOPO la fotografia. Di solito poca roba: se un
+  // giorno diventasse grande vorrebbe dire che qualcosa declassa fuori orario,
+  // ed e' bene accorgersene.
+  const daAllora = ultima ? dati.inAttesa - ultima.in_attesa : 0;
 
   return (
     <section>
@@ -120,14 +124,13 @@ export default function ContattiMarketing() {
           nota="usciranno al prossimo aggiornamento"
         />
         <Riquadro
-          etichetta="Declassati oggi"
-          valore={declassatiOggi === null ? "—" : formatInt(Math.max(0, declassatiOggi))}
+          etichetta="Declassati nell'ultima notte"
+          valore={declassatiNotte === null ? "—" : formatInt(declassatiNotte)}
           nota={
-            declassatiOggi === null
-              ? "serve la fotografia di stanotte"
-              : baseNotturna
-                ? `da mezzanotte, fotografia delle ${base.presoAlle}`
-                : `solo dalle ${base.presoAlle} di oggi: la misura piena parte domani`
+            declassatiNotte === null
+              ? "serve una seconda fotografia"
+              : `notte del ${ultima.giorno.split("-").reverse().slice(0, 2).join("/")}` +
+                (daAllora !== 0 ? `, ${daAllora > 0 ? "+" : ""}${formatInt(daAllora)} da allora` : "")
           }
         />
       </div>
