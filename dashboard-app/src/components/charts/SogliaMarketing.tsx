@@ -186,16 +186,14 @@ export default function SogliaMarketing({
 
         {/* Le tacche stanno dove cadono sulla scala: quando il valore supera il
             limite si stringono verso sinistra, ed e' quello il segnale. */}
-        <div className="relative mt-1 h-7">
+        <div className="relative mt-1 h-5">
           <div className="absolute -translate-x-1/2 text-center" style={{ left: `${quota(SOGLIA_SICUREZZA)}%` }}>
             <div className="mx-auto h-1.5 w-px bg-slate-300" />
             <div className="text-[11px] font-semibold tabular-nums text-slate-600">240K</div>
-            <div className="text-[10px] uppercase tracking-wide text-slate-400">Soglia</div>
           </div>
           <div className="absolute -translate-x-1/2 text-center" style={{ left: `${quota(LIMITE_HUBSPOT)}%` }}>
             <div className="mx-auto h-1.5 w-px bg-slate-300" />
             <div className="text-[11px] font-semibold tabular-nums text-slate-700">250K</div>
-            <div className="text-[10px] uppercase tracking-wide text-slate-400">Limite</div>
           </div>
         </div>
       </div>
