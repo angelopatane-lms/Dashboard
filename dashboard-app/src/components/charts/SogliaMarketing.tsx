@@ -156,7 +156,7 @@ export default function SogliaMarketing({
               className="flex items-center justify-center text-[11px] font-semibold uppercase tracking-wide tabular-nums text-white"
               style={{ width: "100%", background: "#9f1239" }}
             >
-              {formatInt(reali)} — limite superato di {formatInt(reali - LIMITE_HUBSPOT)}
+              {formatInt(reali)} - limite superato di {formatInt(reali - LIMITE_HUBSPOT)}
             </div>
           ) : (
             <>
@@ -165,15 +165,15 @@ export default function SogliaMarketing({
                 style={{ width: `${quota(reali)}%`, background: dentroSicurezza ? "#0f172a" : "#ef8f1c" }}
               >
                 {dentroSicurezza
-                  ? `${formatInt(reali)} contatti di marketing veri`
-                  : `${formatInt(reali)} — soglia superata di ${formatInt(reali - SOGLIA_SICUREZZA)}`}
+                  ? `${formatInt(reali)} - contatti di marketing veri`
+                  : `${formatInt(reali)} - soglia superata di ${formatInt(reali - SOGLIA_SICUREZZA)}`}
               </div>
               {finoASicurezza > 0 ? (
                 <div
                   className="flex items-center justify-center bg-slate-200 text-[11px] font-semibold uppercase tracking-wide tabular-nums text-slate-600"
                   style={{ width: `${quota(finoASicurezza)}%` }}
                 >
-                  {finoASicurezza > 25_000 ? `${formatInt(finoASicurezza)} di margine` : ""}
+                  {finoASicurezza > 25_000 ? `${formatInt(finoASicurezza)} - di margine` : ""}
                 </div>
               ) : null}
               {/* NESSUNA SCRITTA QUI DENTRO: la fascia e' stretta e il testo ci
