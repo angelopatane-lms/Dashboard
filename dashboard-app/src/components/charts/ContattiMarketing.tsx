@@ -144,18 +144,16 @@ export default function ContattiMarketing() {
                     <td className="px-3 py-1.5 text-slate-500">
                       {r.marcatiStretto === null ? "—" : formatInt(r.marcatiStretto)}
                     </td>
-                    {/* Quando la misura non c'e' - la prima notte, senza
-                        fotografie - si mostra la stima con la tilde davanti,
-                        cosi' nessuno la scambia per un numero contato. */}
+                    {/* La prima notte non aveva fotografie: il suo numero e' una
+                        stima ricavata dalla serie che HubSpot pubblica su Slack.
+                        Si mostra come gli altri, senza segni particolari - resta
+                        scritto nel suggerimento da dove viene. */}
                     <td className="px-3 py-1.5 text-slate-500">
                       {delta !== null ? (
                         delta > 0 ? `+${formatInt(delta)}` : formatInt(delta)
                       ) : r.declassatiStima !== null ? (
-                        <span
-                          className="text-slate-400"
-                          title="Stima: quella notte non era ancora attiva la fotografia. Ricavata dal conteggio delle 23:30 pubblicato da HubSpot e dal ritmo di ingresso del giorno dopo."
-                        >
-                          ~{formatInt(r.declassatiStima)}
+                        <span title="Stima: quella notte non era ancora attiva la fotografia. Ricavata dal conteggio delle 23:30 pubblicato da HubSpot e dal ritmo di ingresso del giorno dopo.">
+                          +{formatInt(r.declassatiStima)}
                         </span>
                       ) : (
                         "—"
