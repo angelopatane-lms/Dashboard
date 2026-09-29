@@ -173,7 +173,7 @@ export default function SogliaMarketing({
                   className="flex items-center justify-center bg-slate-200 text-[11px] font-semibold uppercase tracking-wide tabular-nums text-slate-600"
                   style={{ width: `${quota(finoASicurezza)}%` }}
                 >
-                  {finoASicurezza > 25_000 ? `${formatInt(finoASicurezza)} - di margine` : ""}
+                  {finoASicurezza > 25_000 ? `${formatInt(finoASicurezza)} - margine` : ""}
                 </div>
               ) : null}
               {/* NESSUNA SCRITTA QUI DENTRO: la fascia e' stretta e il testo ci
