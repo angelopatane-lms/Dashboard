@@ -119,7 +119,7 @@ export default function ContattiMarketing() {
           <table className="text-sm">
             <thead>
               <tr className="text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <th className="py-2 pr-4 text-left">Data e ora</th>
+                <th className="py-2 pr-4 text-left">Esecuzioni</th>
                 <th className="px-3 py-2">Contatti di marketing</th>
                 <th className="px-3 py-2">In attesa di rinnovo</th>
                 <th className="px-3 py-2">Declassati extra</th>
