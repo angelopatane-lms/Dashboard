@@ -136,8 +136,7 @@ export default function ContattiMarketing() {
                         stesso giorno con fotografie prese a ore diverse, e senza
                         l'ora non si capirebbe quale finestra misurano. */}
                     <td className="py-1.5 pr-4 text-left text-slate-700">
-                      {r.giorno.split("-").reverse().join("/")}{" "}
-                      <span className="text-slate-400">{r.presoAlle}</span>
+                      {r.giorno.split("-").reverse().join("/")} - {r.presoAlle}
                     </td>
                     <td className="px-3 py-1.5">{formatInt(r.reali)}</td>
                     <td className="px-3 py-1.5">{formatInt(r.in_attesa)}</td>
