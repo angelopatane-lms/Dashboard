@@ -31,6 +31,27 @@ export const fetchCache = "force-no-store";
 
 const HUBSPOT_API = "https://api.hubapi.com";
 
+/** Le due code del declassamento: il segmento normale e quello stretto, che il
+ *  flusso delle 23:30 usa quando siamo fuori soglia. */
+const LISTA_DECLASSABILI = "17585";
+const LISTA_DECLASSABILI_EXTRA = "17595";
+
+/** Quanti contatti ci sono adesso in una lista. Se la lettura fallisce si
+ *  restituisce null invece di zero: "non lo so" e "sono zero" non sono la
+ *  stessa cosa, e uno zero finto sulla coda farebbe pensare che non c'e'
+ *  niente da declassare. */
+async function dimensioneLista(token: string, id: string): Promise<number | null> {
+  try {
+    const res = await fetch(`${HUBSPOT_API}/crm/v3/lists/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return null;
+    const d = await res.json();
+    const n = Number((d.list ?? d)?.additionalProperties?.hs_list_size);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
 async function conta(token: string, filters: Array<Record<string, string>>): Promise<number> {
   const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/contacts/search`, {
     method: "POST",
@@ -59,7 +80,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const [reali, inAttesa] = await Promise.all([
+    const [reali, inAttesa, coda, codaExtra] = await Promise.all([
       conta(token, [
         { propertyName: "hs_marketable_status", operator: "EQ", value: "true" },
         { propertyName: "hs_marketable_until_renewal", operator: "NEQ", value: "true" }
@@ -67,7 +88,9 @@ export async function GET(req: NextRequest) {
       conta(token, [
         { propertyName: "hs_marketable_status", operator: "EQ", value: "true" },
         { propertyName: "hs_marketable_until_renewal", operator: "EQ", value: "true" }
-      ])
+      ]),
+      dimensioneLista(token, LISTA_DECLASSABILI),
+      dimensioneLista(token, LISTA_DECLASSABILI_EXTRA)
     ]);
 
     // Il giorno e' quello di Roma: una fotografia presa alle 00:10 italiane non
@@ -75,14 +98,15 @@ export async function GET(req: NextRequest) {
     const giorno = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
 
     await getDb().query(
-      `INSERT INTO marketing_snapshot (giorno, reali, in_attesa, preso_at)
-       VALUES ($1::date, $2, $3, now())
+      `INSERT INTO marketing_snapshot (giorno, reali, in_attesa, coda, coda_extra, preso_at)
+       VALUES ($1::date, $2, $3, $4, $5, now())
        ON CONFLICT (giorno) DO UPDATE
-         SET reali = EXCLUDED.reali, in_attesa = EXCLUDED.in_attesa, preso_at = now()`,
-      [giorno, reali, inAttesa]
+         SET reali = EXCLUDED.reali, in_attesa = EXCLUDED.in_attesa,
+             coda = EXCLUDED.coda, coda_extra = EXCLUDED.coda_extra, preso_at = now()`,
+      [giorno, reali, inAttesa, coda, codaExtra]
     );
 
-    return NextResponse.json({ giorno, reali, inAttesa, totale: reali + inAttesa });
+    return NextResponse.json({ giorno, reali, inAttesa, coda, codaExtra, totale: reali + inAttesa });
   } catch (e) {
     console.error("[marketing-snapshot]", e instanceof Error ? e.message : e);
     return NextResponse.json({ error: "Fotografia non riuscita" }, { status: 500 });

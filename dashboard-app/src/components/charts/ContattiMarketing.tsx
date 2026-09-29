@@ -24,6 +24,10 @@ type Dati = {
   inAttesa: number;
   totale: number;
   soglia: number;
+  /** Le due code: il segmento normale e quello stretto. null quando la lista
+   *  non e' leggibile, che e' diverso da zero. */
+  coda: number | null;
+  codaExtra: number | null;
   storico: Array<{ giorno: string; reali: number; in_attesa: number; presoAlle: string }>;
 };
 
@@ -138,6 +142,20 @@ export default function ContattiMarketing() {
       </div>
 
       <p className="mt-2 text-xs text-slate-500">
+        {/* LA RISERVA NON E' UNA CODA. Il segmento Declassabili viene lavorato
+            ogni notte; quello Extra lo tocca il flusso stretto soltanto se
+            siamo fuori soglia, quindi finche' il margine regge resta fermo - e
+            scriverlo come "in coda per stanotte" faceva pensare a un arretrato
+            che non esiste. */}
+        {dati.coda !== null || dati.codaExtra !== null ? (
+          <>
+            Stanotte i flussi lavoreranno{" "}
+            <span className="font-medium text-slate-700 tabular-nums">{formatInt(dati.coda ?? 0)}</span> contatti del
+            segmento Declassabili. Altri{" "}
+            <span className="font-medium text-slate-700 tabular-nums">{formatInt(dati.codaExtra ?? 0)}</span> stanno in
+            Declassabili Extra: e' la riserva, e il flusso stretto la usa solo se si supera la soglia.{" "}
+          </>
+        ) : null}
         Su HubSpot il totale dei contatti di marketing risulta{" "}
         <span className="font-medium text-slate-700 tabular-nums">{formatInt(dati.totale)}</span>: quel numero comprende
         anche i {formatInt(dati.inAttesa)} gia' declassati, che escono soltanto al rinnovo. Per la soglia conta la prima

@@ -456,3 +456,13 @@ CREATE TABLE IF NOT EXISTS marketing_snapshot (
   in_attesa INT NOT NULL,
   preso_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- LE DUE CODE DEL DECLASSAMENTO, fotografate insieme ai conteggi.
+--
+-- `coda` e' il segmento DECLASSABILI, `coda_extra` quello DECLASSABILI EXTRA che
+-- il flusso stretto usa quando siamo fuori soglia. Sono liste DINAMICHE: dicono
+-- quanti sono candidati stanotte, non quanti sono stati lavorati - quello resta
+-- la differenza fra due fotografie. Servono a vedere in anticipo se la prossima
+-- notte avra' da lavorare molto o niente.
+ALTER TABLE marketing_snapshot ADD COLUMN IF NOT EXISTS coda INT;
+ALTER TABLE marketing_snapshot ADD COLUMN IF NOT EXISTS coda_extra INT;

@@ -25,6 +25,27 @@ export const dynamic = "force-dynamic";
 
 const HUBSPOT_API = "https://api.hubapi.com";
 
+/** Le due code del declassamento: il segmento normale e quello stretto, che il
+ *  flusso delle 23:30 usa quando siamo fuori soglia. */
+const LISTA_DECLASSABILI = "17585";
+const LISTA_DECLASSABILI_EXTRA = "17595";
+
+/** Quanti contatti ci sono adesso in una lista. Se la lettura fallisce si
+ *  restituisce null invece di zero: "non lo so" e "sono zero" non sono la
+ *  stessa cosa, e uno zero finto sulla coda farebbe pensare che non c'e'
+ *  niente da declassare. */
+async function dimensioneLista(token: string, id: string): Promise<number | null> {
+  try {
+    const res = await fetch(`${HUBSPOT_API}/crm/v3/lists/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return null;
+    const d = await res.json();
+    const n = Number((d.list ?? d)?.additionalProperties?.hs_list_size);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Oltre questo numero l'abbonamento scatta allo scaglione successivo.
  *
  *  NON esportata: in un file di rotta Next.js ammette solo i suoi nomi
@@ -49,7 +70,7 @@ export async function GET() {
   try {
     // Due ricerche invece di tre: il totale e' la somma, e una chiamata in meno
     // su un endpoint che ha un tetto al secondo e' sempre guadagnata.
-    const [reali, inAttesa] = await Promise.all([
+    const [reali, inAttesa, coda, codaExtra] = await Promise.all([
       conta(token, [
         { propertyName: "hs_marketable_status", operator: "EQ", value: "true" },
         { propertyName: "hs_marketable_until_renewal", operator: "NEQ", value: "true" }
@@ -57,7 +78,9 @@ export async function GET() {
       conta(token, [
         { propertyName: "hs_marketable_status", operator: "EQ", value: "true" },
         { propertyName: "hs_marketable_until_renewal", operator: "EQ", value: "true" }
-      ])
+      ]),
+      dimensioneLista(token, LISTA_DECLASSABILI),
+      dimensioneLista(token, LISTA_DECLASSABILI_EXTRA)
     ]);
 
     // Le fotografie delle ultime due settimane: servono a dire quanti ne sono
@@ -85,7 +108,7 @@ export async function GET() {
     }
 
     return NextResponse.json(
-      { reali, inAttesa, totale: reali + inAttesa, soglia: SOGLIA, storico },
+      { reali, inAttesa, coda, codaExtra, totale: reali + inAttesa, soglia: SOGLIA, storico },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (e) {
