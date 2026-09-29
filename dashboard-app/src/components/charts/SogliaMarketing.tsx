@@ -92,7 +92,7 @@ export default function SogliaMarketing({
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Carta
-          etichetta="Contatti di marketing veri"
+          etichetta="Contatti di marketing"
           valore={reali}
           nota={
             dentroSicurezza
@@ -109,14 +109,14 @@ export default function SogliaMarketing({
           nota={dentroSicurezza ? "fino a 240.000" : "per tornare sotto 240.000"}
         />
         <Carta
-          etichetta="Declassati, in attesa del rinnovo"
+          etichetta="Declassati in attesa di rinnovo"
           valore={inAttesa}
           nota="usciranno al prossimo aggiornamento"
         />
         <Carta
-          etichetta="Declassati nell'ultima notte"
+          etichetta="Declassati dell'ultima esecuzione"
           valore={declassatiNotte ?? 0}
-          nota={marcatiStretto ? `di cui ${formatInt(marcatiStretto)} dal flusso stretto` : "notte del 29/09"}
+          nota={marcatiStretto ? `di cui ${formatInt(marcatiStretto)} extra` : "ultima esecuzione dei flussi"}
         />
       </div>
 
@@ -165,7 +165,7 @@ export default function SogliaMarketing({
                 style={{ width: `${quota(reali)}%`, background: dentroSicurezza ? "#0f172a" : "#ef8f1c" }}
               >
                 {dentroSicurezza
-                  ? `${formatInt(reali)} - contatti di marketing veri`
+                  ? `${formatInt(reali)} - contatti di marketing`
                   : `${formatInt(reali)} - soglia superata di ${formatInt(reali - SOGLIA_SICUREZZA)}`}
               </div>
               {finoASicurezza > 0 ? (
