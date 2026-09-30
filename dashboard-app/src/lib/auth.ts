@@ -4,7 +4,7 @@
 //
 // DUE PASSWORD, DUE LIVELLI.
 //
-// Quella di sempre apre tutto. La seconda - DASHBOARD_PASSWORD_RIDOTTA - apre
+// Quella di sempre apre tutto. La seconda - ADVISOR_DASHBOARD_PASSWORD - apre
 // soltanto le pagine sotto /pubblico, cioe' la tabella KPI Advisor con i suoi
 // filtri: numeri aggregati per operatore, senza nomi di contatti, telefoni o
 // collegamenti alle registrazioni.
@@ -29,7 +29,7 @@ export function configuredPassword() {
 /** La seconda password. Se non e' impostata, il livello ridotto non esiste e
  *  le pagine sotto /pubblico restano raggiungibili solo con quella piena. */
 export function configuredPasswordRidotta() {
-  return process.env.DASHBOARD_PASSWORD_RIDOTTA || null;
+  return process.env.ADVISOR_DASHBOARD_PASSWORD || null;
 }
 
 /** In locale senza password si entra liberamente; online, senza password, resta tutto chiuso. */
