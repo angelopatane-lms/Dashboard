@@ -40,15 +40,29 @@ export default function AppShell({ children }: { children: ReactNode }) {
     setOpen(false);
   }, [pathname]);
 
+  // SENZA MENU SULLE PAGINE PUBBLICHE.
+  //
+  // Chi entra con la password ridotta vede solo la tabella: le voci Advisor,
+  // Setter, Campagne e Contatti lo porterebbero su pagine che quel livello non
+  // apre, e il middleware lo rimanderebbe indietro. Un menu che rimbalza e'
+  // peggio di nessun menu.
+  const senzaMenu = (pathname ?? "").startsWith("/pubblico");
+
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto flex min-h-screen w-full">
-        <div className="hidden lg:block">
-          <AppSidebar mode="desktop" aperto={aperto} onToggle={cambiaBarra} />
-        </div>
+        {senzaMenu ? null : (
+          <div className="hidden lg:block">
+            <AppSidebar mode="desktop" aperto={aperto} onToggle={cambiaBarra} />
+          </div>
+        )}
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
+          <div
+            className={`sticky top-0 z-20 items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 lg:hidden ${
+              senzaMenu ? "hidden" : "flex"
+            }`}
+          >
             <button
               type="button"
               aria-label="Apri menu"
@@ -63,7 +77,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <main className="min-w-0 flex-1">{children}</main>
         </div>
 
-        {open ? (
+        {open && !senzaMenu ? (
           <div className="lg:hidden">
             <button
               type="button"
