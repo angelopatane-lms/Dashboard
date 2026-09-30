@@ -3,6 +3,7 @@ import { uniqueValues } from "@/lib/metrics";
 import DashboardEnterprise from "@/components/client/DashboardEnterprise";
 import Container from "@/components/ui/Container";
 import { chiaveNome } from "@/lib/nomi";
+import { operatoriDelTeam } from "@/lib/operatoriTeam";
 
 /**
  * La tabella KPI Advisor senza password.
@@ -27,8 +28,6 @@ export const dynamic = "force-dynamic";
 const SHEET_ID = "1wHpVsYwB_5PKGSYYfD0W2pYa7U_3yWI1Re10T3jGgnM";
 const GID_OPERATORI = "245526930";
 const GID_OPERATORI_OGGI = "2032731939";
-const HUBSPOT_USERS_SHEET_ID = "1XKvzK20x9DkIyJVHBNTYUHxV21kmrdWH0AshNkkgLHQ";
-const GID_HUBSPOT_USERS = "0";
 
 function sheetCsvUrl(gid: string) {
   return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${gid}`;
@@ -40,28 +39,13 @@ export default async function Page() {
     fetchCsv(sheetCsvUrl(GID_OPERATORI_OGGI))
   ]);
 
-  // Gli stessi advisor della pagina interna: l'elenco viene dal foglio degli
-  // utenti HubSpot e si legge senza cache, perche' chi lo modifica si aspetta
-  // di vedere l'effetto subito. Se il foglio non risponde non si filtra,
-  // esattamente come sulla pagina interna.
-  let advisorAmmessi: Set<string> | null = null;
-  try {
-    const righe = await fetchCsv(
-      `https://docs.google.com/spreadsheets/d/${HUBSPOT_USERS_SHEET_ID}/export?format=csv&gid=${GID_HUBSPOT_USERS}`,
-      { next: { revalidate: 0 } }
-    );
-    advisorAmmessi = new Set(
-      righe
-        .filter((r) => chiaveNome((r["Team Principale"] ?? "").toString()).startsWith("advisor"))
-        .map((r) => chiaveNome((r["User"] ?? "").toString()))
-        .filter(Boolean)
-    );
-  } catch {
-    advisorAmmessi = null;
-  }
+  // GLI STESSI ADVISOR DELLA PAGINA INTERNA, dalla stessa funzione: se le due
+  // pagine leggessero l'elenco ognuna per conto suo, basterebbe una svista per
+  // far comparire qui righe che di la' non ci sono.
+  const team = await operatoriDelTeam("Advisor");
 
   const filtra = (righe: Awaited<ReturnType<typeof fetchCsv>>) =>
-    advisorAmmessi ? righe.filter((r) => advisorAmmessi!.has(chiaveNome((r["Operatore"] ?? "").toString()))) : righe;
+    team ? righe.filter((r) => team.chiavi.has(chiaveNome((r["Operatore"] ?? "").toString()))) : righe;
 
   const storico = filtra(operatoriRows);
   const oggi = filtra(operatoriRowsOggi);
@@ -75,7 +59,7 @@ export default async function Page() {
         operators={uniqueValues(righeMenu, "Operatore")}
         campaigns={uniqueValues(righeMenu, "Campagna")}
         operatorLabel="Advisor"
-        operatoriAmmessi={advisorAmmessi ? [...advisorAmmessi] : null}
+        operatoriAmmessi={team ? team.nomi : null}
         soloTabella
         hideCampagne
         hideInsights
