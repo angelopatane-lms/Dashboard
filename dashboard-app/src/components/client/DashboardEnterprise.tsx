@@ -52,6 +52,7 @@ export default function DashboardEnterprise({
   hideCampagne,
   hideInsights,
   hideOperatorTable,
+  soloTabella,
   useHubspot,
   operatorLabel,
   operatoriAmmessi,
@@ -63,6 +64,20 @@ export default function DashboardEnterprise({
   hideCampagne?: boolean;
   hideInsights?: boolean;
   hideOperatorTable?: boolean;
+  /**
+   * Solo i filtri e la tabella, senza tutto il resto.
+   *
+   * Serve alla pagina pubblica: quella tabella porta numeri aggregati per
+   * operatore e non contiene nomi di contatti, telefoni o link alle
+   * registrazioni, quindi si puo' mostrare a chi non ha la password mentre il
+   * resto della dashboard no.
+   *
+   * E' un interruttore qui e non una pagina a parte perche' il calcolo della
+   * tabella - le correzioni da HubSpot, le consulenze svolte, gli obiettivi -
+   * vive tutto in questo componente: duplicarlo vorrebbe dire due tabelle che
+   * col tempo danno numeri diversi.
+   */
+  soloTabella?: boolean;
   useHubspot?: boolean;
   operatorLabel?: string;
   /** Chi ha Team Principale "Advisor" fra gli utenti HubSpot, come chiave di
@@ -294,6 +309,9 @@ export default function DashboardEnterprise({
   const [agendaFallita, setAgendaFallita] = useState(false);
 
   useEffect(() => {
+    // Con la sola tabella l'agenda non si vede: chiederla sarebbe una chiamata
+    // pesante per riempire uno stato che nessuno legge.
+    if (soloTabella) return;
     let annullato = false;
     setAgendaInCorso(true);
     fetch(`/api/advisor-agenda?giorno=${giornoAgenda}`)
@@ -379,6 +397,9 @@ export default function DashboardEnterprise({
 
   useEffect(() => {
     if (!finestraStorica) return;
+    // Stesso motivo dell'agenda, e qui pesa di piu': questa rotta ricostruisce
+    // mesi di trattative e ha un tetto di cinque minuti.
+    if (soloTabella) return;
     let annullato = false;
     fetch(`/api/advisor-andamento?from=${finestraStorica.from}&to=${finestraStorica.to}&vista=${setterView ? "setter" : "advisor"}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
@@ -833,7 +854,7 @@ export default function DashboardEnterprise({
                   Caricamento dei dati in corso...
                 </div>
               ) : (
-              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={salvaObiettivo} />
+              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} />
               )}
             </Card>
           </div>
@@ -842,7 +863,7 @@ export default function DashboardEnterprise({
         {/* Solo sugli Advisor: il proprietario di un meeting e' chi lo tiene,
             e i setter li prenotano ma non ci vanno. Sulla loro pagina l'agenda
             sarebbe l'agenda di qualcun altro. */}
-        {!hideOperatorTable && !setterView && (
+        {!hideOperatorTable && !setterView && !soloTabella && (
           <>
             <div id="agenda" className="scroll-mt-6">
               <SectionTitle className="mt-10">Agenda Consulenze Advisor</SectionTitle>
@@ -860,6 +881,8 @@ export default function DashboardEnterprise({
           </>
         )}
 
+        {soloTabella ? null : (
+        <>
         <div id="trend-funnel" className="scroll-mt-6">
           <SectionTitle className="mt-10">{setterView ? "Andamento Setter" : "Andamento Advisor"}</SectionTitle>
         </div>
@@ -1020,6 +1043,8 @@ export default function DashboardEnterprise({
           </>
         )}
       </div>
+        </>
+        )}
 
       {hideInsights ? null : (
         <>

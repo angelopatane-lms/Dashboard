@@ -20,6 +20,13 @@ export default function PasswordModal() {
     }).catch(() => null);
     setChecking(false);
     if (response?.ok) {
+      // Con la password ridotta si va dritti alla tabella: ricaricando e basta
+      // si resterebbe sull'indirizzo chiesto prima, che quell'accesso non apre.
+      const dati = (await response.json().catch(() => null)) as null | { destinazione?: string | null };
+      if (dati?.destinazione) {
+        window.location.href = dati.destinazione;
+        return;
+      }
       // Ricarica la pagina richiesta, ora con l'accesso.
       window.location.reload();
       return;
