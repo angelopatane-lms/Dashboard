@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { waitUntil } from "@vercel/functions";
 import { getDb } from "@/lib/db";
+import { titoloConStanza } from "@/lib/stanza";
 
 /**
  * Il ponte fra le registrazioni cloud di Zoom e Fireflies.
@@ -51,6 +52,10 @@ type Payload = {
     plainToken?: string;
     object?: {
       uuid?: string;
+      /** Il numero della riunione. Per chi lavora nella propria sala personale
+       *  e' il Personal Meeting ID, fisso su tutte le sue riunioni: e' quello
+       *  che fa da "stanza" nell'abbinamento. */
+      id?: number | string;
       topic?: string;
       start_time?: string;
       host_email?: string;
@@ -152,7 +157,21 @@ async function mandaAFireflies(
   const variabili = {
     input: {
       url: file.download_url,
-      title: oggetto.topic || "Riunione Zoom",
+      // IL TITOLO PORTA LA STANZA, ed e' l'unico modo per farcela arrivare.
+      //
+      // L'abbinamento alle consulenze si regge sul codice stanza, che per le
+      // registrazioni di Meet Fireflies espone in `meeting_link`. Su quelle
+      // caricate qui `meeting_link` resta vuoto e non si puo' riempire:
+      // `AudioUploadInput` non ha un campo per il collegamento, nessuna
+      // mutazione lo modifica dopo, e `client_reference_id` si scrive ma non si
+      // rilegge. Il titolo invece si scrive e si rilegge, quindi ci mettiamo
+      // dentro il numero della riunione e lo ritroviamo in `lib/stanza.ts`.
+      //
+      // Senza il numero si ripiega sul titolo di Zoom: la registrazione arriva
+      // lo stesso in Fireflies, semplicemente non si abbina da sola.
+      title: oggetto.id
+        ? titoloConStanza(oggetto.id, oggetto.topic || "Riunione Zoom")
+        : oggetto.topic || "Riunione Zoom",
       // La lingua dichiarata invece che indovinata: sulle call in italiano con
       // audio telefonico il riconoscimento automatico sbaglia, e una
       // trascrizione in un'altra lingua non si accorge nessuno finche' non la
@@ -256,7 +275,9 @@ export async function POST(req: NextRequest) {
       .then((r) =>
         annota(
           r.ok ? "ok" : "errore",
-          `${oggetto.topic ?? "?"} (${oggetto.host_email ?? "?"}, ${file.file_type ?? "?"}): ${r.messaggio}`
+          // La stanza nel registro: senza di lei un "ok" non dice se la
+          // registrazione potra' poi agganciarsi a una consulenza.
+          `${oggetto.topic ?? "?"} (${oggetto.host_email ?? "?"}, ${file.file_type ?? "?"}, stanza ${oggetto.id ? `zoom-${oggetto.id}` : "ASSENTE"}): ${r.messaggio}`
         )
       )
       .catch((e) => annota("errore", `${oggetto.topic ?? "?"}: ${e instanceof Error ? e.message : String(e)}`))

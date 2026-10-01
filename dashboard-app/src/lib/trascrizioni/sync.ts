@@ -23,6 +23,7 @@ import {
 } from "@/lib/abbinamento";
 import { leggiFrasi, leggiNomiCitati, leggiTrascrizioni, leggiVoci, linkTrascrizione } from "@/lib/fireflies";
 import { gettoneTrascrizione } from "@/lib/gettoneTrascrizione";
+import { stanzaDaProprieta as stanzaDa } from "@/lib/stanza";
 
 const HUBSPOT = "https://api.hubapi.com";
 const MIN = 60_000;
@@ -106,10 +107,6 @@ async function hubspot<T>(token: string, percorso: string, corpo?: unknown, tent
 type Pagina<T> = { results?: T[]; paging?: { next?: { after?: string } } };
 type Oggetto = { id: string; properties: Record<string, string | null> };
 
-const stanzaDa = (p: Record<string, string | null>): string | null =>
-  `${p.hs_meeting_location ?? ""} ${p.hs_video_conference_url ?? ""}`.match(
-    /meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})/
-  )?.[1] ?? null;
 
 /**
  * Quanto puo' tardare uno spostamento e valere ancora per la fascia di prima.

@@ -8,17 +8,27 @@
 // titolo non e' il nome dell'appuntamento ma il codice della stanza, e
 // l'organizzatore e' sempre l'account condiviso. Il codice della stanza e'
 // percio' l'unico aggancio disponibile verso HubSpot.
+//
+// LE REGISTRAZIONI ZOOM NASCONO IN UN ALTRO MODO: non le cattura l'estensione,
+// le carichiamo noi da `api/webhook/zoom-recording` quando Zoom avvisa che una
+// registrazione cloud e' pronta. Su quelle meeting_link resta vuoto - Fireflies
+// non lo accetta fra i campi del caricamento - e la stanza si legge dal titolo,
+// che pero' in quel caso lo scriviamo noi. Vedi `lib/stanza.ts`.
+
+import { stanzaDaCollegamento, stanzaDaTitolo } from "@/lib/stanza";
 
 const ENDPOINT = "https://api.fireflies.ai/graphql";
 
 export type TrascrizioneFireflies = {
   id: string;
-  /** Di norma il codice della stanza Meet, es. "jth-hhtk-jmn". */
+  /** Di norma il codice della stanza Meet, es. "jth-hhtk-jmn". Sulle
+   *  registrazioni caricate dal ponte Zoom e' il titolo che scriviamo noi. */
   titolo: string;
   /** Millisecondi epoch. */
   inizio: number;
   durataMin: number;
-  /** Il codice della stanza, quando il collegamento e' un Google Meet. */
+  /** La stanza: il codice Meet, oppure "zoom-<id>" per il Personal Meeting
+   *  ID di chi lavora su Zoom. Null quando non si riconosce nessuno dei due. */
   stanza: string | null;
   /** Il file audio. Come il collegamento alla trascrizione, e' firmato e scade. */
   audio: string | null;
@@ -58,8 +68,6 @@ async function interroga<T>(chiave: string, query: string, tentativi = 5): Promi
   throw new Error("Fireflies non risponde dopo piu' tentativi");
 }
 
-const stanzaDa = (collegamento: string | null | undefined): string | null =>
-  (collegamento ?? "").match(/meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})/)?.[1] ?? null;
 
 /** Le registrazioni fra due istanti, sfogliando fino in fondo. */
 export async function leggiTrascrizioni(
@@ -87,7 +95,10 @@ export async function leggiTrascrizioni(
         titolo: t.title ?? "",
         inizio,
         durataMin: Number(t.duration) || 0,
-        stanza: stanzaDa(t.meeting_link),
+        // Il collegamento quando c'e', altrimenti il marcatore che il ponte Zoom
+        // ha scritto nel titolo: per quelle registrazioni meeting_link resta
+        // vuoto perche' Fireflies non lo accetta in fase di caricamento.
+        stanza: stanzaDaCollegamento(t.meeting_link) ?? stanzaDaTitolo(t.title),
         audio: t.audio_url ?? null
       });
     }
