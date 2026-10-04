@@ -37,33 +37,26 @@ export function eChatter(nome: string): boolean {
 /**
  * Come si chiamano le prime tre colonne quando in tabella ci sono solo loro.
  *
- * LE PAROLE CAMBIANO, LE COLONNE NO. Un chatter non ha lead da chiamare: apre
- * conversazioni e scrive. "Chiamate" sulla sua riga e' uno zero vero e inutile,
- * e sostituirlo con una parola sua costa una riga qui invece di una seconda
- * tabella.
+ * UNA PAROLA SU TRE. "Assegnati" e "Connessioni" reggono su tutti e due i
+ * canali - i lead che uno ha in mano, e quanti di loro hanno risposto, che sia
+ * al telefono o in chat - e restano com'erano. Cambia solo "Chiamate", perche'
+ * un chatter non chiama: scrive. Da qui la mappa invece di tre stringhe in
+ * fila: dice cosa cambia, e quello che non c'e' scorre com'e'.
  *
- * "CONNESSIONI" NON E' QUI perche' regge su tutti e due i canali: una
- * connessione e' qualcuno che ha risposto, al telefono come in chat. E' l'unica
- * delle tre parole che non ha bisogno di essere cambiata, ed e' il motivo per
- * cui questa mappa e' una mappa e non tre stringhe in fila: cambia solo quello
- * che va cambiato, il resto scorre com'e'.
+ * ERANO TRE SEGNAPOSTO E NE E' RESTATO UNO, poi nessuno. Vale la pena
+ * ricordare come e' andata, perche' e' il motivo per cui questa mappa e'
+ * piccola e non va fatta crescere per abitudine: la prima idea era che tre
+ * colonne su dodici non andassero bene per i chatter, e guardandole una per
+ * una ne e' rimasta una sola. Prima di aggiungere una riga qui conviene
+ * chiedersi se la parola che c'e' sia davvero sbagliata o solo poco familiare.
  *
  * SOLO CON IL FILTRO TEAM SU "CHATTER". Nella vista mista le intestazioni
  * restano quelle del telefono: sono la maggioranza delle righe, e un titolo non
  * puo' dire due cose insieme. E' il compromesso che tiene una tabella sola -
  * un totale solo, nove colonne confrontabili - senza mentire quando si guarda
  * il gruppo da vicino.
- *
- * "KPI 1" E' UN SEGNAPOSTO, ed e' voluto cosi': la prima metrica non e' ancora
- * decisa, e un nome plausibile messo adesso verrebbe letto come definitivo da
- * chi guarda la tabella e resterebbe li' anche dopo che i dati arrivano da
- * un'altra misura. Un segnaposto che si vede essere un segnaposto si cambia;
- * un nome sbagliato che sembra giusto no. Quando la metrica e' decisa si cambia
- * questa stringa e la tabella si adegua da sola: l'etichetta e' anche la chiave
- * dell'ordinamento.
  */
 export const INTESTAZIONI_CHATTER: Record<string, string> = {
-  Assegnati: "KPI 1",
   Chiamate: "Messaggi"
 };
 
@@ -75,10 +68,13 @@ export const INTESTAZIONI_CHATTER: Record<string, string> = {
  * quei titoli ci sarebbero i numeri di HubSpot: pochi lead assegnati, zero
  * chiamate, zero connessioni.
  *
- * VALE ANCHE PER "CONNESSIONI", che il titolo se lo tiene: la parola e' giusta
- * per tutti e due i canali, il numero no. Lo zero di HubSpot conta le chiamate
- * andate a buon fine, e sulla riga di chi non chiama mai significa "non ho
- * misurato", non "nessuno mi ha risposto".
+ * IL TITOLO GIUSTO NON FA IL NUMERO GIUSTO, ed e' il motivo per cui il
+ * trattino copre tutte e tre le colonne e non solo quella che cambia nome.
+ * "Connessioni" e' la parola buona anche per loro, ma lo zero sotto di essa
+ * conta le chiamate andate a buon fine: sulla riga di chi non chiama mai
+ * significa "non ho misurato", non "nessuno mi ha risposto". Lo stesso per
+ * "Assegnati", che su HubSpot sono due o tre lead smarriti e non il suo carico
+ * di lavoro.
  */
 export const CHATTER_DATI_ATTESI =
   "I dati dei chatter arrivano da REvio e dall'applicazione interna: la dashboard non li legge ancora.";
