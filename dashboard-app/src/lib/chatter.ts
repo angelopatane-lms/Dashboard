@@ -38,9 +38,15 @@ export function eChatter(nome: string): boolean {
  * Come si chiamano le prime tre colonne quando in tabella ci sono solo loro.
  *
  * LE PAROLE CAMBIANO, LE COLONNE NO. Un chatter non ha lead da chiamare: apre
- * conversazioni e scrive. "Assegnati", "Chiamate" e "Connessioni" sulla sua
- * riga sono numeri veri che rispondono a un'altra domanda, e sostituirli con
- * parole sue costa una riga qui invece di una seconda tabella.
+ * conversazioni e scrive. "Chiamate" sulla sua riga e' uno zero vero e inutile,
+ * e sostituirlo con una parola sua costa una riga qui invece di una seconda
+ * tabella.
+ *
+ * "CONNESSIONI" NON E' QUI perche' regge su tutti e due i canali: una
+ * connessione e' qualcuno che ha risposto, al telefono come in chat. E' l'unica
+ * delle tre parole che non ha bisogno di essere cambiata, ed e' il motivo per
+ * cui questa mappa e' una mappa e non tre stringhe in fila: cambia solo quello
+ * che va cambiato, il resto scorre com'e'.
  *
  * SOLO CON IL FILTRO TEAM SU "CHATTER". Nella vista mista le intestazioni
  * restano quelle del telefono: sono la maggioranza delle righe, e un titolo non
@@ -48,28 +54,31 @@ export function eChatter(nome: string): boolean {
  * un totale solo, nove colonne confrontabili - senza mentire quando si guarda
  * il gruppo da vicino.
  *
- * "KPI 1, 2, 3" SONO SEGNAPOSTO, e sono voluti cosi': le metriche vere non si
- * sanno ancora, e un nome plausibile messo adesso - "Messaggi", "Conversazioni"
- * - verrebbe letto come definitivo da chi guarda la tabella e resterebbe li'
- * anche dopo che i dati arrivano da un'altra misura. Un segnaposto che si vede
- * essere un segnaposto si cambia; un nome sbagliato che sembra giusto no.
- * Quando le tre metriche sono decise si cambiano queste tre stringhe, e la
- * tabella si adegua da sola: l'etichetta e' anche la chiave dell'ordinamento.
+ * "KPI 1" E' UN SEGNAPOSTO, ed e' voluto cosi': la prima metrica non e' ancora
+ * decisa, e un nome plausibile messo adesso verrebbe letto come definitivo da
+ * chi guarda la tabella e resterebbe li' anche dopo che i dati arrivano da
+ * un'altra misura. Un segnaposto che si vede essere un segnaposto si cambia;
+ * un nome sbagliato che sembra giusto no. Quando la metrica e' decisa si cambia
+ * questa stringa e la tabella si adegua da sola: l'etichetta e' anche la chiave
+ * dell'ordinamento.
  */
 export const INTESTAZIONI_CHATTER: Record<string, string> = {
   Assegnati: "KPI 1",
-  Chiamate: "KPI 2",
-  Connessioni: "KPI 3"
+  Chiamate: "Messaggi"
 };
 
 /**
  * Perche' quelle tre colonne mostrano un trattino invece di un numero.
  *
  * I dati dei chatter non stanno su HubSpot ma su REvio e su un'applicazione
- * fatta in casa, che la dashboard non legge ancora. Finche' non la legge,
- * sotto quei titoli ci sarebbero i numeri di HubSpot - 3 lead assegnati, zero
- * chiamate, zero connessioni - che rispondono a una domanda diversa da quella
- * che il titolo pone.
+ * fatta in casa, che la dashboard non legge ancora. Finche' non la legge, sotto
+ * quei titoli ci sarebbero i numeri di HubSpot: pochi lead assegnati, zero
+ * chiamate, zero connessioni.
+ *
+ * VALE ANCHE PER "CONNESSIONI", che il titolo se lo tiene: la parola e' giusta
+ * per tutti e due i canali, il numero no. Lo zero di HubSpot conta le chiamate
+ * andate a buon fine, e sulla riga di chi non chiama mai significa "non ho
+ * misurato", non "nessuno mi ha risposto".
  */
 export const CHATTER_DATI_ATTESI =
   "I dati dei chatter arrivano da REvio e dall'applicazione interna: la dashboard non li legge ancora.";
