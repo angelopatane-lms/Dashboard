@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { eChatter } from "@/lib/chatter";
 import { eAdvisorTelefonico } from "@/lib/statiLead";
 import type { OperatorSummary } from "@/lib/analytics";
 import { formatInt, formatPct, formatEur } from "@/lib/format";
@@ -495,11 +496,16 @@ export default function OperatorStatsTable({
    * senza righe, e una riga bianca invece sparisce da sola quando non c'e'
    * niente da separare.
    */
-  const conVideochiamata = righe.filter((r) => !eAdvisorTelefonico(r.operatore));
-  const alTelefono = righe.filter((r) => eAdvisorTelefonico(r.operatore));
+  // CHI VA IN FONDO DIPENDE DALLA PAGINA: sulla Advisor il Team Eventi, che
+  // lavora il low ticket al telefono; sulla Setter i chatter, che fissano dalla
+  // chat invece che chiamando. In entrambi i casi e' un mestiere diverso dagli
+  // altri della stessa tabella, non una prestazione diversa.
+  const inFondo = isSetterView ? eChatter : eAdvisorTelefonico;
+  const primoGruppo = righe.filter((r) => !inFondo(r.operatore));
+  const secondoGruppo = righe.filter((r) => inFondo(r.operatore));
   // La separazione ha senso solo quando i gruppi in tabella sono due: con il
-  // filtro Team su un gruppo solo sarebbe una riga che non separa niente.
-  const dueGruppi = conVideochiamata.length > 0 && alTelefono.length > 0 && !isSetterView;
+  // filtro Team su un gruppo solo sarebbe una linea che non separa niente.
+  const dueGruppi = primoGruppo.length > 0 && secondoGruppo.length > 0;
 
   const totalTp = tassoPresa(totals.appuntamenti, totals.connessioni);
   // Sulla vista Setter il totale era soppresso perche' il denominatore era
@@ -586,9 +592,9 @@ export default function OperatorStatsTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {(dueGruppi ? [...conVideochiamata, ...alTelefono] : righe).map((r, indice, elenco) => {
+          {(dueGruppi ? [...primoGruppo, ...secondoGruppo] : righe).map((r, indice, elenco) => {
             const primoTelefonico =
-              dueGruppi && indice === conVideochiamata.length;
+              dueGruppi && indice === primoGruppo.length;
             const tp = tassoPresa(effAppuntamenti(r), r.connessioni);
             const tc = tassoChiusura(effChiusure(r), effConsulenzeChiusura(r));
             // Quanti dei suoi appuntamenti si sono tenuti. Il denominatore sono

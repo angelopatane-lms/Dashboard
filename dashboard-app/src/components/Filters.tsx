@@ -273,7 +273,7 @@ export function FiltersBar({
   formati,
   formatoLabel = "Formato",
   campagnaMultipla = false,
-  team = false
+  team
 }: {
   filters: Filters;
   setFilters: (next: Filters) => void;
@@ -302,10 +302,11 @@ export function FiltersBar({
    *  filters.categorie. Lo usa la sola pagina Campagne, dove quel menu elenca
    *  le categorie e serve poterne escludere qualcuna. */
   campagnaMultipla?: boolean;
-  /** Se vero compare il menu Team: high ticket (su appuntamento) o low ticket
-   *  (al telefono). Lo usa la sola pagina Advisor, dove le righe sono divise
-   *  in quei due gruppi. */
-  team?: boolean;
+  /** Se presente compare il menu Team, con queste opzioni. Le due pagine lo
+   *  usano per cose diverse - Advisor divide high e low ticket, Setter divide
+   *  telefonici e chatter - quindi le voci arrivano da fuori invece di stare
+   *  qui dentro con un if sulla pagina. */
+  team?: Array<{ label: string; value: string }>;
 }) {
   const menu = (
     etichetta: string,
@@ -393,11 +394,7 @@ export function FiltersBar({
         Boolean(filters.team && filters.team.trim()),
         filters.team ?? "",
         (v) => setFilters({ ...filters, team: v || undefined }),
-        [
-          tutte("Tutti"),
-          { label: "High Ticket", value: "high" },
-          { label: "Low Ticket", value: "low" }
-        ]
+        [tutte("Tutti"), ...team]
       )
     : null;
 

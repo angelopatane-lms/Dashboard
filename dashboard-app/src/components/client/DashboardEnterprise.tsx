@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { eChatter } from "@/lib/chatter";
 import { eAdvisorTelefonico } from "@/lib/statiLead";
 import type { CsvRow } from "@/lib/csv";
 import { applyFilters, computeKpis, type Filters } from "@/lib/metrics";
@@ -331,11 +332,16 @@ export default function DashboardEnterprise({
    * totali: una riga nascosta che continua a pesare sul totale e' peggio di
    * nessun filtro.
    */
+  const vistaSetter = operatorLabel === "Setter";
+
+  /** Chi finisce nel secondo gruppo, in fondo: dipende dalla pagina. */
+  const secondoGruppo = vistaSetter ? eChatter : eAdvisorTelefonico;
+
   const righeTeam = useMemo(() => {
     if (!filters.team) return operatorSummaryAll;
-    const telefonico = filters.team === "low";
-    return operatorSummaryAll.filter((r) => eAdvisorTelefonico(r.operatore) === telefonico);
-  }, [operatorSummaryAll, filters.team]);
+    const sotto = filters.team === "low" || filters.team === "chatter";
+    return operatorSummaryAll.filter((r) => secondoGruppo(r.operatore) === sotto);
+  }, [operatorSummaryAll, filters.team, secondoGruppo]);
 
 
   // L'AGENDA DEL GIORNO.
@@ -875,7 +881,17 @@ export default function DashboardEnterprise({
             vendite={useHubspot ? vendite : undefined}
             prodotti={useHubspot ? prodotti : undefined}
             operatorLabel={operatorLabel}
-            team={operatorLabel !== "Setter"}
+            team={
+              vistaSetter
+                ? [
+                    { label: "Telefonico", value: "telefonico" },
+                    { label: "Chatter", value: "chatter" }
+                  ]
+                : [
+                    { label: "High Ticket", value: "high" },
+                    { label: "Low Ticket", value: "low" }
+                  ]
+            }
           />
         </div>
 
