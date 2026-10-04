@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { eChatter } from "@/lib/chatter";
+import { CHATTER_DATI_ATTESI, eChatter, INTESTAZIONI_CHATTER } from "@/lib/chatter";
 import { eAdvisorTelefonico } from "@/lib/statiLead";
 import type { OperatorSummary } from "@/lib/analytics";
 import { formatInt, formatPct, formatEur } from "@/lib/format";
@@ -219,6 +219,10 @@ const INTESTAZIONI_NUMERI = [
   "Assegnati",
   "Chiamate",
   "Connessioni",
+  // I titoli che prendono il loro posto con il filtro Team su "Chatter":
+  // "Conversazioni" e' piu' lungo di "Connessioni", e senza metterlo qui la
+  // colonna si stringerebbe mandandolo a capo.
+  ...Object.values(INTESTAZIONI_CHATTER),
   "Appuntamenti",
   "% Appuntamento",
   // Queste due compaiono solo sulla pagina Setter, ma la larghezza si calcola
@@ -320,6 +324,17 @@ export default function OperatorStatsTable({
   onSalvaObiettivo?: (persona: string, mese: string, valore: number | null) => Promise<void> | void;
 }) {
   const isSetterView = operatorLabel === "Setter";
+  /**
+   * In tabella ci sono SOLO chatter: e' il filtro Team su "Chatter".
+   *
+   * Si guarda chi c'e' invece del filtro perche' la tabella il filtro non lo
+   * conosce - riceve gia' le righe scremate - e perche' cosi' vale anche se un
+   * domani le righe arrivassero da un'altra strada. `data.length` nel conto
+   * evita che una tabella vuota passi per una tabella di chatter: `every` su
+   * zero elementi e' vero.
+   */
+  const soloChatter = isSetterView && data.length > 0 && data.every((r) => eChatter(r.operatore));
+  const titolo = (nome: string) => (soloChatter ? INTESTAZIONI_CHATTER[nome] ?? nome : nome);
   const normKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
   // Il foglio resta il ripiego: se il database non risponde la colonna mostra
   // il vecchio numero invece di azzerarsi, e per i mesi in cui il foglio era
@@ -417,9 +432,12 @@ export default function OperatorStatsTable({
    * e perche' una colonna cambia nome fra Advisor e Setter.
    */
   const colonne: Array<{ label: string; valore: (r: OperatorSummary) => number | null }> = [
-    { label: "Assegnati", valore: (r) => r.assegnati },
-    { label: "Chiamate", valore: (r) => r.chiamate },
-    { label: "Connessioni", valore: (r) => r.connessioni },
+    // I primi tre titoli cambiano quando si guarda il solo gruppo chat: il
+    // perche' sta in INTESTAZIONI_CHATTER. L'etichetta e' anche la chiave
+    // dell'ordinamento, quindi cambia da sola anche quella e non serve altro.
+    { label: titolo("Assegnati"), valore: (r) => r.assegnati },
+    { label: titolo("Chiamate"), valore: (r) => r.chiamate },
+    { label: titolo("Connessioni"), valore: (r) => r.connessioni },
     { label: "Appuntamenti", valore: (r) => effAppuntamenti(r) },
     { label: "% Appuntamento", valore: (r) => taglia(tassoPresa(effAppuntamenti(r), r.connessioni)) },
     {
@@ -635,23 +653,30 @@ export default function OperatorStatsTable({
                 >
                   {r.operatore}
                 </td>
+                {/* Sotto i titoli nuovi un trattino, non il numero di HubSpot:
+                    vedi CHATTER_DATI_ATTESI. Nella vista mista i titoli sono
+                    ancora quelli del telefono e il numero e' la risposta
+                    giusta alla domanda che pongono. */}
                 <td
                   className="border-r border-white px-2 py-1.5 text-right tabular-nums"
-                  style={{ background: heatBg(r.assegnati, maxValues.assegnati) }}
+                  style={{ background: soloChatter ? undefined : heatBg(r.assegnati, maxValues.assegnati) }}
+                  title={soloChatter ? CHATTER_DATI_ATTESI : undefined}
                 >
-                  {formatInt(r.assegnati)}
+                  {soloChatter ? <span className="text-slate-400">–</span> : formatInt(r.assegnati)}
                 </td>
                 <td
                   className="border-r border-white px-2 py-1.5 text-right tabular-nums"
-                  style={{ background: heatBg(r.chiamate, maxValues.chiamate) }}
+                  style={{ background: soloChatter ? undefined : heatBg(r.chiamate, maxValues.chiamate) }}
+                  title={soloChatter ? CHATTER_DATI_ATTESI : undefined}
                 >
-                  {formatInt(r.chiamate)}
+                  {soloChatter ? <span className="text-slate-400">–</span> : formatInt(r.chiamate)}
                 </td>
                 <td
                   className="border-r border-white px-2 py-1.5 text-right tabular-nums"
-                  style={{ background: heatBg(r.connessioni, maxValues.connessioni) }}
+                  style={{ background: soloChatter ? undefined : heatBg(r.connessioni, maxValues.connessioni) }}
+                  title={soloChatter ? CHATTER_DATI_ATTESI : undefined}
                 >
-                  {formatInt(r.connessioni)}
+                  {soloChatter ? <span className="text-slate-400">–</span> : formatInt(r.connessioni)}
                 </td>
                 <td
                   className="border-r border-white px-2 py-1.5 text-right tabular-nums"
@@ -776,9 +801,15 @@ export default function OperatorStatsTable({
             >
               Totale complessivo
             </td>
-            <td className="border-r border-white px-2 py-2 text-right tabular-nums">{formatInt(totals.assegnati)}</td>
-            <td className="border-r border-white px-2 py-2 text-right tabular-nums">{formatInt(totals.chiamate)}</td>
-            <td className="border-r border-white px-2 py-2 text-right tabular-nums">{formatInt(totals.connessioni)}</td>
+            <td className="border-r border-white px-2 py-2 text-right tabular-nums">
+              {soloChatter ? <span className="font-normal text-slate-400">–</span> : formatInt(totals.assegnati)}
+            </td>
+            <td className="border-r border-white px-2 py-2 text-right tabular-nums">
+              {soloChatter ? <span className="font-normal text-slate-400">–</span> : formatInt(totals.chiamate)}
+            </td>
+            <td className="border-r border-white px-2 py-2 text-right tabular-nums">
+              {soloChatter ? <span className="font-normal text-slate-400">–</span> : formatInt(totals.connessioni)}
+            </td>
             <td className="border-r border-white px-2 py-2 text-right tabular-nums">{trattativeLoading ? <span className="font-normal text-slate-400">–</span> : formatInt(totals.appuntamenti)}</td>
             <td className="border-r border-white px-2 py-2 text-right tabular-nums">
               {trattativeLoading ? <span className="font-normal text-slate-400">–</span> : totalTp !== null ? formatPct(taglia(totalTp) as number, 2) : <span className="font-normal text-slate-400">–</span>}

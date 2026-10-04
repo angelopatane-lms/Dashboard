@@ -33,3 +33,43 @@ export function eChatter(nome: string): boolean {
   const k = nome.trim().toLowerCase().replace(/\s+/g, " ");
   return CHATTER.some((n) => n.toLowerCase() === k);
 }
+
+/**
+ * Come si chiamano le prime tre colonne quando in tabella ci sono solo loro.
+ *
+ * LE PAROLE CAMBIANO, LE COLONNE NO. Un chatter non ha lead da chiamare: apre
+ * conversazioni e scrive. "Assegnati", "Chiamate" e "Connessioni" sulla sua
+ * riga sono numeri veri che rispondono a un'altra domanda, e sostituirli con
+ * parole sue costa una riga qui invece di una seconda tabella.
+ *
+ * SOLO CON IL FILTRO TEAM SU "CHATTER". Nella vista mista le intestazioni
+ * restano quelle del telefono: sono la maggioranza delle righe, e un titolo non
+ * puo' dire due cose insieme. E' il compromesso che tiene una tabella sola -
+ * un totale solo, nove colonne confrontabili - senza mentire quando si guarda
+ * il gruppo da vicino.
+ *
+ * "KPI 1, 2, 3" SONO SEGNAPOSTO, e sono voluti cosi': le metriche vere non si
+ * sanno ancora, e un nome plausibile messo adesso - "Messaggi", "Conversazioni"
+ * - verrebbe letto come definitivo da chi guarda la tabella e resterebbe li'
+ * anche dopo che i dati arrivano da un'altra misura. Un segnaposto che si vede
+ * essere un segnaposto si cambia; un nome sbagliato che sembra giusto no.
+ * Quando le tre metriche sono decise si cambiano queste tre stringhe, e la
+ * tabella si adegua da sola: l'etichetta e' anche la chiave dell'ordinamento.
+ */
+export const INTESTAZIONI_CHATTER: Record<string, string> = {
+  Assegnati: "KPI 1",
+  Chiamate: "KPI 2",
+  Connessioni: "KPI 3"
+};
+
+/**
+ * Perche' quelle tre colonne mostrano un trattino invece di un numero.
+ *
+ * I dati dei chatter non stanno su HubSpot ma su REvio e su un'applicazione
+ * fatta in casa, che la dashboard non legge ancora. Finche' non la legge,
+ * sotto quei titoli ci sarebbero i numeri di HubSpot - 3 lead assegnati, zero
+ * chiamate, zero connessioni - che rispondono a una domanda diversa da quella
+ * che il titolo pone.
+ */
+export const CHATTER_DATI_ATTESI =
+  "I dati dei chatter arrivano da REvio e dall'applicazione interna: la dashboard non li legge ancora.";
