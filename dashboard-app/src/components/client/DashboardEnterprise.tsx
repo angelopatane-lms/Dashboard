@@ -339,7 +339,9 @@ export default function DashboardEnterprise({
 
   const righeTeam = useMemo(() => {
     if (!filters.team) return operatorSummaryAll;
-    const sotto = filters.team === "low" || filters.team === "chatter";
+    // I valori del secondo gruppo, uno per pagina: "eventi" sulla Advisor
+    // (il Team Eventi) e "chatter" sulla Setter.
+    const sotto = filters.team === "eventi" || filters.team === "chatter";
     return operatorSummaryAll.filter((r) => secondoGruppo(r.operatore) === sotto);
   }, [operatorSummaryAll, filters.team, secondoGruppo]);
 
@@ -888,8 +890,8 @@ export default function DashboardEnterprise({
                     { label: "Chatter", value: "chatter" }
                   ]
                 : [
-                    { label: "High Ticket", value: "high" },
-                    { label: "Low Ticket", value: "low" }
+                    { label: "Programmi", value: "programmi" },
+                    { label: "Eventi", value: "eventi" }
                   ]
             }
           />

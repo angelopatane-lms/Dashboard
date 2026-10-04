@@ -551,10 +551,20 @@ export default function OperatorStatsTable({
         className="table-fixed border-collapse text-sm"
         style={{ width: "100%", minWidth: larghezzaTotale }}
       >
+        {/* LARGHEZZE IN PERCENTUALE, non in pixel.
+            Le proporzioni sono le stesse di prima - ogni quota e' la sua
+            larghezza in pixel divisa per il totale - quindi alla larghezza
+            minima le colonne misurano esattamente quanto misuravano: 158px il
+            nome, LARGHEZZA_NUMERI le altre. La differenza e' oltre quella
+            soglia: in pixel la tabella si fermava li' e avanzava una striscia
+            bianca a destra, in percentuale cresce tutta insieme e riempie.
+            Il difetto c'era su entrambe le pagine, ma si vedeva solo sulla
+            Advisor: dodici colonne fanno 1610px, mentre la Setter con una in
+            piu' arriva a 1765 e il contenitore lo riempie quasi tutto. */}
         <colgroup>
-          <col style={{ width: larghezzaNome }} />
+          <col style={{ width: `${(larghezzaNome / larghezzaTotale) * 100}%` }} />
           {colonne.map((_, i) => (
-            <col key={i} style={{ width: LARGHEZZA_NUMERI }} />
+            <col key={i} style={{ width: `${(LARGHEZZA_NUMERI / larghezzaTotale) * 100}%` }} />
           ))}
         </colgroup>
         <thead>
