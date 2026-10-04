@@ -497,6 +497,9 @@ export default function OperatorStatsTable({
    */
   const conVideochiamata = righe.filter((r) => !eAdvisorTelefonico(r.operatore));
   const alTelefono = righe.filter((r) => eAdvisorTelefonico(r.operatore));
+  // La separazione ha senso solo quando i gruppi in tabella sono due: con il
+  // filtro Team su un gruppo solo sarebbe una riga che non separa niente.
+  const dueGruppi = conVideochiamata.length > 0 && alTelefono.length > 0 && !isSetterView;
 
   const totalTp = tassoPresa(totals.appuntamenti, totals.connessioni);
   // Sulla vista Setter il totale era soppresso perche' il denominatore era
@@ -583,9 +586,9 @@ export default function OperatorStatsTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {(alTelefono.length > 0 && !isSetterView ? [...conVideochiamata, ...alTelefono] : righe).map((r, indice, elenco) => {
+          {(dueGruppi ? [...conVideochiamata, ...alTelefono] : righe).map((r, indice, elenco) => {
             const primoTelefonico =
-              alTelefono.length > 0 && !isSetterView && indice === conVideochiamata.length;
+              dueGruppi && indice === conVideochiamata.length;
             const tp = tassoPresa(effAppuntamenti(r), r.connessioni);
             const tc = tassoChiusura(effChiusure(r), effConsulenzeChiusura(r));
             // Quanti dei suoi appuntamenti si sono tenuti. Il denominatore sono
@@ -598,23 +601,15 @@ export default function OperatorStatsTable({
                   Non e' un'intestazione di colonne - non ripete i titoli e non
                   si puo' cliccare - ma una targhetta: con i filtri attivi, se
                   il gruppo resta senza righe sparisce insieme a loro. */}
-              {/* font-bold e non font-semibold: le intestazioni sono <th>, a cui
-                  il browser applica gia' il grassetto di suo, e quello batte la
-                  classe ereditata dalla riga. Qui siamo in un <td>, quindi per
-                  avere lo stesso peso va chiesto esplicitamente. */}
+              {/* LA SEPARAZIONE E' UNA LINEA, non una riga: una riga di
+                  intestazione ruberebbe spazio e, con il filtro Team su un
+                  gruppo solo, annuncerebbe un gruppo che non ha niente da cui
+                  essere separato. Il bordo sta sulla cella e non sul <tr>
+                  perche' `divide-y` sul corpo della tabella imposta il bordo
+                  dei figli con una specificita' piu' alta. */}
               {primoTelefonico ? (
-                <tr className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                  {/* I BORDI STANNO SULLA CELLA, non sulla riga: `divide-y` sul
-                      corpo della tabella imposta il bordo superiore dei figli
-                      con una specificita' piu' alta di una classe sul <tr>, e
-                      vincerebbe lui lasciando la riga con la linea sottile
-                      delle altre. */}
-                  <td
-                    colSpan={30}
-                    className="border-t-2 border-b-2 border-slate-300 bg-white py-2 text-center"
-                  >
-                    Team Eventi
-                  </td>
+                <tr aria-hidden="true">
+                  <td colSpan={30} className="border-t-2 border-slate-300 p-0" />
                 </tr>
               ) : null}
               <tr className="group hover:bg-slate-50/70 transition-colors">

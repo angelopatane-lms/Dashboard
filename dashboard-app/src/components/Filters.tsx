@@ -272,7 +272,8 @@ export function FiltersBar({
   varianteLabel = "Variante",
   formati,
   formatoLabel = "Formato",
-  campagnaMultipla = false
+  campagnaMultipla = false,
+  team = false
 }: {
   filters: Filters;
   setFilters: (next: Filters) => void;
@@ -301,6 +302,10 @@ export function FiltersBar({
    *  filters.categorie. Lo usa la sola pagina Campagne, dove quel menu elenca
    *  le categorie e serve poterne escludere qualcuna. */
   campagnaMultipla?: boolean;
+  /** Se vero compare il menu Team: high ticket (su appuntamento) o low ticket
+   *  (al telefono). Lo usa la sola pagina Advisor, dove le righe sono divise
+   *  in quei due gruppi. */
+  team?: boolean;
 }) {
   const menu = (
     etichetta: string,
@@ -381,6 +386,20 @@ export function FiltersBar({
     [tutte("Tutte"), ...(campaigns ?? []).map((c) => ({ label: c, value: c }))]
     )
   );
+
+  const bloccoTeam = team
+    ? menu(
+        "Team",
+        Boolean(filters.team && filters.team.trim()),
+        filters.team ?? "",
+        (v) => setFilters({ ...filters, team: v || undefined }),
+        [
+          tutte("Tutti"),
+          { label: "High Ticket", value: "high" },
+          { label: "Low Ticket", value: "low" }
+        ]
+      )
+    : null;
 
   const bloccoVendite =
     vendite !== undefined
@@ -492,7 +511,7 @@ export function FiltersBar({
   // fondo; altrove il menu delle persone viene prima di quello delle campagne.
   const blocchi = varianti
     ? [bloccoPeriodo, bloccoCampagna, bloccoFormato, bloccoVarianti, bloccoOperatoreOTipologia]
-    : [bloccoPeriodo, bloccoOperatoreOTipologia, bloccoCampagna, bloccoVendite, bloccoProdotti];
+    : [bloccoPeriodo, bloccoTeam, bloccoOperatoreOTipologia, bloccoCampagna, bloccoVendite, bloccoProdotti];
 
   // Le colonne si contano sui blocchi che ci sono davvero, invece di ricavarle
   // dalle condizioni che li accendono: quel conto andava rifatto a mano a ogni

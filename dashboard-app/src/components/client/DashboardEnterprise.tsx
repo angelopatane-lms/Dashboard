@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { eAdvisorTelefonico } from "@/lib/statiLead";
 import type { CsvRow } from "@/lib/csv";
 import { applyFilters, computeKpis, type Filters } from "@/lib/metrics";
 import {
@@ -319,6 +320,23 @@ export default function DashboardEnterprise({
     () => aggregateByOperatore(operatoriNorm),
     [operatoriNorm]
   );
+
+  /**
+   * Le righe della tabella dopo il filtro Team.
+   *
+   * "high" sono gli advisor che lavorano su appuntamento, "low" il Team Eventi:
+   * quattro persone che seguono il low ticket al telefono, i cui Appuntamenti e
+   * Consulenze arrivano dagli Stati Lead invece che dalle trattative. Il filtro
+   * agisce qui e non dentro la tabella perche' cosi' si restringono anche i
+   * totali: una riga nascosta che continua a pesare sul totale e' peggio di
+   * nessun filtro.
+   */
+  const righeTeam = useMemo(() => {
+    if (!filters.team) return operatorSummaryAll;
+    const telefonico = filters.team === "low";
+    return operatorSummaryAll.filter((r) => eAdvisorTelefonico(r.operatore) === telefonico);
+  }, [operatorSummaryAll, filters.team]);
+
 
   // L'AGENDA DEL GIORNO.
   //
@@ -857,6 +875,7 @@ export default function DashboardEnterprise({
             vendite={useHubspot ? vendite : undefined}
             prodotti={useHubspot ? prodotti : undefined}
             operatorLabel={operatorLabel}
+            team={operatorLabel !== "Setter"}
           />
         </div>
 
@@ -876,7 +895,7 @@ export default function DashboardEnterprise({
                   Caricamento dei dati in corso...
                 </div>
               ) : (
-              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} />
+              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} />
               )}
             </Card>
           </div>

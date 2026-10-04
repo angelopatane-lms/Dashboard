@@ -15,6 +15,9 @@ export type Filters = {
   campagna?: string;
   vendita?: string;
   prodotto?: string;
+  /** Solo pagina Advisor: "high" o "low". Separa chi lavora su appuntamento da
+   *  chi segue il low ticket al telefono (il Team Eventi). Vuoto = tutti. */
+  team?: string;
   /** Solo pagina Campagne: restringe le righe della tabella (es. "con_spesa").
    *  Non filtra le righe del foglio Operatori, agisce a valle sulla tabella. */
   tipologia?: string;
