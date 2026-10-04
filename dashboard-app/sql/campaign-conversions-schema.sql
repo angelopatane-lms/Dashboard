@@ -504,3 +504,64 @@ ALTER TABLE marketing_snapshot ADD COLUMN IF NOT EXISTS pre_in_attesa INT;
 -- Da riempire solo a mano e solo sulle notti senza misura: le altre restano
 -- NULL e il numero si calcola dalle fotografie.
 ALTER TABLE marketing_snapshot ADD COLUMN IF NOT EXISTS declassati_stima INT;
+
+-- ============================================================================
+-- LA CRONOLOGIA DEGLI STATI LEAD, per chi lavora solo al telefono.
+--
+-- PERCHE' SERVE UNA TABELLA. Quattro advisor seguono il low ticket senza
+-- fissare videochiamate: niente appuntamento sul calendario, niente trattativa,
+-- e le colonne Appuntamenti e Consulenze restano a zero. L'unica traccia del
+-- loro lavoro e' lo Stato Lead del contatto.
+--
+-- PERCHE' LA CRONOLOGIA E NON LO STATO ATTUALE. Un contatto ne attraversa
+-- diversi e sopravvive solo l'ultimo: chi passa da "Appuntamento fissato" a
+-- "in Trattative" perderebbe l'appuntamento, e chi compra diventa "Cliente" in
+-- automatico e perde tutto quello che c'era prima. Qui si tiene ogni INGRESSO
+-- in uno stato, con la sua data, e si contano quelli caduti nel periodo.
+--
+-- PERCHE' NON SI LEGGE DA HUBSPOT A OGNI APERTURA. I quattro insieme hanno
+-- 15.777 contatti, 13.292 dei quali toccati da settembre in poi: servirebbero
+-- oltre 260 chiamate per disegnare una tabella, su un tetto al secondo gia'
+-- condiviso con le altre rotte.
+--
+-- PERCHE' IL PROPRIETARIO STA SULLA RIGA e non si prende da quello di adesso:
+-- i contatti vengono riciclati e cambiano mano negli anni - se ne vedono che
+-- passano NEW -> BIN -> NEW -> BIN fra proprietari diversi. Attribuire al
+-- proprietario attuale falserebbe i mesi passati. Qui si scrive chi lo aveva
+-- NEL MOMENTO di quel cambio, ricavato dalla cronologia di hubspot_owner_id.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS stato_lead_storia (
+  contatto_id     BIGINT      NOT NULL,
+  -- L'istante del cambio, come lo riporta HubSpot.
+  ts              TIMESTAMPTZ NOT NULL,
+  -- Il valore INTERNO, non l'etichetta: "Persa in Chamata" col refuso,
+  -- "Semina Follow up" e "Semina Follow Up (Post Consulenza)" distinti dalla
+  -- sola maiuscola. Vedi src/lib/statiLead.ts.
+  stato           TEXT        NOT NULL,
+  -- Chi aveva il contatto in quell'istante. NULL quando la cronologia del
+  -- proprietario non arriva cosi' indietro: la riga resta, ma non si attribuisce.
+  proprietario_id BIGINT,
+  -- Due cambi nello stesso millisecondo sullo stesso contatto non esistono:
+  -- la coppia basta a rendere il giro ripetibile senza duplicare.
+  PRIMARY KEY (contatto_id, ts)
+);
+
+CREATE INDEX IF NOT EXISTS stato_lead_storia_periodo
+  ON stato_lead_storia (proprietario_id, ts);
+
+-- LA CAMPAGNA DEL CONTATTO NELL'ISTANTE DEL CAMBIO DI STATO.
+--
+-- Senza di lei le righe dei quattro advisor telefonici non rispondono al
+-- filtro Campagna: tutti gli altri numeri della tabella si restringono e i
+-- loro no, e si leggono fianco a fianco cifre che misurano cose diverse senza
+-- che niente lo dica. Un totale che non torna si nota, questo no.
+--
+-- E' il valore grezzo di id_campagna_refresh, non un id della tabella
+-- campagna: il filtro della dashboard confronta l'etichetta normalizzata con
+-- la stringa dell'id, e tenerla com'e' permette di usare lo stesso confronto
+-- che gia' si applica alle trattative.
+--
+-- Si legge dalla CRONOLOGIA come il proprietario, perche' cambia nel tempo:
+-- esistono apposta id_campagna_refresh_precedente e storico_campagna_refresh.
+-- Prendere quella di adesso attribuirebbe i mesi passati alla campagna sbagliata.
+ALTER TABLE stato_lead_storia ADD COLUMN IF NOT EXISTS campagna TEXT;

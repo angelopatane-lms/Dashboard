@@ -116,6 +116,10 @@ export default function DashboardEnterprise({
   // dal foglio Operatori e per forza di cose non le conosce: l'agenda le
   // mostrava e la tabella no.
   const [fuoriCrm, setFuoriCrm] = useState<Record<string, number> | null>(null);
+  // Appuntamenti e Consulenze di chi lavora solo al telefono, ricavati dagli
+  // Stati Lead: i quattro advisor del low ticket non fissano videochiamate,
+  // quindi non nasce nessuna trattativa e le due colonne restavano a zero.
+  const [telefonici, setTelefonici] = useState<Record<string, { appuntamenti: number; consulenze: number }> | null>(null);
   // Gli obiettivi di Boom del mese. `meseObiettivo` vale null quando il periodo
   // scelto copre piu' mesi: in quel caso la colonna mostra la somma e non si
   // lascia scrivere, perche' non si saprebbe a quale mese attribuire la cifra.
@@ -172,6 +176,24 @@ export default function DashboardEnterprise({
         setNoShowSetter(data.perSetter ?? {});
         setSvolteSetter(data.svoltePerSetter ?? {});
         setFuoriCrm(data.fuoriCrmPerAdvisor ?? {});
+      })
+      .catch(console.error);
+
+    // La campagna va passata anche qui: senza, le loro righe resterebbero
+    // larghe mentre tutte le altre si restringono, e la tabella mostrerebbe
+    // fianco a fianco numeri che misurano cose diverse senza dirlo.
+    fetch(
+      `/api/advisor-telefonici?from=${dal}&to=${al}` +
+        (filters.campagna ? `&campagna=${encodeURIComponent(filters.campagna)}` : "")
+    )
+      .then((r) => r.json())
+      .then((data: { conteggi?: Record<string, { appuntamenti: number; consulenze: number }>; error?: string }) => {
+        if (annullato) return;
+        if (data.error) {
+          console.error("[advisor-telefonici]", data.error);
+          return;
+        }
+        setTelefonici(data.conteggi ?? {});
       })
       .catch(console.error);
 
@@ -854,7 +876,7 @@ export default function DashboardEnterprise({
                   Caricamento dei dati in corso...
                 </div>
               ) : (
-              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} />
+              <OperatorStatsTable data={operatorSummaryAll} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} />
               )}
             </Card>
           </div>

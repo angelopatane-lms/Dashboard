@@ -16,7 +16,8 @@
     "verifica:svolte": "tsx scripts/verifica-trattative-svolte.ts",
     "bootstrap:trattative": "tsx scripts/bootstrap-trattative.ts",
     "bootstrap:chiamate": "tsx scripts/bootstrap-chiamate.ts",
-    "abbina": "tsx scripts/abbina-trascrizioni.ts"
+    "abbina": "tsx scripts/abbina-trascrizioni.ts",
+    "sync:stati-lead": "tsx scripts/sync-stati-lead.ts"
   },
   "dependencies": {
     "@vercel/functions": "^3.9.7",

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { eAdvisorTelefonico } from "@/lib/statiLead";
 import type { OperatorSummary } from "@/lib/analytics";
 import { formatInt, formatPct, formatEur } from "@/lib/format";
 import {
@@ -241,6 +242,7 @@ export default function OperatorStatsTable({
   consulenzeFuoriCrm,
   meseObiettivo,
   onSalvaObiettivo,
+  telefonici,
   trattativeOverrides,
   precomputedTotals,
   hubspotLoading,
@@ -282,6 +284,16 @@ export default function OperatorStatsTable({
    * diversi sullo stesso giorno.
    */
   consulenzeFuoriCrm?: Record<string, number>;
+  /**
+   * Appuntamenti e Consulenze di chi lavora solo al telefono, dagli Stati Lead.
+   *
+   * Quattro advisor seguono il low ticket senza fissare videochiamate: niente
+   * appuntamento sul calendario, quindi nessuna trattativa da cui contare, e
+   * le due colonne mostravano zero su persone che a settembre hanno chiuso
+   * 8, 32, 21 e 13 vendite. Per le LORO righe questi numeri sostituiscono
+   * quelli soliti; per tutti gli altri non cambia niente.
+   */
+  telefonici?: Record<string, { appuntamenti: number; consulenze: number }>;
   trattativeOverrides?: Record<string, number>;
   precomputedTotals?: { chiusure: number; boom: number };
   hubspotLoading?: boolean;
@@ -317,8 +329,15 @@ export default function OperatorStatsTable({
   // LE CONSULENZE DI UN ADVISOR: quelle del foglio piu' quelle che sul CRM non
   // esistono. Sulla pagina Setter non si sommano: li' la colonna conta un'altra
   // cosa, e una call senza appuntamento non ha un setter a cui attribuirla.
-  const effConsulenze = (r: OperatorSummary) =>
-    r.consulenze + (isSetterView ? 0 : consulenzeFuoriCrm?.[normKey(r.operatore)] ?? 0);
+  // CHI LAVORA AL TELEFONO HA I SUOI NUMERI. Sostituiscono e non si sommano:
+  // il foglio e il CRM per loro valgono zero, e sommarli a zero darebbe lo
+  // stesso numero con un giro in piu' - ma sommarli il giorno in cui una di
+  // quelle fonti si riempisse darebbe un doppio conteggio silenzioso.
+  const effConsulenze = (r: OperatorSummary) => {
+    const tel = telefonici?.[normKey(r.operatore)];
+    if (tel && !isSetterView) return tel.consulenze;
+    return r.consulenze + (isSetterView ? 0 : consulenzeFuoriCrm?.[normKey(r.operatore)] ?? 0);
+  };
 
   const effConsulenzeChiusura = (r: OperatorSummary) =>
     isSetterView ? svolteOverrides?.[normKey(r.operatore)] ?? 0 : effConsulenze(r);
@@ -335,7 +354,11 @@ export default function OperatorStatsTable({
    */
   const effIncassoChiusure = (r: OperatorSummary) =>
     hubspotOverrides?.[normKey(r.operatore)]?.incassoChiusure ?? 0;
-  const effAppuntamenti = (r: OperatorSummary) => trattativeOverrides?.[normKey(r.operatore)] ?? 0;
+  const effAppuntamenti = (r: OperatorSummary) => {
+    const tel = telefonici?.[normKey(r.operatore)];
+    if (tel && !isSetterView) return tel.appuntamenti;
+    return trattativeOverrides?.[normKey(r.operatore)] ?? 0;
+  };
   const effObiettivo = (r: OperatorSummary): number | null =>
     obiettivi?.[normKey(r.operatore)] ?? null;
 
@@ -362,7 +385,7 @@ export default function OperatorStatsTable({
       chiusure: precomputedTotals?.chiusure ?? base.chiusure,
       boom: precomputedTotals?.boom ?? base.boom
     };
-  }, [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, consulenzeFuoriCrm, precomputedTotals, obiettivi]);
+  }, [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, consulenzeFuoriCrm, telefonici, precomputedTotals, obiettivi]);
 
   const maxValues = useMemo(
     () => ({
@@ -376,13 +399,13 @@ export default function OperatorStatsTable({
       boom: Math.max(...data.map((r) => effBoom(r)), 1),
       resa: Math.max(...data.map((r) => resaOraria(effIncassoChiusure(r), effConsulenze(r)) ?? 0), 1)
     }),
-    [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides]
+    [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, telefonici]
   );
 
 
   const sorted = useMemo(
     () => [...data].sort((a, b) => effBoom(b) - effBoom(a) || effAppuntamenti(b) - effAppuntamenti(a)),
-    [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides]
+    [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, telefonici]
   );
 
   /**
@@ -451,6 +474,29 @@ export default function OperatorStatsTable({
         (a, b) => (colonnaOrdinata.valore(b) ?? -Infinity) - (colonnaOrdinata.valore(a) ?? -Infinity)
       )
     : sorted;
+
+  /**
+   * DUE GRUPPI, UNA TABELLA SOLA.
+   *
+   * Quattro advisor seguono il low ticket solo al telefono: i loro Appuntamenti
+   * e Consulenze non sono appuntamenti a calendario ma stati lead, e il
+   * prodotto che vendono ha un valore per vendita molto piu' basso. Stessa
+   * colonna, due mestieri.
+   *
+   * L'ORDINAMENTO RESTA DENTRO IL GRUPPO, e non e' un dettaglio estetico: e'
+   * l'unica cosa che impedisce davvero di comporre la classifica sbagliata.
+   * Un'etichetta o un colore avvisano, e gli avvisi si ignorano; qui invece
+   * cliccando su una colonna si ordina dentro ciascun blocco e mai attraverso,
+   * quindi un advisor telefonico non puo' finire sopra uno con videochiamata
+   * nemmeno per sbaglio.
+   *
+   * LA SEPARAZIONE E' UNA RIGA VUOTA e non un'intestazione: con i filtri
+   * attivi un'intestazione puo' ritrovarsi ad annunciare un gruppo rimasto
+   * senza righe, e una riga bianca invece sparisce da sola quando non c'e'
+   * niente da separare.
+   */
+  const conVideochiamata = righe.filter((r) => !eAdvisorTelefonico(r.operatore));
+  const alTelefono = righe.filter((r) => eAdvisorTelefonico(r.operatore));
 
   const totalTp = tassoPresa(totals.appuntamenti, totals.connessioni);
   // Sulla vista Setter il totale era soppresso perche' il denominatore era
@@ -537,7 +583,9 @@ export default function OperatorStatsTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {righe.map((r) => {
+          {(alTelefono.length > 0 && !isSetterView ? [...conVideochiamata, ...alTelefono] : righe).map((r, indice, elenco) => {
+            const primoTelefonico =
+              alTelefono.length > 0 && !isSetterView && indice === conVideochiamata.length;
             const tp = tassoPresa(effAppuntamenti(r), r.connessioni);
             const tc = tassoChiusura(effChiusure(r), effConsulenzeChiusura(r));
             // Quanti dei suoi appuntamenti si sono tenuti. Il denominatore sono
@@ -545,7 +593,31 @@ export default function OperatorStatsTable({
             // e non da quello degli incassi.
             const pc = tassoPresa(effConsulenzeChiusura(r), effAppuntamenti(r));
             return (
-              <tr key={r.operatore} className="group hover:bg-slate-50/70 transition-colors">
+              <Fragment key={r.operatore}>
+              {/* LA SEPARAZIONE: una riga di stacco con il nome del gruppo.
+                  Non e' un'intestazione di colonne - non ripete i titoli e non
+                  si puo' cliccare - ma una targhetta: con i filtri attivi, se
+                  il gruppo resta senza righe sparisce insieme a loro. */}
+              {/* font-bold e non font-semibold: le intestazioni sono <th>, a cui
+                  il browser applica gia' il grassetto di suo, e quello batte la
+                  classe ereditata dalla riga. Qui siamo in un <td>, quindi per
+                  avere lo stesso peso va chiesto esplicitamente. */}
+              {primoTelefonico ? (
+                <tr className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  {/* I BORDI STANNO SULLA CELLA, non sulla riga: `divide-y` sul
+                      corpo della tabella imposta il bordo superiore dei figli
+                      con una specificita' piu' alta di una classe sul <tr>, e
+                      vincerebbe lui lasciando la riga con la linea sottile
+                      delle altre. */}
+                  <td
+                    colSpan={30}
+                    className="border-t-2 border-b-2 border-slate-300 bg-white py-2 text-center"
+                  >
+                    Team Eventi
+                  </td>
+                </tr>
+              ) : null}
+              <tr className="group hover:bg-slate-50/70 transition-colors">
                 <td
                   className={`${BLOCCATA} ${LINEA_DESTRA} bg-white py-1.5 pr-4 pl-0 font-medium text-slate-800 whitespace-nowrap group-hover:bg-slate-50`}
                   style={{ left: 0 }}
@@ -681,6 +753,7 @@ export default function OperatorStatsTable({
                   </td>
                 )}
               </tr>
+              </Fragment>
             );
           })}
         </tbody>
