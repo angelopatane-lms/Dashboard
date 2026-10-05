@@ -61,13 +61,37 @@ const GIORNI_ETICHETTA: Record<string, string> = {
   entrambi: "tutti i giorni, 07:00–20:00"
 };
 
-/** Un numero della striscia in alto. Senza riquadro proprio: i riquadri dentro
- *  il riquadro erano la cosa che faceva sembrare ammassata la sezione. */
+/**
+ * Un numero della striscia in alto.
+ *
+ * NIENTE RIQUADRO PROPRIO: i riquadri dentro il riquadro erano la cosa che
+ * faceva sembrare ammassata la sezione.
+ *
+ * E NIENTE NUMERI PIU' GRANDI, che e' la tentazione naturale guardando una
+ * fascia che sembra vuota. Subito sotto questa sezione c'e' il numero dei
+ * contatti di marketing, che e' quello che se sale costa soldi: se questi
+ * pesassero uguale, l'occhio non saprebbe piu' dove andare per primo. Questi
+ * sono valori di STATO - c'e' materiale? oggi e' partito qualcosa? - e si
+ * leggono di sfuggita. Il problema non era la dimensione ma lo spazio attorno,
+ * e si risolve stringendo.
+ *
+ * LO ZERO E' SMORZATO perche' "niente" non deve attirare l'occhio quanto un
+ * numero vero: a parita' di nero, `0 assegnati oggi` gridava come `31.753`.
+ */
 function Numero({ valore, etichetta }: { valore: string; etichetta: string }) {
+  const vuoto = valore === "0" || valore === "–";
   return (
-    <div className="px-4 py-3">
-      <div className="text-xl font-semibold tabular-nums text-slate-900">{valore}</div>
-      <div className="mt-0.5 text-[11px] uppercase tracking-wide text-slate-500">{etichetta}</div>
+    <div className="px-4 py-2.5">
+      <div
+        className={`text-xl font-semibold leading-tight tabular-nums ${
+          vuoto ? "text-slate-300" : "text-slate-900"
+        }`}
+      >
+        {valore}
+      </div>
+      <div className="text-[11px] uppercase leading-tight tracking-wide text-slate-500">
+        {etichetta}
+      </div>
     </div>
   );
 }
