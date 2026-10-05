@@ -52,13 +52,21 @@ type Stato = {
   campagne_sospese_attivo: boolean;
 };
 
+/**
+ * Cosa dice la colonna di mezzo di ogni riga.
+ *
+/**
+ * La finestra per esteso, scritta come la si direbbe a voce.
+ *
+ * Gli interruttori dicono QUALI giorni; questa dice la finestra che ne esce,
+ * orari compresi - che e' l'unica cosa che guardandoli non si ricava. Vuota
+ * quando non c'e' nessuna finestra: non c'e' niente da leggere.
+ */
 const GIORNI_ETICHETTA: Record<string, string> = {
-  // Vuota di proposito: senza giorni scelti non c'e' nessuna finestra da
-  // descrivere, e gli interruttori tutti spenti lo dicono gia'.
   nessuno: "",
-  feriali: "Lun–Ven, 07:00–20:00",
-  weekend: "Sab–Dom, 07:00–20:00",
-  entrambi: "tutti i giorni, 07:00–20:00"
+  feriali: "da LUN a VEN dalle 7:00 alle 20:00",
+  weekend: "da SAB a DOM dalle 7:00 alle 20:00",
+  entrambi: "da LUN a DOM dalle 7:00 alle 20:00"
 };
 
 /**
@@ -299,12 +307,18 @@ export default function AssegnazioneContatti() {
             nome="Stato del Sistema"
             aiuto="Se spento, le richieste su Slack vengono ignorate e non si recuperano alla riaccensione."
             stato={
-              stato?.modalita_live === false ? (
-                <span
-                  className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800"
-                  title="Le assegnazioni vengono simulate, non scritte su HubSpot."
-                >
-                  Dry Run
+              stato ? (
+                <span className="inline-flex flex-wrap items-center gap-2">
+                  {/* Qui andra' l'ultima assegnazione, che e' il fatto che
+                      serve davvero: a sistema fermo dice da quanto lo e'. */}
+                  {stato.modalita_live === false ? (
+                    <span
+                      className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800"
+                      title="Le assegnazioni vengono simulate, non scritte su HubSpot."
+                    >
+                      Dry Run
+                    </span>
+                  ) : null}
                 </span>
               ) : null
             }
@@ -358,13 +372,10 @@ export default function AssegnazioneContatti() {
             <Riga
               nome="Campagne da Escludere"
               aiuto="I contatti di queste campagne non vengono assegnati, finche' il filtro resta attivo. Si scelgono fra le campagne Live: una campagna e le sue varianti si aggiungono insieme e restano salvate con i nomi interi."
-              stato={
-                stato && scelte.length
-                  ? `${scelte.length} ${scelte.length === 1 ? "campagna esclusa" : "campagne escluse"}${
-                      stato.campagne_sospese_attivo ? "" : ", filtro spento"
-                    }`
-                  : null
-              }
+              // Qui andra' quanti contatti l'esclusione sta tenendo fuori:
+              // sapere che hai escluso due campagne e' diverso dal sapere che
+              // stai trattenendo milleduecento persone.
+              stato={null}
             >
               <select
                 value=""
