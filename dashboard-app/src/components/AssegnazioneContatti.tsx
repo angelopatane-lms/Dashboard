@@ -59,11 +59,10 @@ type Stato = {
  * La finestra per esteso, scritta come la si direbbe a voce.
  *
  * Gli interruttori dicono QUALI giorni; questa dice la finestra che ne esce,
- * orari compresi - che e' l'unica cosa che guardandoli non si ricava. Vuota
- * quando non c'e' nessuna finestra: non c'e' niente da leggere.
+ * orari compresi - che e' l'unica cosa che guardandoli non si ricava.
  */
 const GIORNI_ETICHETTA: Record<string, string> = {
-  nessuno: "",
+  nessuno: "Nessuna",
   feriali: "da LUN a VEN dalle 7:00 alle 20:00",
   weekend: "da SAB a DOM dalle 7:00 alle 20:00",
   entrambi: "da LUN a DOM dalle 7:00 alle 20:00"
@@ -309,8 +308,7 @@ export default function AssegnazioneContatti() {
             stato={
               stato ? (
                 <span className="inline-flex flex-wrap items-center gap-2">
-                  {/* Qui andra' l'ultima assegnazione, che e' il fatto che
-                      serve davvero: a sistema fermo dice da quanto lo e'. */}
+                  <span>{stato.sistema_acceso ? "Acceso" : "Spento"}</span>
                   {stato.modalita_live === false ? (
                     <span
                       className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800"
@@ -372,10 +370,7 @@ export default function AssegnazioneContatti() {
             <Riga
               nome="Campagne da Escludere"
               aiuto="I contatti di queste campagne non vengono assegnati, finche' il filtro resta attivo. Si scelgono fra le campagne Live: una campagna e le sue varianti si aggiungono insieme e restano salvate con i nomi interi."
-              // Qui andra' quanti contatti l'esclusione sta tenendo fuori:
-              // sapere che hai escluso due campagne e' diverso dal sapere che
-              // stai trattenendo milleduecento persone.
-              stato={null}
+              stato="Workshop"
             >
               <select
                 value=""
