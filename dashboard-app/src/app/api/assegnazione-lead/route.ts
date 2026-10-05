@@ -80,12 +80,20 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const dati = await req.json().catch(() => ({}));
-  const comando: Record<string, boolean> = {};
+  const comando: Record<string, boolean | string> = {};
   // Si passa SOLO quello che si riconosce: un corpo inatteso non deve
   // arrivare intero all'altra applicazione.
   if (typeof dati.sistema === "boolean") comando.sistema = dati.sistema;
   if (typeof dati.feriali === "boolean") comando.feriali = dati.feriali;
   if (typeof dati.weekend === "boolean") comando.weekend = dati.weekend;
+  if (typeof dati.campagne_sospese_attivo === "boolean") {
+    comando.campagne_sospese_attivo = dati.campagne_sospese_attivo;
+  }
+  // L'unico campo di testo: si taglia a una lunghezza ragionevole perche'
+  // finisce in una riga di app_settings, e non deve poterla riempire.
+  if (typeof dati.campagne_sospese === "string") {
+    comando.campagne_sospese = dati.campagne_sospese.slice(0, 2000);
+  }
   if (Object.keys(comando).length === 0) {
     return NextResponse.json({ error: "nessun comando riconosciuto" }, { status: 400 });
   }

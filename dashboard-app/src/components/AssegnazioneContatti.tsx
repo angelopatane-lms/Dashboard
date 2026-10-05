@@ -45,6 +45,10 @@ type Stato = {
   assegnati_oggi: number;
   persone_oggi: number;
   ultima_assegnazione: string | null;
+  /** Le sigle separate da virgola, anche quando il filtro e' spento: spegnere
+   *  non deve far perdere quello che si e' scritto. */
+  campagne_sospese: string;
+  campagne_sospese_attivo: boolean;
 };
 
 const GIORNI_ETICHETTA: Record<string, string> = {
@@ -146,7 +150,7 @@ export default function AssegnazioneContatti() {
   }, [leggi]);
 
   const comanda = useCallback(
-    (comando: Record<string, boolean>) => {
+    (comando: Record<string, boolean | string>) => {
       const mio = ++richiesta.current;
       setInCorso(true);
       fetch("/api/assegnazione-lead", {
@@ -162,13 +166,28 @@ export default function AssegnazioneContatti() {
     [applica]
   );
 
+  // L'elenco delle campagne Live, per il menu a tendina. Si legge una volta
+  // sola: cambia quando nasce una campagna nuova, non durante la giornata.
+  // Le campagne Live raggruppate per famiglia: una campagna e le sue varianti
+  // sono una voce sola nel menu, ma si salvano con i nomi interi.
+  const [famiglie, setFamiglie] = useState<Array<{ base: string; nomi: string[] }>>([]);
+  useEffect(() => {
+    fetch("/api/campagne-live", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setFamiglie(d.campagne ?? []))
+      .catch(() => setFamiglie([]));
+  }, []);
+
+  const scelte = (stato?.campagne_sospese ?? "").split(",").map((c) => c.trim()).filter(Boolean);
+  const salvaScelte = (elenco: string[]) => comanda({ campagne_sospese: elenco.join(",") });
+
   const feriali = stato?.giorni === "feriali" || stato?.giorni === "entrambi";
   const weekend = stato?.giorni === "weekend" || stato?.giorni === "entrambi";
   const bloccato = inCorso || !stato;
 
   return (
     <section>
-      <SectionTitle>Assegnazione Contatti</SectionTitle>
+      <SectionTitle>Riassegnazione Automatica</SectionTitle>
       <div className="rounded-lg border border-slate-200 bg-white px-4 py-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -268,6 +287,86 @@ export default function AssegnazioneContatti() {
               />
             </div>
           </div>
+
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="text-sm">
+              <span className="font-semibold text-slate-800">Campagne escluse</span>
+              <span className="ml-2 text-xs text-slate-500">
+                I contatti di queste campagne <strong>non vengono assegnati</strong>, finché il
+                filtro resta attivo. Si scelgono fra le campagne Live: una campagna e le sue
+                varianti si aggiungono insieme, ma restano salvate con i nomi interi — se una
+                non ti serve, toglila con la ×.
+              </span>
+            </div>
+            <Interruttore
+              acceso={Boolean(stato?.campagne_sospese_attivo)}
+              etichetta="Filtro attivo"
+              disabilitato={bloccato}
+              onChange={(v) => comanda({ campagne_sospese_attivo: v })}
+            />
+          </div>
+
+          {/* I nomi si scelgono, non si scrivono: una sigla sbagliata di un
+              carattere non escluderebbe nessuno e non se ne accorgerebbe
+              nessuno. L'elenco e' quello delle campagne Live, con i nomi
+              interi - le varianti con suffisso sono campagne diverse. */}
+          <div className="flex flex-wrap items-center gap-2">
+            {scelte.map((c) => (
+              <span
+                key={c}
+                className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs ${
+                  stato?.campagne_sospese_attivo
+                    ? "border-slate-300 bg-slate-100 text-slate-800"
+                    : "border-slate-200 bg-slate-50 text-slate-400"
+                }`}
+              >
+                {c}
+                <button
+                  type="button"
+                  disabled={bloccato}
+                  onClick={() => salvaScelte(scelte.filter((x) => x !== c))}
+                  className="text-slate-400 transition hover:text-rose-600 disabled:cursor-not-allowed"
+                  title={`Togli ${c}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <select
+              value=""
+              disabled={bloccato || famiglie.length === 0}
+              onChange={(e) => {
+                const scelta = famiglie.find((f) => f.base === e.target.value);
+                // Si aggiungono TUTTI i nomi della famiglia, interi: la voce
+                // del menu e' un raggruppamento, non un nome accorciato.
+                if (scelta) salvaScelte([...scelte, ...scelta.nomi.filter((n) => !scelte.includes(n))]);
+              }}
+              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <option value="">
+                {famiglie.length ? "+ aggiungi una campagna Live…" : "elenco non disponibile"}
+              </option>
+              {famiglie
+                .filter((f) => f.nomi.some((n) => !scelte.includes(n)))
+                .map((f) => (
+                  <option key={f.base} value={f.base}>
+                    {f.base}
+                    {f.nomi.length > 1 ? `  (${f.nomi.length} varianti)` : ""}
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          {stato && !stato.campagne_sospese_attivo && scelte.length ? (
+            <p className="text-xs text-slate-500">
+              Filtro spento: queste campagne restano scelte ma non escludono nessuno.
+            </p>
+          ) : null}
+          {stato && stato.campagne_sospese_attivo && !scelte.length ? (
+            <p className="text-xs text-amber-700">
+              Filtro attivo ma nessuna campagna scelta: non esclude nessuno.
+            </p>
+          ) : null}
         </div>
 
         <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-500">

@@ -33,7 +33,7 @@ const PAGES: Array<{ label: string; href: string }> = [
 ];
 
 const CONTACTS_SECTIONS: Array<{ label: string; id: string }> = [
-  { label: "Assegnazione Contatti", id: "assegnazione-contatti" },
+  { label: "Riassegnazione Automatica", id: "assegnazione-contatti" },
   { label: "Stato Contatti di Marketing", id: "stato-contatti-marketing" },
   { label: "Timeline Eventi", id: "timeline-eventi" }
 ];
