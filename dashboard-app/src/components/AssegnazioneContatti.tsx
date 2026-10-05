@@ -87,7 +87,7 @@ function Riga({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-      <span className="w-32 shrink-0 cursor-help text-sm font-medium text-slate-800" title={aiuto}>
+      <span className="w-44 shrink-0 cursor-help text-sm font-medium text-slate-800" title={aiuto}>
         {nome}
       </span>
       <span className="min-w-0 flex-1 text-xs text-slate-500">{stato}</span>
@@ -272,35 +272,22 @@ export default function AssegnazioneContatti() {
             lette una volta non ha bisogno di rileggerle ogni giorno. */}
         <div className="divide-y divide-slate-100">
           <Riga
-            nome="Sistema"
+            nome="Stato del Sistema"
             aiuto="Se spento, le richieste su Slack vengono ignorate e non si recuperano alla riaccensione."
             stato={
-              stato ? (
-                <span className="inline-flex items-center gap-2">
-                  <span
-                    className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                      stato.sistema_acceso
-                        ? "bg-emerald-100 text-emerald-800"
-                        : "bg-rose-100 text-rose-800"
-                    }`}
-                  >
-                    {stato.sistema_acceso ? "Attivo" : "Spento"}
-                  </span>
-                  {stato.modalita_live === false ? (
-                    <span
-                      className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800"
-                      title="Le assegnazioni vengono simulate, non scritte su HubSpot."
-                    >
-                      Dry Run
-                    </span>
-                  ) : null}
+              stato?.modalita_live === false ? (
+                <span
+                  className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800"
+                  title="Le assegnazioni vengono simulate, non scritte su HubSpot."
+                >
+                  Dry Run
                 </span>
               ) : null
             }
           >
             <Interruttore
               acceso={Boolean(stato?.sistema_acceso)}
-              etichetta="Attivo"
+              etichetta={stato?.sistema_acceso ? "On" : "Off"}
               disabilitato={bloccato}
               onChange={(v) => {
                 // La conferma c'e' solo in accensione, e solo quando assegna
@@ -319,7 +306,7 @@ export default function AssegnazioneContatti() {
           </Riga>
 
           <Riga
-            nome="Giorni"
+            nome="Finestra di Operatività"
             aiuto="Nei giorni scelti il Sistema si accende da solo alle 07:00 e si spegne alle 20:00. Senza nessun giorno non si muove da solo: resta dove lo metti tu."
             stato={stato ? GIORNI_ETICHETTA[stato.giorni] ?? stato.giorni : null}
           >
@@ -345,7 +332,7 @@ export default function AssegnazioneContatti() {
 
           <div>
             <Riga
-              nome="Campagne"
+              nome="Campagne da Escludere"
               aiuto="I contatti di queste campagne non vengono assegnati, finche' il filtro resta attivo. Si scelgono fra le campagne Live: una campagna e le sue varianti si aggiungono insieme e restano salvate con i nomi interi."
               stato={
                 stato && scelte.length
@@ -369,7 +356,7 @@ export default function AssegnazioneContatti() {
                 className="max-w-[16rem] rounded-md border border-dashed border-slate-300 bg-white px-2 py-1 text-xs text-slate-500 outline-none transition hover:border-slate-400 focus:border-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <option value="">
-                  {famiglie.length ? "escludi campagna" : "elenco non disponibile"}
+                  {famiglie.length ? "seleziona campagne" : "elenco non disponibile"}
                 </option>
                 {famiglie
                   .filter((f) => f.nomi.some((n) => !scelte.includes(n)))
