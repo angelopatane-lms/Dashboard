@@ -53,7 +53,9 @@ type Stato = {
 };
 
 const GIORNI_ETICHETTA: Record<string, string> = {
-  nessuno: "nessun automatismo, comanda solo il Sistema",
+  // Vuota di proposito: senza giorni scelti non c'e' nessuna finestra da
+  // descrivere, e gli interruttori tutti spenti lo dicono gia'.
+  nessuno: "",
   feriali: "Lun–Ven, 07:00–20:00",
   weekend: "Sab–Dom, 07:00–20:00",
   entrambi: "tutti i giorni, 07:00–20:00"
@@ -111,6 +113,7 @@ function Interruttore({
         disabilitato ? "cursor-not-allowed opacity-50" : "cursor-pointer"
       }`}
     >
+      {etichetta}
       <span
         className={`relative inline-block h-5 w-9 rounded-full transition ${
           acceso ? "bg-slate-900" : "bg-slate-300"
@@ -129,7 +132,6 @@ function Interruttore({
           }`}
         />
       </span>
-      {etichetta}
     </label>
   );
 }
@@ -138,7 +140,6 @@ export default function AssegnazioneContatti() {
   const [stato, setStato] = useState<Stato | null>(null);
   const [errore, setErrore] = useState<string | null>(null);
   const [inCorso, setInCorso] = useState(false);
-  const [letturaAlle, setLetturaAlle] = useState<string | null>(null);
   // Evita che una risposta lenta arrivata dopo una piu' recente la sovrascriva:
   // succede toccando un interruttore mentre parte il giro automatico.
   const richiesta = useRef(0);
@@ -149,7 +150,6 @@ export default function AssegnazioneContatti() {
     else {
       setStato(dati);
       setErrore(null);
-      setLetturaAlle(new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }));
     }
   }, []);
 
@@ -345,54 +345,16 @@ export default function AssegnazioneContatti() {
 
           <div>
             <Riga
-              nome="Campagne escluse"
+              nome="Campagne"
               aiuto="I contatti di queste campagne non vengono assegnati, finche' il filtro resta attivo. Si scelgono fra le campagne Live: una campagna e le sue varianti si aggiungono insieme e restano salvate con i nomi interi."
               stato={
-                stato
-                  ? scelte.length
-                    ? `${scelte.length} ${scelte.length === 1 ? "campagna" : "campagne"}${
-                        stato.campagne_sospese_attivo ? "" : ", filtro spento"
-                      }`
-                    : stato.campagne_sospese_attivo
-                      ? "nessuna scelta: non esclude nessuno"
-                      : "nessuna"
+                stato && scelte.length
+                  ? `${scelte.length} ${scelte.length === 1 ? "campagna esclusa" : "campagne escluse"}${
+                      stato.campagne_sospese_attivo ? "" : ", filtro spento"
+                    }`
                   : null
               }
             >
-              <Interruttore
-                acceso={Boolean(stato?.campagne_sospese_attivo)}
-                etichetta="Filtro attivo"
-                disabilitato={bloccato}
-                onChange={(v) => comanda({ campagne_sospese_attivo: v })}
-              />
-            </Riga>
-
-            <div className="flex flex-wrap items-center gap-2 px-4 pb-3 sm:pl-[9.5rem]">
-              {scelteRaggruppate.map((g) => (
-                <span
-                  key={g.base}
-                  title={g.nomi.join("\n")}
-                  className={`inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
-                    stato?.campagne_sospese_attivo
-                      ? "border-slate-200 bg-slate-50 text-slate-700"
-                      : "border-slate-200 bg-white text-slate-400"
-                  }`}
-                >
-                  <span className="truncate font-mono">{g.base}</span>
-                  {g.nomi.length > 1 ? (
-                    <span className="shrink-0 text-slate-400">+{g.nomi.length - 1}</span>
-                  ) : null}
-                  <button
-                    type="button"
-                    disabled={bloccato}
-                    onClick={() => salvaScelte(scelte.filter((x) => !g.nomi.includes(x)))}
-                    className="shrink-0 text-slate-300 transition hover:text-rose-600 disabled:cursor-not-allowed"
-                    title={`Togli ${g.base}${g.nomi.length > 1 ? " e le sue varianti" : ""}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
               <select
                 value=""
                 disabled={bloccato || famiglie.length === 0}
@@ -404,10 +366,10 @@ export default function AssegnazioneContatti() {
                     salvaScelte([...scelte, ...scelta.nomi.filter((n) => !scelte.includes(n))]);
                   }
                 }}
-                className="max-w-[18rem] rounded-md border border-dashed border-slate-300 bg-white px-2 py-1 text-xs text-slate-500 outline-none transition hover:border-slate-400 focus:border-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
+                className="max-w-[16rem] rounded-md border border-dashed border-slate-300 bg-white px-2 py-1 text-xs text-slate-500 outline-none transition hover:border-slate-400 focus:border-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <option value="">
-                  {famiglie.length ? "+ aggiungi campagna" : "elenco non disponibile"}
+                  {famiglie.length ? "escludi campagna" : "elenco non disponibile"}
                 </option>
                 {famiglie
                   .filter((f) => f.nomi.some((n) => !scelte.includes(n)))
@@ -418,16 +380,55 @@ export default function AssegnazioneContatti() {
                     </option>
                   ))}
               </select>
-            </div>
+              <Interruttore
+                acceso={Boolean(stato?.campagne_sospese_attivo)}
+                etichetta={stato?.campagne_sospese_attivo ? "On" : "Off"}
+                disabilitato={bloccato}
+                onChange={(v) => comanda({ campagne_sospese_attivo: v })}
+              />
+            </Riga>
+
+            {/* Le targhette stanno SOTTO IL MENU, allineate a destra come lui:
+                sono quello che il menu ha prodotto, e messe a sinistra
+                sembravano una cosa a se'. Compaiono solo quando ce n'e'
+                almeno una: una riga vuota era spazio speso per niente. */}
+            {scelteRaggruppate.length ? (
+              <div className="flex flex-wrap items-center justify-end gap-2 px-4 pb-3">
+                {scelteRaggruppate.map((g) => (
+                  <span
+                    key={g.base}
+                    title={g.nomi.join(", ")}
+                    className={`inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
+                      stato?.campagne_sospese_attivo
+                        ? "border-slate-200 bg-slate-50 text-slate-700"
+                        : "border-slate-200 bg-white text-slate-400"
+                    }`}
+                  >
+                    <span className="truncate font-mono">{g.base}</span>
+                    {g.nomi.length > 1 ? (
+                      <span className="shrink-0 text-slate-400">+{g.nomi.length - 1}</span>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={bloccato}
+                      onClick={() => salvaScelte(scelte.filter((x) => !g.nomi.includes(x)))}
+                      className="shrink-0 text-slate-300 transition hover:text-rose-600 disabled:cursor-not-allowed"
+                      title={`Togli ${g.base}${g.nomi.length > 1 ? " e le sue varianti" : ""}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/50 px-4 py-2 text-xs text-slate-500">
-          <span>
-            {letturaAlle ? `Letto alle ${letturaAlle}, si aggiorna da solo ogni minuto.` : "Lettura in corso…"}
-          </span>
-          {errore ? <span className="font-medium text-amber-700">{errore}</span> : null}
-        </div>
+        {errore ? (
+          <div className="border-t border-slate-100 bg-amber-50 px-4 py-2 text-xs font-medium text-amber-800">
+            {errore}
+          </div>
+        ) : null}
       </div>
     </section>
   );
