@@ -128,7 +128,24 @@ const SUFFISSI_SPEZZONI = [
   "retargeting",
   "ll",
   "v[0-9]+",
-  "refresh(_.+)?"
+  "refresh(_.+)?",
+  // RILANCIO: una campagna rimessa in pista, non una campagna nuova.
+  //
+  // Sta QUI e non fra i suffissi tecnici, ed e' la differenza che conta: dei
+  // 10.063 contatti sulle righe "_rilancio" il 58% e' gia' sulla base, ma 4.200
+  // ci stanno soltanto. Fra i tecnici il lead non si riconta - e quelle 4.200
+  // persone sparirebbero dal conteggio - mentre fra gli spezzoni la spesa
+  // confluisce sulla base e i lead continuano a contare. Nessuno sparisce.
+  //
+  // E' il caso che l'elenco teneva fuori da sempre perche' a meta' strada fra
+  // le due famiglie: sotto il 75% che identifica un marcatore, sopra il 25% che
+  // identifica una campagna vera. Messo fra gli spezzoni la soglia non serve:
+  // li' si uniscono pezzi della stessa campagna, non persone duplicate.
+  //
+  // La coda facoltativa copre "_rilancio_fresh" e "_rilancio_test_instant", che
+  // altrimenti si fermerebbero sulla riga "_rilancio" invece di arrivare alla
+  // base: il suffisso si toglie una volta sola.
+  "rilancio(_.+)?"
 ];
 
 /**
