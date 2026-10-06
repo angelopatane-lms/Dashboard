@@ -19,8 +19,26 @@
  *   vecchie (native advertising 2023-24, import da typeform). Sul trimestre
  *   valgono 117 lead su 31.293 (0,37%).
  *
- * La vista "tutte" NON applica questa regola: serve proprio a vedere tutto
- * quello che c'e', ogni voce del foglio della spesa compresa.
+ * DA OTTOBRE 2026 QUESTI NOMI NON SPARISCONO PIU'. Prima venivano scartati, e
+ * con loro la spesa che portavano - 4.358 EUR nei primi cinque giorni di
+ * ottobre. Adesso compaiono, raccolti nella categoria "Altro": restano fuori
+ * dalle linee di prodotto, cosi' non sporcano i totali di REM o ICMD, ma si
+ * vedono e si possono sommare.
+ *
+ * Il rischio di riaprire quella porta e' misurato: sono 3.299 campagne in
+ * tutto, ma VIVE sono 14 negli ultimi 90 giorni e 5 negli ultimi 30. Il resto
+ * e' archeologia - native advertising 2023-24, import da typeform - che
+ * compare solo su periodi lunghi.
+ *
+ * NON FINISCONO TUTTI IN "Altro": chi porta un codice di prodotto va nella sua
+ * linea, perche' "icmd13_Docufilm" e' ICMD esattamente come lo sarebbe scritto
+ * in minuscolo. In "Altro" ci finisce solo chi non porta nessun codice, cioe'
+ * gli inserimenti a mano come "Social" o "Contatto Personale".
+ *
+ * E si normalizzano come tutti gli altri, il che ripulisce anche un po' di
+ * doppioni: "icmd_14_VincenzoVitillo" si unisce alla campagna minuscola che
+ * esiste gia' con lo stesso nome, e le tre grafie di "Contatto personale"
+ * diventano una riga sola.
  */
 export function nomeConforme(nome: string): boolean {
   return nome === nome.toLowerCase();
@@ -362,7 +380,6 @@ export function chiaveCampagna(nome: string, variante: Variante, basi: MappaVari
   // Dopo di qui si comportano come qualunque altra campagna, vista Instant
   // compresa.
   const alias = ALIAS_SPESA[normalizza(pulito)];
-  if (!alias && !nomeConforme(pulito)) return null;
   const chiave = alias ?? normalizza(pulito);
   const instant = haMarcatoreInstant(chiave);
 
@@ -476,15 +493,21 @@ export function varianteUnificaNomi(variante: Variante): boolean {
 /** Il nome della riga. */
 export function sqlNomeCampagna(variante: Variante): string {
   if (variante === "tutte") return "trim(c.nome)";
+  // Anche i nomi con le maiuscole passano di qui e si normalizzano, quindi
+  // "icmd_14_VincenzoVitillo" si unisce alla campagna minuscola che esiste gia'
+  // con lo stesso nome, e le tre grafie di "Contatto personale" diventano una
+  // riga sola. E' l'altra meta' del lavoro che fa chiaveCampagna() sul foglio.
   if (varianteUnificaNomi(variante)) return "COALESCE(b.nome, lower(trim(c.nome)))";
   return "lower(trim(c.nome))";
 }
 
 /** Quali campagne tenere. Da concatenare con AND al resto del filtro. */
 export function sqlFiltroCampagna(variante: Variante): string {
+  // Niente piu' filtro sul minuscolo: i nomi fuori convenzione entrano e
+  // finiscono in "Altro". Vedi nomeConforme() per la misura che lo rende
+  // sicuro - 14 campagne vive in 90 giorni, non 3.299.
   if (variante === "tutte") return "TRUE";
-  const conforme = "c.nome = lower(c.nome)";
-  if (variante === "instant") return `${conforme} AND ${SQL_E_MARCATORE_INSTANT}`;
-  if (variante === "non_instant") return `${conforme} AND NOT (${SQL_E_MARCATORE_INSTANT})`;
-  return conforme;
+  if (variante === "instant") return SQL_E_MARCATORE_INSTANT;
+  if (variante === "non_instant") return `NOT (${SQL_E_MARCATORE_INSTANT})`;
+  return "TRUE";
 }

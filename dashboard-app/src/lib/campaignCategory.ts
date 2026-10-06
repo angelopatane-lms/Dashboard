@@ -61,6 +61,12 @@ export function categoriaResidua(categoria: string): boolean {
 export function guessCategoria(campagna: string): string {
   const nome = campagna.trim().toLowerCase();
   if (!nome) return "Nessuna";
+  // LE MAIUSCOLE NON CONTANO: il confronto e' sul nome normalizzato, quindi
+  // "icmd13_Docufilm" va in ICMD come andrebbe "icmd13_docufilm". Da ottobre
+  // 2026 i nomi fuori convenzione non vengono piu' scartati, ma non per questo
+  // vanno tutti in "Altro": chi porta un codice di prodotto appartiene alla sua
+  // linea. In "Altro" ci finisce solo chi non ne porta nessuno - "Social",
+  // "Contatto Personale" - che e' il comportamento di sempre.
 
   for (const def of CATEGORY_DEFS) {
     if (def.contiene.some((frammento) => nome.includes(frammento))) return def.label;

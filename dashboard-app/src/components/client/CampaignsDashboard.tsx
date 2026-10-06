@@ -11,7 +11,6 @@ import {
   FORMATI,
   formatoCampagna,
   leggiVariante,
-  nomeConforme,
   SUFFISSO_INSTANT,
   VARIANTE_DEFAULT,
   VARIANTI,
@@ -363,7 +362,10 @@ export default function CampaignsDashboard({
     const chiaveIncasso = (nome: string, instant: boolean): string | null => {
       if (!varianteEsegmento(variante)) return chiaveCampagna(nome, variante, varianti);
       const pulito = nome.trim();
-      if (!pulito || !nomeConforme(pulito)) return null;
+      // Niente controllo sul minuscolo: da ottobre 2026 i nomi fuori
+      // convenzione entrano anche qui, altrimenti la loro spesa comparirebbe
+      // nella tabella e i loro incassi no.
+      if (!pulito) return null;
       const senzaMarcatore = pulito
         .toLowerCase()
         .replace(/\s+/g, " ")
@@ -413,7 +415,9 @@ export default function CampaignsDashboard({
     const set = new Set<string>();
     for (const r of adsSpendRows) {
       const c = r.campagna.trim();
-      if (c && (variante === "tutte" || nomeConforme(c))) set.add(guessCategoria(c));
+      // Anche i nomi con le maiuscole: senza, "Altro" sparirebbe dal filtro
+      // proprio quando e' l'unica categoria che li raccoglie.
+      if (c) set.add(guessCategoria(c));
     }
     // "Altro" in fondo, insieme a "Nessuna": sono voci di raccolta, non linee
     // di prodotto, e in ordine alfabetico "Altro" finirebbe per primo.
