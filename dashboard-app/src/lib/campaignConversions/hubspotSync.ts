@@ -10,7 +10,7 @@ const DATA_ULTIMA_MODIFICA = "data_ultima_modifica_campagna_refresh";
 // proprieta' (per i batch normali sarebbe 100).
 const MAX_INPUT_STORICO = 50;
 
-type HubSpotFilter = Record<string, unknown>;
+export type HubSpotFilter = Record<string, unknown>;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

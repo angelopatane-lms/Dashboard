@@ -3,6 +3,7 @@ import {
   cercaContattiRilevanti,
   filtroModificatoDa,
   leggiCronologiaContatti,
+  type HubSpotFilter,
   type VoceCronologia
 } from "./hubspotSync";
 
@@ -222,7 +223,7 @@ async function leggiCheckpoint(tipo: TipoSync): Promise<{
 // un tipo distinto di proposito: le sue righe in sync_log e il suo eventuale
 // checkpoint restano separati, cosi' una prova da 500 contatti non puo' far
 // sembrare completato il bootstrap vero ne' fargli saltare dei contatti.
-export type TipoSync = "bootstrap" | "prova" | "incrementale";
+export type TipoSync = "bootstrap" | "prova" | "incrementale" | "riallineamento";
 export type EsitoSync = { contatti: number; eventi: number; ripreso: boolean };
 
 export type OpzioniSync = {
@@ -232,6 +233,20 @@ export type OpzioniSync = {
   /** Ferma la scansione dopo N contatti. Serve solo alla modalita' di prova:
    *  il bootstrap vero non lo passa mai. */
   limite?: number;
+  /**
+   * Filtri HubSpot aggiuntivi, per il RIALLINEAMENTO MIRATO.
+   *
+   * Serve quando qualcuno sposta dei contatti su una campagna A MANO: quel
+   * cambio non aggiorna `data_ultima_modifica_campagna_refresh`, quindi
+   * l'incrementale non lo vedra' mai - non e' questione di aspettare il giro
+   * dopo, quei contatti sono invisibili per sempre. Misurato il 6 ottobre 2026
+   * su "icmd_14_workshop_ottobre": 775 contatti sulla campagna, 520 con la data
+   * aggiornata, 238 fermi a settembre.
+   *
+   * Con un filtro sulla campagna si rilegge solo quella, invece di rifare il
+   * bootstrap su tutta la popolazione, che dura ore.
+   */
+  filtri?: HubSpotFilter[];
 };
 
 // - "incrementale" (ogni ora): solo i contatti segnalati come cambiati
@@ -264,8 +279,12 @@ export async function eseguiSync(
   try {
     // Solo l'incrementale filtra: bootstrap e prova scansionano tutta la
     // popolazione con id_campagna_refresh valorizzata.
-    const filtriExtra =
-      tipo === "incrementale" ? [filtroModificatoDa(await dataUltimaEsecuzioneIncrementale())] : [];
+    const filtriExtra = [
+      ...(tipo === "incrementale"
+        ? [filtroModificatoDa(await dataUltimaEsecuzioneIncrementale())]
+        : []),
+      ...(opzioni.filtri ?? [])
+    ];
 
     for await (const batch of cercaContattiRilevanti(token, filtriExtra, checkpoint?.ultimoId ?? 0)) {
       // In modalita' di prova si taglia l'ultimo blocco per fermarsi esattamente
