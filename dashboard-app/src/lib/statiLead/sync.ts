@@ -135,16 +135,33 @@ function proprietarioA(storia: Voce[], istante: number): number | null {
   return x && Number.isFinite(id) && id > 0 ? id : null;
 }
 
-/** Da dove ripartire quando non lo si dice: il checkpoint meno un giorno. */
-export async function daDoveRipartire(): Promise<Date> {
+/**
+ * Da dove ripartire quando non lo si dice: il checkpoint meno un margine.
+ *
+ * IL MARGINE SERVE a coprire la corsa fra le due letture - il giro precedente
+ * puo' aver letto un contatto un istante prima che qualcuno lo cambiasse - e
+ * il ritardo con cui HubSpot aggiorna lastmodifieddate. Sono secondi, al
+ * massimo minuti: due ore sono gia' abbondanti.
+ *
+ * ERA UN GIORNO, ed era tarato su un giro notturno solo. Dal 6 ottobre 2026 il
+ * giro si ripete ogni ora, perche' Appuntamenti e Consulenze dei quattro
+ * advisor telefonici si ricostruiscono da qui e restavano fermi a ieri per
+ * tutta la giornata: alle 21:00 la tabella diceva ancora zero su chi aveva
+ * lavorato. Con il margine di un giorno, ripetere ogni ora avrebbe voluto dire
+ * rileggere ventiquattro volte la stessa finestra.
+ *
+ * Il recupero di un buco non passa di qui: si chiede con ?da=AAAA-MM-GG, che
+ * scavalca questa funzione.
+ */
+const MARGINE_ORE = 2;
+
+export async function daDoveRipartire(margineOre = MARGINE_ORE): Promise<Date> {
   const db = getDb();
   const { rows } = await db.query<{ aggiornato_at: Date }>(
     `SELECT aggiornato_at FROM sync_checkpoint WHERE tipo = 'stati-lead'`
   );
-  // Un giorno di margine: il giro precedente puo' aver letto un contatto un
-  // istante prima che qualcuno lo cambiasse.
   return rows[0]
-    ? new Date(rows[0].aggiornato_at.getTime() - 24 * 3600_000)
+    ? new Date(rows[0].aggiornato_at.getTime() - margineOre * 3600_000)
     : new Date("2026-01-01T00:00:00.000Z");
 }
 
