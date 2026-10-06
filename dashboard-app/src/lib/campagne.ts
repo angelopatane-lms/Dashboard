@@ -109,13 +109,58 @@ export const SUFFISSI_TECNICI = [
   "richiesta_informazioni",
   "richieste_info",
   "richiesta_info",
-  // Cognomi di chi prende in carico il contatto: marcatori di assegnazione,
-  // esattamente come "_test_instant". Tutti fra il 96% e il 100%.
+  // Altri marcatori di workflow, misurati il 6 ottobre 2026 con la percentuale
+  // di gente gia' presente sulla campagna base.
+  "candidatura",          // 92% - 12 persone su 3 campagne
+  "nutrimento",           // 90% - 10 persone su 3 campagne
+  "instant",              // 100% - "_instant" da solo, che "test(_.+)?" non copre
+
+  // NOMI DI CHI PRENDE IN CARICO IL CONTATTO: marcatori di assegnazione,
+  // esattamente come "_test_instant".
+  //
+  // I primi cinque c'erano gia'. Gli altri sono emersi il 6 ottobre 2026
+  // rifacendo la misura ordinata per PERCENTUALE invece che per volume: la
+  // prima volta avevo guardato i suffissi piu' grossi, e questi - cinque,
+  // dodici, venti persone l'uno - erano rimasti sotto la soglia dello sguardo
+  // pur essendo al 100%. Dieci corrispondono a persone del foglio "Hubspot
+  // User List"; gli altri sono grafie diverse o gente che non lavora piu' qui.
+  //
+  // QUESTO ELENCO CRESCERA' ANCORA, ed e' il suo difetto: e' la terza lista di
+  // nomi scritta a mano nel progetto, dopo ADVISOR_TELEFONICI e CHATTER. Ogni
+  // persona nuova che si prende in carico un contatto apre una riga che nessuno
+  // vedra' finche' qualcuno non rifa' la misura. La soluzione durevole e'
+  // ricavarla dai dati - un suffisso con il 90% di sovrapposizione su almeno
+  // cinque persone E' un marcatore, chiunque sia - ma e' un lavoro a se'.
   "santori",
   "asiacuccu",
   "dascanio",
   "patane",
-  "hassan"
+  "hassan",
+  "asma",                 // 98% - 255 persone
+  "becherucci",           // 100%
+  "cecire",               // 100%
+  "cettolo",              // 75% - 371 persone, il piu' basso che accetto
+  "clienti_cristian_testa",
+  "clienti_domenico_primo",
+  "cristian_testa",       // 100% - 232 persone
+  "dom_primo",            // 100% - 232 persone
+  "giacomo",              // 100% - 164 persone
+  "giannamastrototaro",
+  "mandarino",            // 100% - 216 persone
+  "manuel",               // 100% - 212 persone
+  "manuelcuccu",
+  "marvin",               // 100% - 239 persone
+  "mattia_primo",         // 100% - 269 persone
+  "mongio",
+  "piccoli",              // 98%
+  "sepe"
+
+  // RESTANO FUORI DI PROPOSITO, misurati e sotto soglia:
+  //   "scicchitano" 64%, "escluso" 67%, "meta" 64% - quest'ultimo e' un canale
+  //   pubblicitario, non una persona, e va tenuto separato come "_tiktok".
+  //   "n" e' al 100% su 23 persone ma e' una lettera sola: troppo facile che un
+  //   domani catturi qualcosa che non c'entra, e 23 persone non valgono il
+  //   rischio.
 ];
 
 /**
@@ -249,7 +294,7 @@ export function formatoCampagna(nome: string): Formato {
   // nella vista Separate il nome resta grezzo, e "VL | p05 | ... | ABO" non
   // contiene nessun marcatore - risultava "Altre" e il filtro Live lo buttava
   // fuori, lasciando la campagna del workshop con 513 lead e zero spesa.
-  const vero = ALIAS_SPESA[nome.trim().toLowerCase().replace(/\s+/g, " ")] ?? nome;
+  const vero = risolviAlias(nome);
   const segmenti = vero.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
   // "ew" vince su "webinar" quando ci sono entrambi: sono tre campagne del tipo
   // "lms_mep_ew_indipendenza_femminile_webinar", dove "webinar" descrive il
@@ -376,6 +421,44 @@ export const ALIAS_SPESA: Record<string, string> = {
 };
 
 /**
+ * DUE NOMI DIVERSI PER LA STESSA CAMPAGNA, e quale dei due vince.
+ *
+ * Diverso da ALIAS_SPESA, che traduce nomi visti solo nel foglio della spesa:
+ * qui le due parti esistono entrambe su HubSpot, hanno lead loro e vanno
+ * sommate. Diverso anche da SUFFISSI_TECNICI, che si applica quando un nome e'
+ * l'altro piu' un pezzo in coda: qui non lo e', "3ago" e "3_agosto" sono due
+ * modi di scrivere la stessa data e nessuno dei due contiene l'altro.
+ *
+ * COSA COMPORTA. La chiave sta a sinistra, la campagna vera a destra: la riga
+ * di sinistra sparisce e i suoi lead, telefonate, consulenze e incassi si
+ * sommano a quella di destra. Da applicare quando sono davvero la stessa
+ * iniziativa, perche' dopo non si distinguono piu'.
+ *
+ * E' UNA PEZZA, come ALIAS_SPESA: la correzione vera e' una sola convenzione
+ * sui nomi al momento di crearli. Finche' due persone scrivono la stessa data
+ * in due modi, questo elenco va allungato a mano ogni volta.
+ */
+export const ALIAS_CAMPAGNA: Record<string, string> = {
+  // Il webinar del 3 agosto 2026, nominato in due modi. Misurato il 6 ottobre:
+  // 1.484 persone sulla grafia lunga, 88 su quella corta, 19 su entrambe. La
+  // sovrapposizione bassa non dice che siano campagne diverse - a differenza
+  // dei marcatori di presa in carico, dove serviva a dimostrare che erano le
+  // stesse persone - perche' qui sono due inserzioni distinte per lo stesso
+  // evento, e ciascuna porta gente sua.
+  "lms_imprenditoria_webinar_dipendenti_3ago":
+    "lms_imprenditoria_webinar_dipendenti_artificiali_3_agosto"
+};
+
+/**
+ * Il nome vero di una campagna: alias risolti, spazi e maiuscole normalizzati.
+ * Unico punto in cui si consultano le due mappe, cosi' non possono divergere.
+ */
+export function risolviAlias(nome: string): string {
+  const k = normalizza(nome);
+  return ALIAS_SPESA[k] ?? ALIAS_CAMPAGNA[k] ?? k;
+}
+
+/**
  * Chiave di raggruppamento di un nome campagna, o null se la riga non va
  * mostrata in questa vista. Serve ai dati che arrivano al client gia' pronti:
  * foglio Ads e id_campagna_track di trattative e incassi.
@@ -394,13 +477,15 @@ export function chiaveCampagna(nome: string, variante: Variante, basi: MappaVari
   // nomi la regola non la passano, ed e' per questo che la loro spesa spariva.
   // Dopo di qui si comportano come qualunque altra campagna, vista Instant
   // compresa.
-  const alias = ALIAS_SPESA[normalizza(pulito)];
-  const chiave = alias ?? normalizza(pulito);
+  const chiave = risolviAlias(pulito);
   const instant = haMarcatoreInstant(chiave);
 
   if (variante === "instant") return instant ? chiave : null;
   if (variante === "non_instant" && instant) return null;
-  return basi[chiave] ?? chiave;
+  // Secondo passaggio dell'alias, gemello di quello in sqlNomeBase(): "basi"
+  // toglie il suffisso, e il nome che resta puo' essere a sua volta un alias.
+  const base = basi[chiave] ?? chiave;
+  return ALIAS_CAMPAGNA[base] ?? base;
 }
 
 // --- Lato SQL. L'alias della tabella campagna e' sempre "c", quello della sua
@@ -462,8 +547,46 @@ export const SQL_E_VARIANTE_TECNICA = sqlEVarianteTecnica();
  * uniscono nella query, su un'altra.
  */
 export function sqlNomeBase(alias = "c"): string {
-  return `regexp_replace(lower(trim(${alias}.nome)), '_${PATTERN_VARIANTE}$', '')`;
+  const grezzo = `lower(trim(${alias}.nome))`;
+  const spezzato = `regexp_replace(${grezzo}, '_${PATTERN_VARIANTE}$', '')`;
+  // DUE PASSAGGI, e servono tutti e due. Il primo prende i nomi che stanno
+  // nell'elenco cosi' come sono. Il secondo prende quelli che ci arrivano dopo
+  // aver perso il suffisso: la spesa del retargeting del webinar del 3 agosto
+  // e' scritta "..._3ago_RETARGETING", diventa "..._3ago" togliendo il
+  // suffisso, e senza il secondo passaggio restava li' - 906 EUR su una riga
+  // con zero lead, l'identico difetto che avevamo appena chiuso sulle
+  // maiuscole.
+  //
+  // L'alias VINCE sul taglio del suffisso, ed e' voluto: "..._3ago" sarebbe
+  // anche una variante di "lms_imprenditoria_webinar_dipendenti", che pure
+  // esiste, ma la campagna giusta e' quella che dice l'elenco.
+  return sqlAlias(grezzo, sqlAlias(spezzato, spezzato));
 }
+
+/**
+ * Un CASE che traduce `espressione` secondo ALIAS_CAMPAGNA, e lascia
+ * `altrimenti` quando non c'e' corrispondenza.
+ *
+ * ALIAS_SPESA resta fuori di proposito: traduce nomi che esistono solo nel
+ * foglio della spesa, che il database non ha mai visto.
+ *
+ * E' un CASE scritto nella query e non una tabella di appoggio: sono poche
+ * voci, e una tabella andrebbe tenuta allineata al codice da qualcuno. Se un
+ * giorno diventano cinquanta, allora vale la tabella.
+ */
+function sqlAlias(espressione: string, altrimenti: string): string {
+  const voci = Object.entries(ALIAS_CAMPAGNA);
+  if (!voci.length) return altrimenti;
+  // I nomi sono scritti a mano qui sopra, non arrivano da fuori: l'apice non
+  // puo' esserci. Il controllo c'e' lo stesso, perche' un domani una voce
+  // incollata da un foglio lo porterebbe dentro senza che nessuno se ne accorga.
+  for (const n of voci.flat()) {
+    if (!/^[a-z0-9_\-]+$/.test(n)) throw new Error(`ALIAS_CAMPAGNA: nome non ammesso "${n}"`);
+  }
+  const casi = voci.map(([da, verso]) => `WHEN '${da}' THEN '${verso}'`).join(" ");
+  return `(CASE ${espressione} ${casi} ELSE ${altrimenti} END)`;
+}
+
 
 /**
  * Il nome della riga nella vista Instant: la campagna col marcatore. Normalizza

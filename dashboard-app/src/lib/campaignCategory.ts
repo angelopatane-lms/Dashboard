@@ -22,7 +22,7 @@
 //    non quello che compare prima nel nome. Riguarda 4 campagne e 920 eventi:
 //    "icmd_mep_persi" e "icmd_mep_calendario_dell_avvento" vanno in MEP, non in
 //    ICMD.
-import { ALIAS_SPESA } from "@/lib/campagne";
+import { risolviAlias } from "@/lib/campagne";
 
 type CategoryDef = { label: string; contiene: string[] };
 
@@ -68,7 +68,7 @@ export function guessCategoria(campagna: string): string {
   // questa riga "VL | p05 | Ti sfido 5 giorni | ABO" tornerebbe in "Altro"
   // appena si passa a Separate, pur essendo una campagna ICMD che abbiamo
   // appena finito di ricollegare.
-  const nome = (ALIAS_SPESA[grezzo.toLowerCase().replace(/\s+/g, " ")] ?? grezzo).toLowerCase();
+  const nome = risolviAlias(grezzo);
   // LE MAIUSCOLE NON CONTANO: il confronto e' sul nome normalizzato, quindi
   // "icmd13_Docufilm" va in ICMD come andrebbe "icmd13_docufilm". Da ottobre
   // 2026 i nomi fuori convenzione non vengono piu' scartati, ma non per questo
