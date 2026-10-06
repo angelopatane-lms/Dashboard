@@ -357,7 +357,17 @@ export const ALIAS_SPESA: Record<string, string> = {
   "vl | p07 | sistema di credenze | abo": "icmd_14_workshop_ottobre",
   "vl | p08 | potenziale da non usare | abo": "icmd_14_workshop_ottobre",
   "vl | p09 | la voce in testa | abo": "icmd_14_workshop_ottobre",
-  "vl | p10 | a suon di bugie | abo": "icmd_14_workshop_ottobre"
+  "vl | p10 | a suon di bugie | abo": "icmd_14_workshop_ottobre",
+
+  // ICMD 14, nomi di inserzione invece che di campagna. Qui le maiuscole non
+  // c'entrano - sono minuscoli e ben formati - ma la base che resta togliendo
+  // il suffisso non esiste: il foglio scrive "richieste_info" mentre su HubSpot
+  // la campagna si chiama "richiesta_informazioni". Due parole diverse, 6.786
+  // EUR di ottobre su righe con zero lead, mentre quella campagna mostrava 348
+  // lead e nessuna spesa.
+  "icmd_14_richieste_info_refresh_28ago": "icmd_14_richiesta_informazioni",
+  "icmd_14_richieste_info_abo_gemme_15set": "icmd_14_richiesta_informazioni",
+  "icmd_14_video_caldo_09set": "icmd_14_richiesta_informazioni"
 };
 
 /**
