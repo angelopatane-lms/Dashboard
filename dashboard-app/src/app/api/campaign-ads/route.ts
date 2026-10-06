@@ -51,12 +51,21 @@ async function mappaVarianti(nomiFoglio: Iterable<string>): Promise<MappaVariant
   try {
     const db = getDb();
     // Le varianti gia' presenti fra le campagne HubSpot.
+    //
+    // NESSUN FILTRO SUL MINUSCOLO, ed e' voluto. Fino al 6 ottobre 2026 qui
+    // c'era "v.nome = lower(v.nome)", rimasto indietro quando l'avevamo tolto
+    // da sqlFiltroCampagna: le due meta' della stessa unificazione finivano per
+    // non essere piu' d'accordo. Lead, telefonate e consulenze passano dal SQL,
+    // che il nome lo mette in minuscolo prima di confrontarlo, e si univano;
+    // chiusure e incassi passano di qui e restavano indietro, su una riga con
+    // tutti zero tranne i soldi. Misurato: le dodici varianti di
+    // "lms_imprenditoria_workshop_dipendenti_artificiali", che HubSpot scrive
+    // col cognome in maiuscolo, trattenevano 7.200 EUR.
     const { rows } = await db.query<{ variante: string; base: string }>(
       `SELECT lower(trim(v.nome)) AS variante, b.nome AS base
          FROM campagna v
          JOIN campagna b ON b.nome = ${sqlNomeBase("v")}
-        WHERE v.nome = lower(v.nome)
-          AND b.nome <> lower(trim(v.nome))
+        WHERE b.nome <> lower(trim(v.nome))
           AND position('_' in b.nome) > 0`
     );
     const mappa: MappaVarianti = {};
