@@ -245,7 +245,12 @@ export const FORMATI: Array<{ label: string; value: Formato }> = [
 const MARCATORI_LIVE = ["live", "webinar", "workshop"];
 
 export function formatoCampagna(nome: string): Formato {
-  const segmenti = nome.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  // L'ALIAS VALE ANCHE QUI, per lo stesso motivo per cui vale sulla categoria:
+  // nella vista Separate il nome resta grezzo, e "VL | p05 | ... | ABO" non
+  // contiene nessun marcatore - risultava "Altre" e il filtro Live lo buttava
+  // fuori, lasciando la campagna del workshop con 513 lead e zero spesa.
+  const vero = ALIAS_SPESA[nome.trim().toLowerCase().replace(/\s+/g, " ")] ?? nome;
+  const segmenti = vero.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
   // "ew" vince su "webinar" quando ci sono entrambi: sono tre campagne del tipo
   // "lms_mep_ew_indipendenza_femminile_webinar", dove "webinar" descrive il
   // contenuto e "ew", che sta nella posizione strutturale del nome, dice come
