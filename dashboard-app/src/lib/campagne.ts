@@ -310,6 +310,39 @@ function normalizza(nome: string): string {
 export type MappaVarianti = Record<string, string>;
 
 /**
+ * NOMI SCRITTI FUORI CONVENZIONE NEL FOGLIO DELLA SPESA, e la campagna a cui
+ * appartengono davvero.
+ *
+ * Il marketing ha nominato le inserzioni della serie "VL" con la grafica delle
+ * creativita' - maiuscole, barre verticali, spazi - invece che con l'id della
+ * campagna. Nomi cosi' non superano la regola del minuscolo e la loro spesa
+ * sparisce dalla vista unificata: misurato su ottobre 2026, erano 4.000 EUR in
+ * cinque giorni, cioe' 800 EUR al giorno attribuiti a nessuno.
+ *
+ * E' UNA PEZZA, e va detto: la correzione vera e' rinominare le inserzioni alla
+ * fonte, perche' il foglio lo rigenera ogni mese l'esportazione della
+ * piattaforma e i nomi sbagliati tornano da soli.
+ *
+ * ELENCO ESPLICITO E NON UNA REGOLA SUL PREFISSO "vl". Una regola prenderebbe
+ * anche le serie VL dei mesi prossimi, che apparterranno ad altri workshop, e
+ * attribuirebbe soldi alla campagna sbagliata senza che nessuno se ne accorga.
+ * Cosi' invece un nome nuovo resta fuori - e la spesa che manca si vede, mentre
+ * la spesa attribuita male no.
+ */
+export const ALIAS_SPESA: Record<string, string> = {
+  "vl | p01 | ti vogliono scemo e povero | abo": "icmd_14_workshop_ottobre",
+  "vl | p02 | pieno potenziale nascosto | abo": "icmd_14_workshop_ottobre",
+  "vl | p03 | regole installate da bambino | abo": "icmd_14_workshop_ottobre",
+  "vl | p04 | blocchi inconsci | abo": "icmd_14_workshop_ottobre",
+  "vl | p05 | ti sfido 5 giorni | abo": "icmd_14_workshop_ottobre",
+  "vl | p06 | limiti di chi ti ha cresciuto | abo": "icmd_14_workshop_ottobre",
+  "vl | p07 | sistema di credenze | abo": "icmd_14_workshop_ottobre",
+  "vl | p08 | potenziale da non usare | abo": "icmd_14_workshop_ottobre",
+  "vl | p09 | la voce in testa | abo": "icmd_14_workshop_ottobre",
+  "vl | p10 | a suon di bugie | abo": "icmd_14_workshop_ottobre"
+};
+
+/**
  * Chiave di raggruppamento di un nome campagna, o null se la riga non va
  * mostrata in questa vista. Serve ai dati che arrivano al client gia' pronti:
  * foglio Ads e id_campagna_track di trattative e incassi.
@@ -324,8 +357,13 @@ export function chiaveCampagna(nome: string, variante: Variante, basi: MappaVari
   // due righe diverse, che e' il senso di una vista grezza.
   if (variante === "tutte") return pulito;
 
-  if (!nomeConforme(pulito)) return null;
-  const chiave = normalizza(pulito);
+  // L'alias viene PRIMA della regola del minuscolo, ed e' il suo scopo: quei
+  // nomi la regola non la passano, ed e' per questo che la loro spesa spariva.
+  // Dopo di qui si comportano come qualunque altra campagna, vista Instant
+  // compresa.
+  const alias = ALIAS_SPESA[normalizza(pulito)];
+  if (!alias && !nomeConforme(pulito)) return null;
+  const chiave = alias ?? normalizza(pulito);
   const instant = haMarcatoreInstant(chiave);
 
   if (variante === "instant") return instant ? chiave : null;
