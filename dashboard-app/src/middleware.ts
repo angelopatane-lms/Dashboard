@@ -1,17 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { AUTH_COOKIE, livelloDaCookie } from "@/lib/auth";
+import { AUTH_COOKIE, livelloDaCookie, paginaDelLivello } from "@/lib/auth";
 
 /**
- * Le pagine che apre anche la password ridotta.
+ * Le rotte che le pagine sotto /pubblico interrogano, e SOLO IN LETTURA.
  *
- * Solo quelle: tutto il resto della dashboard - agenda, contatti, campagne -
- * contiene nomi, telefoni e collegamenti alle registrazioni, e resta alla
- * password piena.
- */
-const PAGINE_RIDOTTE = /^\/pubblico(\/|$)/;
-
-/**
- * Le rotte che quelle pagine interrogano, e SOLO IN LETTURA.
+ * Valgono per entrambi i livelli ridotti: la tabella Advisor e quella Setter
+ * sono lo stesso componente e chiedono le stesse cose. Quelle aggiunte dopo
+ * - setter-trattative e advisor-telefonici - restituiscono solo conteggi per
+ * persona; senza, la tabella Setter perdeva no show e consulenze svolte, e
+ * quella Advisor le consulenze fuori CRM e i telefonici.
  *
  * `obiettivi` risponde anche alle scritture: e' la colonna dove si digita
  * l'obiettivo del mese. Sulla pagina ridotta la cella e' gia' di sola lettura,
@@ -22,7 +19,9 @@ const API_RIDOTTE = new Set([
   "/api/hubspot-data",
   "/api/hubspot-deals",
   "/api/hubspot-boom-options",
-  "/api/obiettivi"
+  "/api/obiettivi",
+  "/api/setter-trattative",
+  "/api/advisor-telefonici"
 ]);
 
 // Pagine e dati rispondono solo a chi ha fatto l'accesso. Senza accesso:
@@ -34,8 +33,11 @@ export async function middleware(request: NextRequest) {
 
   const percorso = request.nextUrl.pathname;
 
-  if (livello === "ridotta") {
-    if (PAGINE_RIDOTTE.test(percorso)) return NextResponse.next();
+  if (livello) {
+    // Ogni password ridotta apre la SUA pagina e basta: quella degli Advisor
+    // non porta ai Setter, e viceversa.
+    const pagina = paginaDelLivello(livello);
+    if (percorso === pagina || percorso === `${pagina}/`) return NextResponse.next();
     if (API_RIDOTTE.has(percorso) && request.method === "GET") return NextResponse.next();
     // Chi ha la password ridotta e chiede altro non e' un estraneo: e' entrato
     // e sta bussando dove non gli spetta. Un 403 lo dice; il 401 farebbe
@@ -43,7 +45,7 @@ export async function middleware(request: NextRequest) {
     if (percorso.startsWith("/api/")) {
       return NextResponse.json({ error: "Non consentito con questo accesso" }, { status: 403 });
     }
-    return NextResponse.rewrite(new URL("/pubblico/advisor", request.url));
+    return NextResponse.rewrite(new URL(pagina, request.url));
   }
 
   if (percorso.startsWith("/api/")) {
