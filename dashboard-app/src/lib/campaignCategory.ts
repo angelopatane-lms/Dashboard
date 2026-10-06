@@ -22,6 +22,8 @@
 //    non quello che compare prima nel nome. Riguarda 4 campagne e 920 eventi:
 //    "icmd_mep_persi" e "icmd_mep_calendario_dell_avvento" vanno in MEP, non in
 //    ICMD.
+import { ALIAS_SPESA } from "@/lib/campagne";
+
 type CategoryDef = { label: string; contiene: string[] };
 
 const CATEGORY_DEFS: CategoryDef[] = [
@@ -59,8 +61,14 @@ export function categoriaResidua(categoria: string): boolean {
 }
 
 export function guessCategoria(campagna: string): string {
-  const nome = campagna.trim().toLowerCase();
-  if (!nome) return "Nessuna";
+  const grezzo = campagna.trim();
+  if (!grezzo) return "Nessuna";
+  // L'ALIAS VALE ANCHE QUI, e serve alla vista Separate: li' il nome resta
+  // grezzo di proposito - e' la vista diagnostica - ma la categoria no. Senza
+  // questa riga "VL | p05 | Ti sfido 5 giorni | ABO" tornerebbe in "Altro"
+  // appena si passa a Separate, pur essendo una campagna ICMD che abbiamo
+  // appena finito di ricollegare.
+  const nome = (ALIAS_SPESA[grezzo.toLowerCase().replace(/\s+/g, " ")] ?? grezzo).toLowerCase();
   // LE MAIUSCOLE NON CONTANO: il confronto e' sul nome normalizzato, quindi
   // "icmd13_Docufilm" va in ICMD come andrebbe "icmd13_docufilm". Da ottobre
   // 2026 i nomi fuori convenzione non vengono piu' scartati, ma non per questo
