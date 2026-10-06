@@ -445,9 +445,20 @@ export default function DashboardEnterprise({
 
   useEffect(() => {
     if (!finestraStorica) return;
-    // Stesso motivo dell'agenda, e qui pesa di piu': questa rotta ricostruisce
-    // mesi di trattative e ha un tetto di cinque minuti.
-    if (soloTabella) return;
+    // QUESTA NON SI SALTA CON soloTabella, a differenza dell'agenda.
+    //
+    // Fino al 6 ottobre 2026 c'era qui un `if (soloTabella) return`, messo per
+    // lo stesso motivo dell'agenda: la rotta e' pesante - ricostruisce mesi di
+    // trattative e ha un tetto di cinque minuti - e il grafico che la consuma
+    // in quella vista non si vede. Ma questi dati non servono solo al grafico:
+    // passano da unisciAdvisor(), che AZZERA gli appuntamenti del foglio e ci
+    // mette quelli di HubSpot. Senza la chiamata, `conHubspot` resta falso e la
+    // tabella mostra i numeri del foglio - proprio quelli che la fusione scarta
+    // perche' considerati sbagliati.
+    //
+    // Risultato: la pagina pubblica degli Advisor mostrava appuntamenti, no
+    // show e chiusure diversi da quella interna, pur usando lo stesso
+    // componente. Il componente era condiviso, i dati no.
     let annullato = false;
     fetch(`/api/advisor-andamento?from=${finestraStorica.from}&to=${finestraStorica.to}&vista=${setterView ? "setter" : "advisor"}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
