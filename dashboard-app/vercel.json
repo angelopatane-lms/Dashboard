@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/campaign-conversions-incremental",
-      "schedule": "35 4-19 * * *"
+      "schedule": "0 3 * * *"
     },
     {
       "path": "/api/cron/abbina-trascrizioni",
@@ -30,7 +30,7 @@
     },
     {
       "path": "/api/cron/stati-lead",
-      "schedule": "5 4-19 * * *"
+      "schedule": "50 3 * * *"
     }
   ]
 }
