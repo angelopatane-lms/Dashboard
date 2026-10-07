@@ -53,6 +53,38 @@ type Stato = {
 };
 
 /**
+ * Chi ha ricevuto lead oggi, dalla rotta che lo ricostruisce da HubSpot.
+ *
+ * L'app dice QUANTI e a QUANTE persone, mai a chi: il suo database sta sul suo
+ * server e da qui non si raggiunge. Il dettaglio arriva dalla cronologia del
+ * proprietario su HubSpot, filtrata sull'integrazione che assegna.
+ */
+type Dettaglio = {
+  giorno: string;
+  righe: Array<{
+    proprietarioId: string;
+    nome: string;
+    lead: number;
+    prima: string | null;
+    ultima: string | null;
+  }>;
+  totale: number;
+  persone: number;
+  /** Il totale che dichiara l'app, per confronto. null quando non ha risposto. */
+  atteso: number | null;
+  aggiornatoAt: string;
+  dallArchivio: boolean;
+  error?: string;
+};
+
+/** L'ora di una marca temporale, come la si legge a colpo d'occhio. */
+function ora(iso: string | null): string {
+  if (!iso) return "--:--";
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/**
  * Cosa dice la colonna di mezzo di ogni riga.
  *
 /**
@@ -207,6 +239,41 @@ export default function AssegnazioneContatti() {
     };
   }, [leggi]);
 
+  /**
+   * Il dettaglio per persona.
+   *
+   * NON SI RILEGGE OGNI MINUTO come il resto della sezione. Ricostruirlo costa
+   * una trentina di chiamate a HubSpot - va letta la cronologia di tutti i
+   * contatti che hanno cambiato proprietario oggi - su un token condiviso con
+   * decine di flussi Zapier che ha un tetto di 19 chiamate al secondo. La rotta
+   * tiene il risultato per cinque minuti, ma anche solo chiederglielo in
+   * continuazione sarebbe spendere il budget di tutti per un riquadro.
+   *
+   * SI RILEGGE QUANDO IL TOTALE SI MUOVE, che e' l'unico momento in cui il
+   * dettaglio puo' essere cambiato: `assegnati_oggi` arriva dal giro leggero
+   * ogni minuto e costa una chiamata sola.
+   */
+  const [dettaglio, setDettaglio] = useState<Dettaglio | null>(null);
+  const [dettaglioInCorso, setDettaglioInCorso] = useState(false);
+  const totaleVisto = useRef<number | null>(null);
+
+  const leggiDettaglio = useCallback(() => {
+    setDettaglioInCorso(true);
+    fetch("/api/assegnazione-lead/dettaglio", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: Dettaglio) => setDettaglio(d))
+      .catch((e) => setDettaglio({ error: String(e) } as Dettaglio))
+      .finally(() => setDettaglioInCorso(false));
+  }, []);
+
+  useEffect(() => {
+    const totale = stato?.assegnati_oggi;
+    if (totale == null) return;
+    if (totaleVisto.current === totale) return;
+    totaleVisto.current = totale;
+    leggiDettaglio();
+  }, [stato?.assegnati_oggi, leggiDettaglio]);
+
   const comanda = useCallback(
     (comando: Record<string, boolean | string>) => {
       const mio = ++richiesta.current;
@@ -296,6 +363,81 @@ export default function AssegnazioneContatti() {
           <Numero valore={stato ? `${stato.riserva}/${stato.riserva_max}` : "–"} etichetta="Riserva A oggi" />
           <Numero valore={stato ? formatInt(stato.assegnati_oggi) : "–"} etichetta="Assegnati oggi" />
           <Numero valore={stato ? formatInt(stato.persone_oggi) : "–"} etichetta="Persone oggi" />
+        </div>
+
+        {/* CHI HA RICEVUTO, che e' l'unica cosa che i due numeri qui sopra non
+            dicono. Sta subito sotto di loro perche' ne e' la scomposizione: il
+            totale e la somma di questa colonna sono lo stesso numero. */}
+        <div className="border-b border-slate-100">
+          <div className="flex items-center justify-between gap-3 px-4 pt-3">
+            <div className="text-[11px] uppercase tracking-wide text-slate-500">
+              Chi ha ricevuto oggi
+            </div>
+            <button
+              type="button"
+              onClick={leggiDettaglio}
+              disabled={dettaglioInCorso}
+              className="text-xs font-medium text-slate-400 transition hover:text-slate-900 disabled:opacity-50"
+            >
+              {dettaglioInCorso ? "Leggo…" : "Aggiorna"}
+            </button>
+          </div>
+
+          {/* LE DUE FONTI A CONFRONTO. Il totale lo sa l'app, il dettaglio lo
+              ricostruiamo da HubSpot: se non coincidono il dettaglio e'
+              incompleto, e dirlo vale piu' che mostrare numeri che sembrano
+              buoni. Il caso tipico e' un contatto riassegnato a mano dopo:
+              HubSpot tiene solo l'ultima assegnazione. */}
+          {dettaglio && !dettaglio.error && dettaglio.atteso != null &&
+          dettaglio.atteso !== dettaglio.totale ? (
+            <div className="mx-4 mt-2 rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">
+              L&apos;app ne dichiara {formatInt(dettaglio.atteso)}, qui se ne contano{" "}
+              {formatInt(dettaglio.totale)}: il dettaglio qui sotto è incompleto.
+            </div>
+          ) : null}
+
+          <div className="px-4 pb-3 pt-2">
+            {dettaglio?.error ? (
+              <div className="py-2 text-sm text-slate-400">
+                Il dettaglio non è disponibile: {dettaglio.error}
+              </div>
+            ) : !dettaglio ? (
+              <div className="py-2 text-sm text-slate-300">
+                {dettaglioInCorso ? "Leggo da HubSpot…" : "—"}
+              </div>
+            ) : dettaglio.righe.length === 0 ? (
+              // ZERO E "MAI CALCOLATO" NON SONO LA STESSA COSA, e qui si vede:
+              // una giornata senza assegnazioni ha comunque un istante di
+              // calcolo, un giorno mai fotografato no.
+              <div className="py-2 text-sm text-slate-400">
+                {dettaglio.aggiornatoAt
+                  ? "Oggi non è ancora stato assegnato nessun lead."
+                  : "Questa giornata non è ancora stata fotografata."}
+              </div>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {dettaglio.righe.map((r) => (
+                  <li
+                    key={r.proprietarioId}
+                    className="flex items-baseline justify-between gap-3 py-1.5"
+                  >
+                    <span className="truncate text-sm text-slate-900">{r.nome}</span>
+                    <span className="flex shrink-0 items-baseline gap-3">
+                      {/* Primo e ultimo: due richieste alle 9 e alle 18 sono
+                          una giornata diversa da due alle 9 e alle 9:01. */}
+                      <span className="text-xs tabular-nums text-slate-400">
+                        {ora(r.prima)}
+                        {r.ultima && ora(r.ultima) !== ora(r.prima) ? `–${ora(r.ultima)}` : ""}
+                      </span>
+                      <span className="w-12 text-right text-sm font-semibold tabular-nums text-slate-900">
+                        {formatInt(r.lead)}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
 
         {/* Le spiegazioni lunghe sono diventate suggerimenti sul nome del

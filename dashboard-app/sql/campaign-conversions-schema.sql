@@ -565,3 +565,68 @@ CREATE INDEX IF NOT EXISTS stato_lead_storia_periodo
 -- esistono apposta id_campagna_refresh_precedente e storico_campagna_refresh.
 -- Prendere quella di adesso attribuirebbe i mesi passati alla campagna sbagliata.
 ALTER TABLE stato_lead_storia ADD COLUMN IF NOT EXISTS campagna TEXT;
+
+-- ============================================================================
+-- CHI HA RICEVUTO LEAD DALL'APP DI ASSEGNAZIONE, GIORNO PER GIORNO.
+--
+-- A COSA SERVE. L'app Employee Manager dice quanti lead ha distribuito oggi e
+-- a quante persone (`assegnati_oggi`, `persone_oggi`), ma non A CHI. Per
+-- sapere chi aveva ricevuto cosa bisognava interrogare a mano il suo database,
+-- che vive sul suo server e da qui non si raggiunge: host.docker.internal.
+--
+-- DA DOVE ARRIVA IL DATO. Da HubSpot, non dall'app. Quando il bot assegna
+-- scrive il proprietario sul contatto, e HubSpot ne tiene la cronologia con
+-- l'ORIGINE del cambio. Si tengono solo le voci con sourceType = INTEGRATION e
+-- sourceId uguale all'app di Alessio: il 7 ottobre 2026 i contatti che avevano
+-- cambiato proprietario erano 1.071, ma solo 560 veniva dal bot - gli altri
+-- erano workflow, azioni in blocco e fusioni di contatti. Senza quel filtro il
+-- report non tornerebbe con il numero che l'app mostra di se'.
+--
+-- PERCHE' SI CONSERVA INVECE DI CALCOLARLO OGNI VOLTA. Il calcolo costa una
+-- trentina di chiamate a HubSpot, e il token e' condiviso con decine di flussi
+-- Zapier su un tetto di 19 chiamate al secondo. La sezione che mostra questi
+-- numeri si rilegge ogni minuto: ricalcolare ad ogni lettura vorrebbe dire
+-- spendere il budget di tutti per un riquadro.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS assegnazione_giorno (
+  giorno          DATE        NOT NULL,
+  proprietario_id BIGINT      NOT NULL,
+  lead            INT         NOT NULL,
+  -- Primo e ultimo istante della giornata per quella persona: due richieste
+  -- alle 9 e alle 18 raccontano una giornata diversa da due alle 9 e alle 9:01.
+  prima           TIMESTAMPTZ,
+  ultima          TIMESTAMPTZ,
+  PRIMARY KEY (giorno, proprietario_id)
+);
+
+-- LA RIGA CHE DICE "QUESTO GIORNO L'HO CALCOLATO".
+--
+-- Senza di lei un giorno senza assegnazioni e un giorno mai calcolato si
+-- leggono uguali: nessuna riga in assegnazione_giorno. E' la differenza fra
+-- "oggi il bot non ha distribuito niente" e "il dato non e' arrivato", che e'
+-- esattamente il tipo di zero che ci e' gia' costato caro altrove.
+--
+-- `totale` e `atteso` servono alla stessa cosa da due lati: `totale` e' quanto
+-- abbiamo contato noi da HubSpot, `atteso` quanto dichiara l'app di se'. Se
+-- divergono, qualcosa si e' rotto - e va detto, non nascosto dietro un numero
+-- che sembra buono.
+CREATE TABLE IF NOT EXISTS assegnazione_giorno_calcolo (
+  giorno              DATE        PRIMARY KEY,
+  aggiornato_at       TIMESTAMPTZ NOT NULL,
+  totale              INT         NOT NULL,
+  persone             INT         NOT NULL,
+  contatti_esaminati  INT         NOT NULL,
+  atteso              INT
+);
+
+-- L'INIZIO DELLA FINESTRA A CUI APPARTIENE IL SEGNALIBRO.
+--
+-- `ultimo_id` da solo non basta a riprendere un giro interrotto: dice DOVE ci
+-- si era fermati, non QUALE finestra si stava percorrendo. Riprendere da
+-- quell'id con una finestra piu' recente salterebbe tutte le righe modificate
+-- prima del nuovo inizio e con id maggiore - un buco silenzioso, che e' il
+-- motivo per cui il giro delle trattative preferiva fallire del tutto.
+--
+-- Con questa colonna la ripresa e' esatta: stessa finestra, dall'id dove si era
+-- arrivati. La riga viene cancellata quando un giro arriva in fondo.
+ALTER TABLE sync_checkpoint ADD COLUMN IF NOT EXISTS finestra_da TIMESTAMPTZ;
