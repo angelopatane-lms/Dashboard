@@ -32,6 +32,16 @@ import { formatInt } from "@/lib/format";
  * che ha oggi.
  */
 
+/**
+ * Fin dove si puo' tornare indietro.
+ *
+ * Non e' un limite dei dati - l'archivio li tiene tutti - ma delle frecce: per
+ * arrivare a un mese fa servirebbero trenta clic, e a quel punto serve un
+ * calendario, non una freccia. Trenta e' dove le frecce smettono di avere
+ * senso.
+ */
+const GIORNI_INDIETRO = 30;
+
 const APP_ASSEGNAZIONI = "https://lms.217.154.117.118.nip.io/admin/lead-assignment";
 
 type Stato = {
@@ -120,16 +130,21 @@ const GIORNI_ETICHETTA: Record<string, string> = {
 function Numero({ valore, etichetta }: { valore: string; etichetta: string }) {
   const vuoto = valore === "0" || valore === "–";
   return (
+    // ETICHETTA SOPRA, NUMERO SOTTO: e' la forma dei riquadri di Stato
+    // Contatti di Marketing, subito piu' in basso nella stessa pagina. Due
+    // strisce di numeri impaginate al contrario nella stessa schermata
+    // costringono a riorientarsi ogni volta che l'occhio passa dall'una
+    // all'altra, per nessun motivo.
     <div className="px-4 py-2.5">
+      <div className="text-[11px] uppercase leading-tight tracking-wide text-slate-500">
+        {etichetta}
+      </div>
       <div
         className={`text-xl font-semibold leading-tight tabular-nums ${
           vuoto ? "text-slate-300" : "text-slate-900"
         }`}
       >
         {valore}
-      </div>
-      <div className="text-[11px] uppercase leading-tight tracking-wide text-slate-500">
-        {etichetta}
       </div>
     </div>
   );
@@ -257,22 +272,66 @@ export default function AssegnazioneContatti() {
   const [dettaglioInCorso, setDettaglioInCorso] = useState(false);
   const totaleVisto = useRef<number | null>(null);
 
-  const leggiDettaglio = useCallback(() => {
-    setDettaglioInCorso(true);
-    fetch("/api/assegnazione-lead/dettaglio", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d: Dettaglio) => setDettaglio(d))
-      .catch((e) => setDettaglio({ error: String(e) } as Dettaglio))
-      .finally(() => setDettaglioInCorso(false));
+  /**
+   * Quale giornata si sta guardando. Scostamento in giorni: 0 oggi, 1 ieri.
+   *
+   * I GIORNI PASSATI VENGONO DALL'ARCHIVIO e non si ricalcolano mai, quindi
+   * compaiono subito e non costano una chiamata a HubSpot. Non e' una scelta
+   * di comodo: `hubspot_owner_assigneddate` conserva solo l'ULTIMA
+   * assegnazione, percio' un contatto riassegnato domani sparirebbe da oggi e
+   * un giorno ricalcolato tornerebbe piu' povero del vero, senza dirlo. Quel
+   * che e' stato fotografato e' tutto quello che avremo.
+   */
+  const [indietro, setIndietro] = useState(0);
+
+  const giornoIso = useCallback((scostamento: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - scostamento);
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    return `${d.getFullYear()}-${m}-${String(d.getDate()).padStart(2, "0")}`;
   }, []);
 
+  const leggiDettaglio = useCallback(
+    (scostamento = 0) => {
+      setDettaglioInCorso(true);
+      const q = scostamento === 0 ? "" : `?giorno=${giornoIso(scostamento)}`;
+      fetch(`/api/assegnazione-lead/dettaglio${q}`, { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d: Dettaglio) => setDettaglio(d))
+        .catch((e) => setDettaglio({ error: String(e) } as Dettaglio))
+        .finally(() => setDettaglioInCorso(false));
+    },
+    [giornoIso]
+  );
+
   useEffect(() => {
+    // Solo mentre si guarda oggi: su una giornata passata il totale corrente
+    // non c'entra niente, e rileggerla la riporterebbe a oggi sotto le mani.
+    if (indietro !== 0) return;
     const totale = stato?.assegnati_oggi;
     if (totale == null) return;
     if (totaleVisto.current === totale) return;
     totaleVisto.current = totale;
-    leggiDettaglio();
-  }, [stato?.assegnati_oggi, leggiDettaglio]);
+    leggiDettaglio(0);
+  }, [stato?.assegnati_oggi, leggiDettaglio, indietro]);
+
+  const vaiA = useCallback(
+    (scostamento: number) => {
+      if (scostamento < 0) return;
+      setIndietro(scostamento);
+      leggiDettaglio(scostamento);
+    },
+    [leggiDettaglio]
+  );
+
+  /** "oggi", "ieri", oppure la data per esteso. */
+  const etichettaGiorno = (scostamento: number): string => {
+    if (scostamento === 0) return "oggi";
+    if (scostamento === 1) return "ieri";
+    const d = new Date();
+    d.setDate(d.getDate() - scostamento);
+    return d.toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "long" });
+  };
 
   const comanda = useCallback(
     (comando: Record<string, boolean | string>) => {
@@ -514,18 +573,69 @@ export default function AssegnazioneContatti() {
             dicono. Sta subito sotto di loro perche' ne e' la scomposizione: il
             totale e la somma di questa colonna sono lo stesso numero. */}
         <div>
+          {/* NESSUN TITOLO. "Chi ha ricevuto oggi" ripeteva quello che
+              l'elenco dice da se': dei nomi con accanto dei numeri, sotto una
+              striscia che parla di assegnazioni di oggi. Resta solo il
+              comando, allineato a destra dove sono gli altri. */}
           <div className="flex items-center justify-between gap-3 px-4 pt-3">
-            <div className="text-[11px] uppercase tracking-wide text-slate-500">
-              Chi ha ricevuto oggi
+            {/* LE FRECCE INVECE DI UN CALENDARIO: quasi sempre si vuole ieri,
+                e con un calendario ieri costa tre clic invece di uno. */}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label="Giorno precedente"
+                onClick={() => vaiA(indietro + 1)}
+                disabled={dettaglioInCorso || indietro >= GIORNI_INDIETRO}
+                className="rounded px-1.5 py-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 disabled:hover:bg-transparent"
+              >
+                ‹
+              </button>
+              <span className="min-w-[7rem] text-center text-[11px] uppercase tracking-wide text-slate-500">
+                {etichettaGiorno(indietro)}
+              </span>
+              <button
+                type="button"
+                aria-label="Giorno successivo"
+                onClick={() => vaiA(indietro - 1)}
+                disabled={dettaglioInCorso || indietro === 0}
+                className="rounded px-1.5 py-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 disabled:hover:bg-transparent"
+              >
+                ›
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={leggiDettaglio}
-              disabled={dettaglioInCorso}
-              className="text-xs font-medium text-slate-400 transition hover:text-slate-900 disabled:opacity-50"
-            >
-              {dettaglioInCorso ? "Leggo…" : "Aggiorna"}
-            </button>
+
+            {/* AGGIORNA SOLO SU OGGI. Una giornata passata non si ricalcola -
+                HubSpot non la sa piu' - quindi un bottone che promette di
+                rinfrescarla direbbe una bugia. */}
+            {indietro === 0 ? (
+              <button
+                type="button"
+                aria-label="Aggiorna"
+                title="Aggiorna"
+                onClick={() => leggiDettaglio(0)}
+                disabled={dettaglioInCorso}
+                className="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50 disabled:hover:bg-transparent"
+              >
+                {/* GIRA MENTRE LEGGE, invece di cambiare la scritta in
+                    "Leggo…": il movimento si nota con la coda dell'occhio,
+                    una parola va letta. E la lettura dura una ventina di
+                    secondi, abbastanza da far pensare che non sia partito
+                    niente. */}
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  className={`h-3.5 w-3.5 ${dettaglioInCorso ? "animate-spin" : ""}`}
+                >
+                  <path d="M17 10a7 7 0 1 1-2.1-5" strokeLinecap="round" />
+                  <path d="M14.9 1.6v3.6h-3.6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            ) : (
+              <span className="text-xs text-slate-300">dall&apos;archivio</span>
+            )}
           </div>
 
           {/* LE DUE FONTI A CONFRONTO. Il totale lo sa l'app, il dettaglio lo
@@ -564,7 +674,9 @@ export default function AssegnazioneContatti() {
               // giorno sono una decina, ma in una giornata piena diventano
               // trenta e la sezione spingerebbe fuori schermo tutto quello che
               // viene dopo. Oltre l'altezza, scorre dentro di se'.
-              <ul className="max-h-64 divide-y divide-slate-100 overflow-y-auto">
+              // LO SPAZIO A DESTRA E' PER LA BARRA DI SCORRIMENTO. Senza, la
+              // barra appoggia sui numeri e sembra tagliarli.
+              <ul className="max-h-64 divide-y divide-slate-100 overflow-y-auto pr-3">
                 {dettaglio.righe.map((r) => (
                   <li
                     key={r.proprietarioId}
@@ -572,11 +684,15 @@ export default function AssegnazioneContatti() {
                   >
                     <span className="truncate text-sm text-slate-900">{r.nome}</span>
                     <span className="flex shrink-0 items-baseline gap-3">
-                      {/* Primo e ultimo: due richieste alle 9 e alle 18 sono
-                          una giornata diversa da due alle 9 e alle 9:01. */}
+                      {/* SCRITTO A PAROLE, non come "10:21-13:31": quel
+                          trattino si legge come un orario unico spezzato, e
+                          non dice che sono due momenti distinti. Primo e
+                          ultimo servono perche' due richieste alle 9 e alle 18
+                          sono una giornata diversa da due alle 9 e alle 9:01. */}
                       <span className="text-xs tabular-nums text-slate-400">
-                        {ora(r.prima)}
-                        {r.ultima && ora(r.ultima) !== ora(r.prima) ? `–${ora(r.ultima)}` : ""}
+                        {r.ultima && ora(r.ultima) !== ora(r.prima)
+                          ? `dalle ${ora(r.prima)} alle ${ora(r.ultima)}`
+                          : `alle ${ora(r.prima)}`}
                       </span>
                       <span className="w-12 text-right text-sm font-semibold tabular-nums text-slate-900">
                         {formatInt(r.lead)}

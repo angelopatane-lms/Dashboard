@@ -68,7 +68,12 @@ export async function GET(req: NextRequest) {
   const forza = req.nextUrl.searchParams.get("forza") === "1";
 
   try {
-    const atteso = await attesoDallApp();
+    // LA CONTROPROVA VALE SOLO PER OGGI. L'app dichiara il totale CORRENTE, e
+    // confrontarlo con una giornata passata accosta due numeri che parlano di
+    // giorni diversi: la pagina annuncerebbe una divergenza inesistente. Per i
+    // giorni passati si usa il valore conservato insieme alla fotografia, che
+    // e' quello giusto perche' fu preso in quel momento.
+    const atteso = giorno ? undefined : await attesoDallApp();
     const esito = await leggiGiorno(token, { giorno, atteso, forza });
     return NextResponse.json(esito, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
