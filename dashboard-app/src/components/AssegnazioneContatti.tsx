@@ -365,85 +365,12 @@ export default function AssegnazioneContatti() {
           <Numero valore={stato ? formatInt(stato.persone_oggi) : "–"} etichetta="Persone oggi" />
         </div>
 
-        {/* CHI HA RICEVUTO, che e' l'unica cosa che i due numeri qui sopra non
-            dicono. Sta subito sotto di loro perche' ne e' la scomposizione: il
-            totale e la somma di questa colonna sono lo stesso numero. */}
-        <div className="border-b border-slate-100">
-          <div className="flex items-center justify-between gap-3 px-4 pt-3">
-            <div className="text-[11px] uppercase tracking-wide text-slate-500">
-              Chi ha ricevuto oggi
-            </div>
-            <button
-              type="button"
-              onClick={leggiDettaglio}
-              disabled={dettaglioInCorso}
-              className="text-xs font-medium text-slate-400 transition hover:text-slate-900 disabled:opacity-50"
-            >
-              {dettaglioInCorso ? "Leggo…" : "Aggiorna"}
-            </button>
-          </div>
-
-          {/* LE DUE FONTI A CONFRONTO. Il totale lo sa l'app, il dettaglio lo
-              ricostruiamo da HubSpot: se non coincidono il dettaglio e'
-              incompleto, e dirlo vale piu' che mostrare numeri che sembrano
-              buoni. Il caso tipico e' un contatto riassegnato a mano dopo:
-              HubSpot tiene solo l'ultima assegnazione. */}
-          {dettaglio && !dettaglio.error && dettaglio.atteso != null &&
-          dettaglio.atteso !== dettaglio.totale ? (
-            <div className="mx-4 mt-2 rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">
-              L&apos;app ne dichiara {formatInt(dettaglio.atteso)}, qui se ne contano{" "}
-              {formatInt(dettaglio.totale)}: il dettaglio qui sotto è incompleto.
-            </div>
-          ) : null}
-
-          <div className="px-4 pb-3 pt-2">
-            {dettaglio?.error ? (
-              <div className="py-2 text-sm text-slate-400">
-                Il dettaglio non è disponibile: {dettaglio.error}
-              </div>
-            ) : !dettaglio ? (
-              <div className="py-2 text-sm text-slate-300">
-                {dettaglioInCorso ? "Leggo da HubSpot…" : "—"}
-              </div>
-            ) : dettaglio.righe.length === 0 ? (
-              // ZERO E "MAI CALCOLATO" NON SONO LA STESSA COSA, e qui si vede:
-              // una giornata senza assegnazioni ha comunque un istante di
-              // calcolo, un giorno mai fotografato no.
-              <div className="py-2 text-sm text-slate-400">
-                {dettaglio.aggiornatoAt
-                  ? "Oggi non è ancora stato assegnato nessun lead."
-                  : "Questa giornata non è ancora stata fotografata."}
-              </div>
-            ) : (
-              <ul className="divide-y divide-slate-100">
-                {dettaglio.righe.map((r) => (
-                  <li
-                    key={r.proprietarioId}
-                    className="flex items-baseline justify-between gap-3 py-1.5"
-                  >
-                    <span className="truncate text-sm text-slate-900">{r.nome}</span>
-                    <span className="flex shrink-0 items-baseline gap-3">
-                      {/* Primo e ultimo: due richieste alle 9 e alle 18 sono
-                          una giornata diversa da due alle 9 e alle 9:01. */}
-                      <span className="text-xs tabular-nums text-slate-400">
-                        {ora(r.prima)}
-                        {r.ultima && ora(r.ultima) !== ora(r.prima) ? `–${ora(r.ultima)}` : ""}
-                      </span>
-                      <span className="w-12 text-right text-sm font-semibold tabular-nums text-slate-900">
-                        {formatInt(r.lead)}
-                      </span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-
-        {/* Le spiegazioni lunghe sono diventate suggerimenti sul nome del
-            comando: occupavano piu' spazio dei comandi stessi, e chi le ha
-            lette una volta non ha bisogno di rileggerle ogni giorno. */}
-        <div className="divide-y divide-slate-100">
+        {/* L'ORDINE DICE A COSA SERVE LA SEZIONE: prima i numeri, che si
+            leggono di sfuggita per sapere se c'e' materiale e se oggi e'
+            partito qualcosa; poi i comandi, che e' quello che si viene a
+            fare; in fondo l'elenco di chi ha ricevuto, che si consulta
+            quando serve e non deve mettersi in mezzo. */}
+        <div className="divide-y divide-slate-100 border-b border-slate-100">
           <Riga
             nome="Stato del Sistema"
             aiuto="Se spento, le richieste su Slack vengono ignorate e non si recuperano alla riaccensione."
@@ -580,6 +507,85 @@ export default function AssegnazioneContatti() {
                 ))}
               </div>
             ) : null}
+          </div>
+        </div>
+
+        {/* CHI HA RICEVUTO, che e' l'unica cosa che i due numeri qui sopra non
+            dicono. Sta subito sotto di loro perche' ne e' la scomposizione: il
+            totale e la somma di questa colonna sono lo stesso numero. */}
+        <div>
+          <div className="flex items-center justify-between gap-3 px-4 pt-3">
+            <div className="text-[11px] uppercase tracking-wide text-slate-500">
+              Chi ha ricevuto oggi
+            </div>
+            <button
+              type="button"
+              onClick={leggiDettaglio}
+              disabled={dettaglioInCorso}
+              className="text-xs font-medium text-slate-400 transition hover:text-slate-900 disabled:opacity-50"
+            >
+              {dettaglioInCorso ? "Leggo…" : "Aggiorna"}
+            </button>
+          </div>
+
+          {/* LE DUE FONTI A CONFRONTO. Il totale lo sa l'app, il dettaglio lo
+              ricostruiamo da HubSpot: se non coincidono il dettaglio e'
+              incompleto, e dirlo vale piu' che mostrare numeri che sembrano
+              buoni. Il caso tipico e' un contatto riassegnato a mano dopo:
+              HubSpot tiene solo l'ultima assegnazione. */}
+          {dettaglio && !dettaglio.error && dettaglio.atteso != null &&
+          dettaglio.atteso !== dettaglio.totale ? (
+            <div className="mx-4 mt-2 rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">
+              L&apos;app ne dichiara {formatInt(dettaglio.atteso)}, qui se ne contano{" "}
+              {formatInt(dettaglio.totale)}: il dettaglio qui sotto è incompleto.
+            </div>
+          ) : null}
+
+          <div className="px-4 pb-3 pt-2">
+            {dettaglio?.error ? (
+              <div className="py-2 text-sm text-slate-400">
+                Il dettaglio non è disponibile: {dettaglio.error}
+              </div>
+            ) : !dettaglio ? (
+              <div className="py-2 text-sm text-slate-300">
+                {dettaglioInCorso ? "Leggo da HubSpot…" : "—"}
+              </div>
+            ) : dettaglio.righe.length === 0 ? (
+              // ZERO E "MAI CALCOLATO" NON SONO LA STESSA COSA, e qui si vede:
+              // una giornata senza assegnazioni ha comunque un istante di
+              // calcolo, un giorno mai fotografato no.
+              <div className="py-2 text-sm text-slate-400">
+                {dettaglio.aggiornatoAt
+                  ? "Oggi non è ancora stato assegnato nessun lead."
+                  : "Questa giornata non è ancora stata fotografata."}
+              </div>
+            ) : (
+              // L'ELENCO NON CRESCE ALL'INFINITO. Le persone servite in un
+              // giorno sono una decina, ma in una giornata piena diventano
+              // trenta e la sezione spingerebbe fuori schermo tutto quello che
+              // viene dopo. Oltre l'altezza, scorre dentro di se'.
+              <ul className="max-h-64 divide-y divide-slate-100 overflow-y-auto">
+                {dettaglio.righe.map((r) => (
+                  <li
+                    key={r.proprietarioId}
+                    className="flex items-baseline justify-between gap-3 py-1.5"
+                  >
+                    <span className="truncate text-sm text-slate-900">{r.nome}</span>
+                    <span className="flex shrink-0 items-baseline gap-3">
+                      {/* Primo e ultimo: due richieste alle 9 e alle 18 sono
+                          una giornata diversa da due alle 9 e alle 9:01. */}
+                      <span className="text-xs tabular-nums text-slate-400">
+                        {ora(r.prima)}
+                        {r.ultima && ora(r.ultima) !== ora(r.prima) ? `–${ora(r.ultima)}` : ""}
+                      </span>
+                      <span className="w-12 text-right text-sm font-semibold tabular-nums text-slate-900">
+                        {formatInt(r.lead)}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
 
