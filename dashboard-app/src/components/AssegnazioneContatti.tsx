@@ -674,9 +674,15 @@ export default function AssegnazioneContatti() {
               // giorno sono una decina, ma in una giornata piena diventano
               // trenta e la sezione spingerebbe fuori schermo tutto quello che
               // viene dopo. Oltre l'altezza, scorre dentro di se'.
-              // LO SPAZIO A DESTRA E' PER LA BARRA DI SCORRIMENTO. Senza, la
-              // barra appoggia sui numeri e sembra tagliarli.
-              <ul className="max-h-64 divide-y divide-slate-100 overflow-y-auto pr-3">
+              // VENTI RIGHE INTERE, POI SCORRE. L'altezza e' misurata e non
+              // stimata: la prima riga e' alta 32px, le successive 33 per il
+              // bordo che le separa, quindi 32 + 19 x 33 = 659. Con meno di
+              // venti persone la barra non compare affatto - oggi erano
+              // tredici - e la sezione resta della sua altezza naturale.
+              //
+              // LO SPAZIO A DESTRA E' PER LA BARRA. Senza, appoggia sui numeri
+              // e sembra tagliarli.
+              <ul className="max-h-[659px] divide-y divide-slate-100 overflow-y-auto pr-3">
                 {dettaglio.righe.map((r) => (
                   <li
                     key={r.proprietarioId}
