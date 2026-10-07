@@ -416,12 +416,15 @@ async function* cercaTrattative(
   token: string,
   daIso: string,
   tipo: TipoSyncTrattative,
-  perModifica = false
+  perModifica = false,
+  // Da dove riprendere dentro la stessa finestra, quando il giro precedente si
+  // era fermato a meta'. Zero significa dall'inizio.
+  daId = 0
 ): AsyncGenerator<string[]> {
   const daMs = new Date(daIso).getTime();
   const proprietaData =
     tipo === "incrementale" || perModifica ? "hs_lastmodifieddate" : "createdate";
-  let ultimoId = 0;
+  let ultimoId = daId;
 
   while (true) {
     const d = await chiamaHubSpot<any>(token, `${HUBSPOT_API}/crm/v3/objects/deals/search`, {
@@ -527,26 +530,63 @@ export type OpzioniTrattative = {
 
 // Un giro incrementale gira dentro una funzione Vercel da 60 secondi. A ~34
 // trattative/secondo, 1200 sono circa 35s: resta margine per la ricerca
-// iniziale e per un eventuale rallentamento. Superato il tetto ci si ferma e lo
-// si dichiara, invece di farsi uccidere a meta' lasciando dati incoerenti.
+// iniziale e per un eventuale rallentamento. Superato il tetto ci si ferma, si
+// salva il segnalibro e si riprende al giro dopo, invece di farsi uccidere a
+// meta' lasciando dati incoerenti.
 const MAX_INCREMENTALE = 1200;
 
 /**
- * Inizio della finestra per l'incrementale: dall'ultima esecuzione RIUSCITA,
- * meno 30 minuti di margine. Se non ce n'e' mai stata una, si guarda indietro
- * 24 ore. Ancorare all'ultimo successo (e non a "un'ora fa") fa si' che un giro
- * saltato venga recuperato dal successivo, senza buchi.
+ * Il tetto vero e' il tempo, non il numero.
+ *
+ * MAX_INCREMENTALE era una stima del tempo espressa in trattative, e una stima
+ * invecchia: basta che HubSpot rallenti perche' 1200 non stiano piu' in 35
+ * secondi. Il budget misura la cosa giusta e si ferma per primo quando serve.
  */
-async function inizioFinestraIncrementale(): Promise<string> {
+const BUDGET_MS = 40_000;
+
+/** La riga di sync_checkpoint che tiene il punto di ripresa dell'incrementale. */
+const CHIAVE_RIPRESA = "trattative-incrementale";
+
+/**
+ * Da dove ricomincia l'incrementale: la finestra e, dentro quella, l'id.
+ *
+ * SENZA RIPRESA IL GIRO SI BLOCCAVA PER SEMPRE. La finestra parte dall'ultima
+ * esecuzione RIUSCITA; un giro troncato non e' un successo, quindi il giro dopo
+ * ripartiva dallo stesso punto, trovava una finestra ancora piu' ampia e si
+ * troncava di nuovo. Successo il 6 ottobre 2026: quattro giri falliti di fila,
+ * e per un giorno intero le trattative nuove non sono entrate - senza nessun
+ * segnale nelle pagine, solo numeri piu' bassi del vero.
+ *
+ * Il segnalibro rompe il circolo: conversioni e chiamate ce l'hanno gia', le
+ * trattative erano l'unica delle tre senza. Si conserva anche la finestra,
+ * perche' riprendere da un id con una finestra piu' recente salterebbe le righe
+ * modificate prima e con id maggiore.
+ */
+async function inizioFinestraIncrementale(): Promise<{ daIso: string; daId: number }> {
   const db = getDb();
+
+  const { rows: ripresa } = await db.query<{ ultimo_id: string; finestra_da: Date | null }>(
+    `SELECT ultimo_id, finestra_da FROM sync_checkpoint WHERE tipo = $1`,
+    [CHIAVE_RIPRESA]
+  );
+  if (ripresa[0]?.finestra_da) {
+    return {
+      daIso: new Date(ripresa[0].finestra_da).toISOString(),
+      daId: Number(ripresa[0].ultimo_id) || 0
+    };
+  }
+
   const { rows } = await db.query(
     `SELECT iniziato_at FROM sync_log WHERE tipo = 'trattative' AND esito = 'ok'
      ORDER BY iniziato_at DESC LIMIT 1`
   );
   if (rows[0]?.iniziato_at) {
-    return new Date(new Date(rows[0].iniziato_at).getTime() - 30 * 60_000).toISOString();
+    return {
+      daIso: new Date(new Date(rows[0].iniziato_at).getTime() - 30 * 60_000).toISOString(),
+      daId: 0
+    };
   }
-  return new Date(Date.now() - 24 * 3600_000).toISOString();
+  return { daIso: new Date(Date.now() - 24 * 3600_000).toISOString(), daId: 0 };
 }
 
 /**
@@ -773,9 +813,17 @@ export async function sincronizzaTrattative(
   tipo: TipoSyncTrattative = "bootstrap",
   opzioni: OpzioniTrattative = {}
 ): Promise<EsitoTrattative> {
-  const daIso =
-    opzioni.daIso ?? (tipo === "incrementale" ? await inizioFinestraIncrementale() : "2026-01-01");
+  const ripresa =
+    tipo === "incrementale" && !opzioni.daIso
+      ? await inizioFinestraIncrementale()
+      : { daIso: opzioni.daIso ?? "2026-01-01", daId: 0 };
+  const daIso = ripresa.daIso;
   const db = getDb();
+
+  // L'id oltre il quale si e' gia' lavorato, e l'istante di partenza per il
+  // budget di tempo. Entrambi servono solo all'incrementale.
+  let ultimoIdVisto = ripresa.daId;
+  const partito = Date.now();
 
   const {
     rows: [log]
@@ -787,7 +835,7 @@ export async function sincronizzaTrattative(
   const esito: EsitoTrattative = { trattative: 0, svolte: 0, noShow: 0, senzaCampagna: 0, troncato: false };
 
   try {
-    for await (const blocco of cercaTrattative(token, daIso, tipo, opzioni.perModifica)) {
+    for await (const blocco of cercaTrattative(token, daIso, tipo, opzioni.perModifica, ripresa.daId)) {
       // Una chiamata per blocco, non una per trattativa.
       const contatti = await leggiContatti(token, blocco);
 
@@ -952,14 +1000,41 @@ export async function sincronizzaTrattative(
         esito.svolte += righe.filter((x) => x.svolta).length;
         esito.senzaCampagna += righe.filter((x) => !x.campagna).length;
         opzioni.onProgresso?.({ ...esito });
+
+        // IL SEGNALIBRO SI SPOSTA SOLO SU LAVORO FINITO. La ricerca impagina
+        // per id crescente, quindi l'ultimo id di questo gruppo e' il punto
+        // oltre il quale non resta niente da rifare.
+        ultimoIdVisto = Number(gruppoIds[gruppoIds.length - 1]) || ultimoIdVisto;
+
         await sleep(120);
 
-        if (tipo === "incrementale" && esito.trattative >= MAX_INCREMENTALE) {
+        if (
+          tipo === "incrementale" &&
+          (esito.trattative >= MAX_INCREMENTALE || Date.now() - partito > BUDGET_MS)
+        ) {
           esito.troncato = true;
           break;
         }
       }
       if (esito.troncato) break;
+    }
+
+    // IL SEGNALIBRO: si scrive quando il giro si e' fermato a meta', si
+    // cancella quando e' arrivato in fondo. Finche' c'e', il giro successivo
+    // riprende da li' invece di ricominciare la stessa finestra.
+    if (tipo === "incrementale") {
+      if (esito.troncato) {
+        await db.query(
+          `INSERT INTO sync_checkpoint (tipo, ultimo_id, contatti, eventi, aggiornato_at, finestra_da)
+           VALUES ($1, $2, 0, $3, now(), $4::timestamptz)
+           ON CONFLICT (tipo) DO UPDATE SET
+             ultimo_id = EXCLUDED.ultimo_id, eventi = EXCLUDED.eventi,
+             aggiornato_at = EXCLUDED.aggiornato_at, finestra_da = EXCLUDED.finestra_da`,
+          [CHIAVE_RIPRESA, ultimoIdVisto, esito.trattative, daIso]
+        );
+      } else {
+        await db.query(`DELETE FROM sync_checkpoint WHERE tipo = $1`, [CHIAVE_RIPRESA]);
+      }
     }
 
     await db.query(
@@ -968,11 +1043,14 @@ export async function sincronizzaTrattative(
         log.id,
         esito.trattative,
         esito.svolte,
-        // Un giro troncato NON e' un successo: marcarlo 'ok' sposterebbe in
-        // avanti la finestra del giro successivo, lasciando un buco permanente.
-        esito.troncato ? "errore" : "ok",
+        // UN GIRO TRONCATO NON E' UN SUCCESSO - marcarlo 'ok' sposterebbe in
+        // avanti la finestra e lascerebbe un buco permanente - ma non e'
+        // nemmeno un errore: ha fatto il suo pezzo e ha lasciato detto dove
+        // riprendere. Chiamarlo 'errore' per un anno ha significato che
+        // nessuno distingueva un giro che avanza da uno che e' fermo.
+        esito.troncato ? "parziale" : "ok",
         esito.troncato
-          ? `Troncato al tetto di ${MAX_INCREMENTALE}: la finestra da recuperare e' troppo ampia. Rilanciare "npm run bootstrap:trattative".`
+          ? `Fermato a ${esito.trattative} trattative (tetto ${MAX_INCREMENTALE}, budget ${BUDGET_MS / 1000}s): riprende da solo al prossimo giro, dall'id ${ultimoIdVisto}.`
           : null
       ]
     );

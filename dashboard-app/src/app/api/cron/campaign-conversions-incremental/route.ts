@@ -65,7 +65,11 @@ export async function GET(req: NextRequest) {
     if (e.status === "fulfilled") {
       risposta[nome] = e.value;
       if ((e.value as { troncato?: boolean }).troncato) {
-        console.warn(`[cron/${nome}] giro troncato: finestra troppo ampia, serve un bootstrap manuale`);
+        // Non e' piu' una chiamata all'intervento: il giro ha salvato il
+        // segnalibro e riprende da solo. Resta un avviso perche' se compare
+        // per molti giorni di fila vuol dire che l'arretrato cresce piu' in
+        // fretta di quanto i giri riescano a smaltirlo.
+        console.warn(`[cron/${nome}] giro fermato a meta': riprende al prossimo passaggio`);
       }
     } else {
       risposta[nome] = { errore: e.reason instanceof Error ? e.reason.message : String(e.reason) };
