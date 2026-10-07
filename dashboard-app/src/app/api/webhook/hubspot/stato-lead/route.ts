@@ -116,10 +116,26 @@ async function lavora(contattoId: string): Promise<void> {
   }
 }
 
+/**
+ * UN SEGRETO SUO, non quello condiviso con l'altro webhook.
+ *
+ * HUBSPOT_WEBHOOK_SECRET e' di tipo Secret su Vercel: si puo' sostituire ma
+ * non rileggere, e il suo valore non sta in nessun workflow raggiungibile -
+ * cercato il 7 ottobre 2026 fra tutti i flussi del portale. Chi chiama
+ * l'endpoint delle trattative passa da un Apps Script, e il valore vive nel
+ * codice di quello.
+ *
+ * Riusarlo avrebbe quindi voluto dire sostituirlo e aggiornare in contemporanea
+ * anche l'Apps Script, con una finestra di consegne respinte in mezzo. Due
+ * segreti distinti evitano tutto questo e hanno un vantaggio proprio: cambiare
+ * l'uno non puo' rompere l'altro.
+ */
+const NOME_SEGRETO = "HUBSPOT_STATO_LEAD_SECRET";
+
 export async function POST(req: NextRequest) {
-  const segreto = process.env.HUBSPOT_WEBHOOK_SECRET;
+  const segreto = process.env.HUBSPOT_STATO_LEAD_SECRET;
   if (!segreto) {
-    await annota("errore", "HUBSPOT_WEBHOOK_SECRET non impostato");
+    await annota("errore", `${NOME_SEGRETO} non impostato`);
     return NextResponse.json({ error: "non configurato" }, { status: 500 });
   }
 
@@ -179,6 +195,9 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     webhook: "hubspot-stato-lead",
-    segreto: Boolean(process.env.HUBSPOT_WEBHOOK_SECRET)
+    // Il NOME della variabile, oltre al fatto che sia impostata: senza, chi
+    // controlla non sa quale delle due il codice sta leggendo davvero.
+    variabile: NOME_SEGRETO,
+    segreto: Boolean(process.env.HUBSPOT_STATO_LEAD_SECRET)
   });
 }
