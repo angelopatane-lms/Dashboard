@@ -18,6 +18,12 @@ const HUBSPOT = "https://api.hubapi.com";
 const RILEVANTI = new Set<string>(STATI_RILEVANTI);
 const attesa = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Da quando esiste la cronologia caricata: prima di questa data non sappiamo
+ * niente, e un contatto gia' visto nel 2025 risulterebbe nuovo.
+ */
+const ORIGINE = "2026-01-01T00:00:00.000Z";
+
 type Voce = { value: string; timestamp: string };
 
 export type EsitoStatiLead = {
@@ -162,7 +168,105 @@ export async function daDoveRipartire(margineOre = MARGINE_ORE): Promise<Date> {
   );
   return rows[0]
     ? new Date(rows[0].aggiornato_at.getTime() - margineOre * 3600_000)
-    : new Date("2026-01-01T00:00:00.000Z");
+    : new Date(ORIGINE);
+}
+
+/** Una riga di stato_lead_storia prima di essere scritta. */
+type Riga = [number, string, string, number | null, string | null];
+
+/**
+ * Le voci di cronologia di un blocco di contatti, filtrate e datate.
+ *
+ * CINQUANTA PER VOLTA, non cento: con propertiesWithHistory HubSpot rifiuta i
+ * blocchi piu' grandi ("maximum number of inputs supported in a batch request
+ * for property histories is 50"), mentre senza cronologia ne accetta cento.
+ *
+ * STA FUORI DAL CICLO perche' ha due chiamanti: il giro completo e
+ * aggiornaUnContatto(), che serve al webhook. Una copia per ciascuno sarebbe
+ * divergita alla prima modifica a uno dei filtri, e la differenza si sarebbe
+ * vista solo come numeri diversi fra chi aggiorna in diretta e chi recupera.
+ */
+async function righeDaContatti(token: string, ids: string[], da: Date): Promise<Riga[]> {
+  if (!ids.length) return [];
+  const d = await hubspot<{
+    results?: Array<{ id: string; propertiesWithHistory?: Record<string, Voce[]> }>;
+  }>(token, `${HUBSPOT}/crm/v3/objects/contacts/batch/read`, {
+    // La campagna costa zero chiamate in piu': e' una proprieta' nella stessa
+    // richiesta che gia' facevamo per stato e proprietario.
+    propertiesWithHistory: ["hs_lead_status", "hubspot_owner_id", "id_campagna_refresh"],
+    properties: ["hs_object_id"],
+    inputs: ids.map((x) => ({ id: x }))
+  });
+
+  const valori: Riga[] = [];
+  for (const c of d.results ?? []) {
+    const stati = c.propertiesWithHistory?.hs_lead_status ?? [];
+    const storiaProprietari = c.propertiesWithHistory?.hubspot_owner_id ?? [];
+    const storiaCampagne = c.propertiesWithHistory?.id_campagna_refresh ?? [];
+    for (const v of stati) {
+      const stato = (v.value ?? "").trim();
+      // Le voci vuote esistono davvero: un flusso che azzera la proprieta'.
+      if (!stato || !RILEVANTI.has(stato)) continue;
+      const t = Date.parse(v.timestamp);
+      if (!Number.isFinite(t) || t < da.getTime()) continue;
+      valori.push([
+        Number(c.id),
+        new Date(t).toISOString(),
+        stato,
+        proprietarioA(storiaProprietari, t),
+        valoreA(storiaCampagne, t)
+      ]);
+    }
+  }
+  return valori;
+}
+
+/**
+ * Scrive le righe, in aggiornamento e non in solo inserimento: lo stesso
+ * istante puo' arrivare due volte - prima dal webhook, poi dal giro di
+ * recupero - e la seconda volta non deve ne' fallire ne' duplicare.
+ */
+async function scriviRighe(valori: Riga[]): Promise<void> {
+  if (!valori.length) return;
+  await getDb().query(
+    `INSERT INTO stato_lead_storia (contatto_id, ts, stato, proprietario_id, campagna)
+     SELECT * FROM UNNEST($1::bigint[], $2::timestamptz[], $3::text[], $4::bigint[], $5::text[])
+     ON CONFLICT (contatto_id, ts) DO UPDATE
+       SET stato = EXCLUDED.stato, proprietario_id = EXCLUDED.proprietario_id,
+           campagna = EXCLUDED.campagna`,
+    [
+      valori.map((x) => x[0]),
+      valori.map((x) => x[1]),
+      valori.map((x) => x[2]),
+      valori.map((x) => x[3]),
+      valori.map((x) => x[4])
+    ]
+  );
+}
+
+/**
+ * Un contatto solo, riletto per intero. E' quello che chiama il webhook.
+ *
+ * NON SI FIDA DELL'EVENTO, E RILEGGE. Il payload di un workflow dice che una
+ * proprieta' e' cambiata, non se quel cambio vale come appuntamento: la regola
+ * vera - conta il PRIMO appuntamento di ogni coppia advisor-contatto - si
+ * decide sulla cronologia intera, e un endpoint che scrivesse l'istante
+ * ricevuto conterebbe due volte chi viene ripreso un mese dopo. Stesse
+ * funzioni e stesso SQL del giro completo, un solo contatto in ingresso: e' la
+ * scelta che fa gia' il webhook delle trattative, per lo stesso motivo.
+ *
+ * DALL'ORIGINE e non dall'ultimo giro: per un contatto solo la chiamata costa
+ * uguale, e chiude per sempre i buchi di quel contatto invece di rimediare
+ * all'ultima finestra. La scrittura e' in aggiornamento, quindi rileggere
+ * cronologia gia' nota non fa danni.
+ */
+export async function aggiornaUnContatto(
+  token: string,
+  contattoId: string
+): Promise<{ contattoId: string; righe: number }> {
+  const valori = await righeDaContatti(token, [contattoId], new Date(ORIGINE));
+  await scriviRighe(valori);
+  return { contattoId, righe: valori.length };
 }
 
 export async function sincronizzaStatiLead(opzioni: {
@@ -185,54 +289,8 @@ export async function sincronizzaStatiLead(opzioni: {
     // piu' grandi ("maximum number of inputs supported in a batch request for
     // property histories is 50"), mentre senza cronologia ne accetta cento.
     for (let i = 0; i < contatti.length; i += 50) {
-      const blocco = contatti.slice(i, i + 50);
-      const d = await hubspot<{
-        results?: Array<{ id: string; propertiesWithHistory?: Record<string, Voce[]> }>;
-      }>(token, `${HUBSPOT}/crm/v3/objects/contacts/batch/read`, {
-        // La campagna costa zero chiamate in piu': e' una proprieta' nella stessa
-        // richiesta che gia' facevamo per stato e proprietario.
-        propertiesWithHistory: ["hs_lead_status", "hubspot_owner_id", "id_campagna_refresh"],
-        properties: ["hs_object_id"],
-        inputs: blocco.map((x) => ({ id: x }))
-      });
-
-      const valori: Array<[number, string, string, number | null, string | null]> = [];
-      for (const c of d.results ?? []) {
-        const stati = c.propertiesWithHistory?.hs_lead_status ?? [];
-        const storiaProprietari = c.propertiesWithHistory?.hubspot_owner_id ?? [];
-        const storiaCampagne = c.propertiesWithHistory?.id_campagna_refresh ?? [];
-        for (const v of stati) {
-          const stato = (v.value ?? "").trim();
-          // Le voci vuote esistono davvero: un flusso che azzera la proprieta'.
-          if (!stato || !RILEVANTI.has(stato)) continue;
-          const t = Date.parse(v.timestamp);
-          if (!Number.isFinite(t) || t < da.getTime()) continue;
-          valori.push([
-            Number(c.id),
-            new Date(t).toISOString(),
-            stato,
-            proprietarioA(storiaProprietari, t),
-            valoreA(storiaCampagne, t)
-          ]);
-        }
-      }
-
-      if (valori.length && scrivi) {
-        await db.query(
-          `INSERT INTO stato_lead_storia (contatto_id, ts, stato, proprietario_id, campagna)
-           SELECT * FROM UNNEST($1::bigint[], $2::timestamptz[], $3::text[], $4::bigint[], $5::text[])
-           ON CONFLICT (contatto_id, ts) DO UPDATE
-             SET stato = EXCLUDED.stato, proprietario_id = EXCLUDED.proprietario_id,
-                 campagna = EXCLUDED.campagna`,
-          [
-            valori.map((x) => x[0]),
-            valori.map((x) => x[1]),
-            valori.map((x) => x[2]),
-            valori.map((x) => x[3]),
-            valori.map((x) => x[4])
-          ]
-        );
-      }
+      const valori = await righeDaContatti(token, contatti.slice(i, i + 50), da);
+      if (scrivi) await scriviRighe(valori);
       ingressi += valori.length;
       await attesa(220);
     }
