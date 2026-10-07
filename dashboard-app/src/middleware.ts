@@ -56,8 +56,15 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   // Restano fuori solo i file tecnici e le funzioni che hanno già una protezione propria:
-  // cron (CRON_SECRET), webhook (firma di HubSpot/Fireflies/Zoom), trascrizione (indirizzo firmato).
+  // cron (CRON_SECRET), webhook (firma di HubSpot/Fireflies/Zoom), trascrizione (indirizzo firmato),
+  // lms (il segreto condiviso con l'app di assegnazione, controllato dentro la rotta).
+  //
+  // CHI AGGIUNGE QUI DENTRO TOGLIE LA PASSWORD A UN INDIRIZZO. Si fa solo per
+  // chiamate fra macchine che portano un segreto loro, mai per una pagina né
+  // per una rotta che il browser deve poter chiamare: lì il segreto finirebbe
+  // nel codice servito, e chiunque apra gli strumenti per sviluppatori se lo
+  // porterebbe via.
   matcher: [
-    "/((?!_next/static|_next/image|favicon\\.ico|icon\\.svg|accesso|api/login|api/cron/|api/webhook/|api/trascrizione/).*)"
+    "/((?!_next/static|_next/image|favicon\\.ico|icon\\.svg|accesso|api/login|api/cron/|api/webhook/|api/trascrizione/|api/lms/).*)"
   ]
 };
