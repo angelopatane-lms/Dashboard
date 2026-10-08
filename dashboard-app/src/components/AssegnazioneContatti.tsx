@@ -60,6 +60,18 @@ type Stato = {
    *  non deve far perdere quello che si e' scelto. */
   campagne_sospese: string;
   campagne_sospese_attivo: boolean;
+  /**
+   * Quanti lead sono davvero assegnabili, non quanti ce ne sono.
+   *
+   * `pool_a` e `pool_b` contano tutti i contatti senza proprietario; questi
+   * tolgono quelli che nessuna richiesta potrebbe mai ricevere, a partire dai
+   * troppo vecchi. L'8 ottobre 2026 erano 525 su 38.299.
+   *
+   * Assenti quando HubSpot non ha risposto: si mostra il grezzo e basta,
+   * invece di uno zero che si leggerebbe come serbatoio esaurito.
+   */
+  assegnabili_a?: number | null;
+  assegnabili_b?: number | null;
 };
 
 /**
@@ -147,7 +159,16 @@ const GIORNI_ETICHETTA: Record<string, string> = {
  * LO ZERO E' SMORZATO perche' "niente" non deve attirare l'occhio quanto un
  * numero vero: a parita' di nero, `0 assegnati oggi` gridava come `31.753`.
  */
-function Numero({ valore, etichetta }: { valore: string; etichetta: string }) {
+function Numero({
+  valore,
+  etichetta,
+  nota
+}: {
+  valore: string;
+  etichetta: string;
+  /** Una riga piccola sotto il numero: serve a dire da cosa e' ricavato. */
+  nota?: string;
+}) {
   const vuoto = valore === "0" || valore === "–";
   return (
     // ETICHETTA SOPRA, NUMERO SOTTO: e' la forma dei riquadri di Stato
@@ -166,6 +187,9 @@ function Numero({ valore, etichetta }: { valore: string; etichetta: string }) {
       >
         {valore}
       </div>
+      {nota ? (
+        <div className="text-[10px] leading-tight text-slate-400">{nota}</div>
+      ) : null}
     </div>
   );
 }
@@ -446,8 +470,42 @@ export default function AssegnazioneContatti() {
           contenuto che ammassato non e'. */}
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
         <div className="grid grid-cols-2 divide-x divide-y divide-slate-100 border-b border-slate-100 sm:grid-cols-5 sm:divide-y-0">
-          <Numero valore={stato?.pool_a != null ? formatInt(stato.pool_a) : "–"} etichetta="Pool serie A" />
-          <Numero valore={stato?.pool_b != null ? formatInt(stato.pool_b) : "–"} etichetta="Pool serie B" />
+          {/* L'ASSEGNABILE DAVANTI, IL GREZZO SOTTO. Il numero grande e' quello
+              su cui si decide: il serbatoio grezzo diceva decine di migliaia
+              mentre le richieste tornavano con quattro lead. Quando il
+              conteggio non arriva si mostra il grezzo come prima, perche' un
+              trattino al posto di un numero che c'e' sarebbe un passo
+              indietro. */}
+          <Numero
+            valore={
+              stato?.assegnabili_a != null
+                ? formatInt(stato.assegnabili_a)
+                : stato?.pool_a != null
+                  ? formatInt(stato.pool_a)
+                  : "–"
+            }
+            etichetta="Pool serie A"
+            nota={
+              stato?.assegnabili_a != null && stato?.pool_a != null
+                ? `assegnabili, su ${formatInt(stato.pool_a)}`
+                : undefined
+            }
+          />
+          <Numero
+            valore={
+              stato?.assegnabili_b != null
+                ? formatInt(stato.assegnabili_b)
+                : stato?.pool_b != null
+                  ? formatInt(stato.pool_b)
+                  : "–"
+            }
+            etichetta="Pool serie B"
+            nota={
+              stato?.assegnabili_b != null && stato?.pool_b != null
+                ? `assegnabili, su ${formatInt(stato.pool_b)}`
+                : undefined
+            }
+          />
           <Numero valore={stato ? `${stato.riserva}/${stato.riserva_max}` : "–"} etichetta="Riserva A oggi" />
           <Numero valore={stato ? formatInt(stato.assegnati_oggi) : "–"} etichetta="Assegnati oggi" />
           <Numero valore={stato ? formatInt(stato.persone_oggi) : "–"} etichetta="Persone oggi" />

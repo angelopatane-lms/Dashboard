@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { assegnabili } from "@/lib/assegnazioni/pool";
 
 /**
  * Lo sportello verso l'app Employee Manager, che assegna i contatti.
@@ -75,7 +76,34 @@ async function chiama(metodo: "GET" | "POST", corpo?: unknown) {
 }
 
 export async function GET() {
-  return chiama("GET");
+  const risposta = await chiama("GET");
+
+  // GLI ASSEGNABILI ACCANTO AL GREZZO. Il serbatoio che dichiara l'app conta
+  // tutti i contatti senza proprietario; quelli che si possono davvero dare
+  // sono molti meno - l'8 ottobre 2026, 525 su 38.299 - perche' l'eta' massima
+  // ne taglia il 98%. Mostrare solo il grezzo faceva sembrare pieno un
+  // serbatoio che si stava svuotando.
+  //
+  // NON COSTA DUE CHIAMATE AL MINUTO: il conteggio si riusa per cinque minuti,
+  // e la riga che lo conserva e' anche la fotografia dell'andamento.
+  const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
+  if (!token || risposta.status !== 200) return risposta;
+
+  try {
+    const dati = (await risposta.clone().json()) as Record<string, unknown>;
+    const quanti = await assegnabili(token, dati);
+    // null quando HubSpot non ha risposto: si lascia fuori il campo invece di
+    // scrivere zero, che si leggerebbe come "non c'e' piu' niente".
+    if (!quanti) return risposta;
+    return NextResponse.json(
+      { ...dati, assegnabili_a: quanti.serieA, assegnabili_b: quanti.serieB },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+  } catch (e) {
+    // Non fa cadere la sezione: senza questi due numeri funziona come prima.
+    console.error("[assegnazione-lead] assegnabili:", e);
+    return risposta;
+  }
 }
 
 export async function POST(req: NextRequest) {

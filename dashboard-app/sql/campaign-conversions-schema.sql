@@ -682,3 +682,57 @@ CREATE TABLE IF NOT EXISTS assegnazione_richiesta (
 
 CREATE INDEX IF NOT EXISTS assegnazione_richiesta_giorno
   ON assegnazione_richiesta (giorno, chiesto_at);
+
+-- ============================================================================
+-- I NUMERI DEL SERBATOIO NEL TEMPO.
+--
+-- COSA CONSERVA. I due pool, la riserva, e i totali della giornata, come li
+-- dichiara l'app di assegnazione. Oggi si vedono in pagina e basta: il pool
+-- cambia di continuo e non ne resta niente, e `assegnati_oggi` e `persone_oggi`
+-- si azzerano a mezzanotte. Senza una traccia non si puo' rispondere a domande
+-- semplici - il serbatoio si sta svuotando? da quando? - se non guardando la
+-- pagina al momento giusto.
+--
+-- COME SI RIEMPIE. Senza chiamate in piu': la sezione interroga gia' l'app ogni
+-- minuto mentre qualcuno la guarda, e si conserva un campione ogni dieci. Di
+-- notte non si registra niente, ed e' giusto cosi': di notte non si assegna.
+--
+-- NON E' UNA FOTOGRAFIA GIORNALIERA come marketing_snapshot, che serve a
+-- misurare una differenza fra due giorni. Qui interessa l'andamento dentro la
+-- giornata: un pool che si svuota alle 11 racconta una cosa diversa da uno che
+-- si svuota alle 18.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS assegnazione_pool (
+  preso_at        TIMESTAMPTZ PRIMARY KEY DEFAULT now(),
+  -- NULL e non zero quando l'app non e' riuscita a contarli: un serbatoio
+  -- vuoto e un serbatoio non misurato si leggono diversissimi.
+  pool_a          INT,
+  pool_b          INT,
+  riserva         INT,
+  riserva_max     INT,
+  assegnati_oggi  INT,
+  persone_oggi    INT,
+  sistema_acceso  BOOLEAN,
+  modalita_live   BOOLEAN
+);
+
+CREATE INDEX IF NOT EXISTS assegnazione_pool_quando
+  ON assegnazione_pool (preso_at DESC);
+
+-- GLI ASSEGNABILI VERI, accanto al serbatoio grezzo.
+--
+-- `pool_a` e `pool_b` sono quello che dichiara l'app: tutti i contatti del
+-- serbatoio, senza filtri. Misurato l'8 ottobre 2026, fra i due facevano 38.299
+-- mentre i contatti davvero assegnabili erano 525 - quasi due ordini di
+-- grandezza di differenza, e il motivo per cui una richiesta da 20 lead ne
+-- riceveva 4 mentre la pagina diceva migliaia.
+--
+-- Il taglio lo fa quasi tutto l'eta' massima (20 giorni): da 38.299 a 534. Gli
+-- altri filtri, sul serbatoio vero, valgono una manciata di contatti.
+--
+-- RESTANO FUORI i filtri Sergente, l'esclusione campagne scelta dall'interfaccia
+-- e la riserva serie A: vivono nel codice dell'app e da qui non si applicano.
+-- Per questo si chiamano "assegnabili" e non "disponibili": e' un massimo, non
+-- una promessa.
+ALTER TABLE assegnazione_pool ADD COLUMN IF NOT EXISTS assegnabili_a INT;
+ALTER TABLE assegnazione_pool ADD COLUMN IF NOT EXISTS assegnabili_b INT;
