@@ -630,3 +630,55 @@ CREATE TABLE IF NOT EXISTS assegnazione_giorno_calcolo (
 -- Con questa colonna la ripresa e' esatta: stessa finestra, dall'id dove si era
 -- arrivati. La riga viene cancellata quando un giro arriva in fondo.
 ALTER TABLE sync_checkpoint ADD COLUMN IF NOT EXISTS finestra_da TIMESTAMPTZ;
+
+-- ============================================================================
+-- OGNI RICHIESTA DI LEAD, COM'E' ANDATA E PERCHE'.
+--
+-- COSA RIEMPIE. La tabella `assegnazione_giorno` dice chi ha RICEVUTO lead, ed
+-- e' ricostruita da HubSpot. Di chi ha chiesto e si e' sentito dire di no non
+-- restava traccia da nessuna parte: il 6 ottobre 2026, su sedici richieste,
+-- nove non sono state servite, e per sapere il perche' e' servito interrogare
+-- a mano il database dell'app. Un rifiuto non scrive niente su HubSpot - non
+-- c'e' nessun contatto che cambia - quindi quella meta' di giornata era
+-- invisibile per costruzione.
+--
+-- DA DOVE ARRIVA. Dall'app di assegnazione, che la manda appena ha deciso, nello
+-- stesso punto in cui gia' scrive su Slack. Non la chiediamo noi: una richiesta
+-- rifiutata non lascia righe nella sua tabella, quindi non ci sarebbe modo di
+-- andarsela a prendere dopo.
+--
+-- PERCHE' SI CONSERVANO PENDENTI E APPUNTAMENTI del momento: sono il PERCHE'
+-- della decisione, e domani non si possono piu' ricostruire perche' entrambi
+-- cambiano di continuo. Senza, resterebbe scritto "rifiutato" senza il numero
+-- che lo giustificava.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS assegnazione_richiesta (
+  -- L'IDENTIFICATIVO LO DA' L'APP, ed e' la chiave: se riprova a consegnare la
+  -- stessa richiesta si riscrive la stessa riga invece di aggiungerne una.
+  -- Senza, un tentativo ripetuto conterebbe due volte.
+  id            TEXT        PRIMARY KEY,
+  giorno        DATE        NOT NULL,
+  chiesto_at    TIMESTAMPTZ NOT NULL,
+  slack_user    TEXT,
+  employee_id   BIGINT,
+  nome          TEXT,
+  ruolo         TEXT,
+  -- 'assegnato' oppure 'rifiutato'. Non si usa un booleano: un terzo esito
+  -- arrivera' - una consegna parziale, un errore - e un booleano costringe a
+  -- riscrivere tutto quando arriva.
+  esito         TEXT        NOT NULL,
+  motivo        TEXT,
+  lead          INT         NOT NULL DEFAULT 0,
+  serie         TEXT,
+  richiesta_n   INT,
+  pendenti      INT,
+  appuntamenti  INT,
+  -- Gli id dei contatti consegnati: servono a seguirli su HubSpot e vedere
+  -- quanti vengono restituiti. L'8 ottobre 2026 una persona si e' tolta di
+  -- mano 41 degli 80 lead ricevuti, venti minuti dopo averli ricevuti.
+  contatti      BIGINT[],
+  ricevuto_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS assegnazione_richiesta_giorno
+  ON assegnazione_richiesta (giorno, chiesto_at);

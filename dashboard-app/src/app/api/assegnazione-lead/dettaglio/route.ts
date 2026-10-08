@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { leggiGiorno } from "@/lib/assegnazioni/giorno";
+import { leggiRichieste } from "@/lib/assegnazioni/richieste";
 
 /**
  * Chi ha ricevuto lead oggi, e quanti.
@@ -75,7 +76,23 @@ export async function GET(req: NextRequest) {
     // e' quello giusto perche' fu preso in quel momento.
     const atteso = giorno ? undefined : await attesoDallApp();
     const esito = await leggiGiorno(token, { giorno, atteso, forza });
-    return NextResponse.json(esito, { headers: { "Cache-Control": "no-store" } });
+
+    // LE RICHIESTE NON PASSANO DALLA FOTOGRAFIA: arrivano dalla nostra banca
+    // dati, costano una query e non una trentina di chiamate a HubSpot. Si
+    // leggono fresche anche quando il dettaglio viene dall'archivio, perche'
+    // un rifiuto arrivato un minuto fa deve comparire subito.
+    const richieste = await leggiRichieste(chiesto ?? undefined).catch((e) => {
+      // Non fa cadere il resto: il dettaglio da HubSpot resta valido anche se
+      // questa meta' non si legge, e la pagina lo dice invece di fingere che
+      // non ci siano state richieste.
+      console.error("[assegnazione-lead/dettaglio] richieste:", e);
+      return null;
+    });
+
+    return NextResponse.json(
+      { ...esito, richieste },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (e) {
     console.error("[assegnazione-lead/dettaglio]", e);
     return NextResponse.json(

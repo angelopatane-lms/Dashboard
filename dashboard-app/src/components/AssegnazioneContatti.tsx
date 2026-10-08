@@ -84,6 +84,26 @@ type Dettaglio = {
   atteso: number | null;
   aggiornatoAt: string;
   dallArchivio: boolean;
+  /**
+   * Le richieste della giornata, servite e no, come le racconta l'app.
+   *
+   * Non si ricavano da HubSpot: un rifiuto non tocca nessun contatto, quindi
+   * li' non esiste. null quando la lettura e' fallita - diverso da un elenco
+   * vuoto, che vuol dire "nessuno ha chiesto".
+   */
+  richieste?: Array<{
+    id: string;
+    chiestoAt: string;
+    nome: string | null;
+    ruolo: string | null;
+    esito: string;
+    motivo: string | null;
+    lead: number;
+    serie: string | null;
+    richiestaN: number | null;
+    pendenti: number | null;
+    appuntamenti: number | null;
+  }> | null;
   error?: string;
 };
 
@@ -753,6 +773,55 @@ export default function AssegnazioneContatti() {
                 </ul>
               )}
             </div>
+
+            {/* CHI HA CHIESTO E NON HA RICEVUTO.
+                Sta qui accanto e non in una pagina sua: le due meta' sono la
+                stessa giornata. Il 6 ottobre 2026, su sedici richieste, nove
+                non sono state servite - e per saperne il motivo e' servito
+                aprire il database dell'app a mano.
+                Un rifiuto non tocca nessun contatto, quindi su HubSpot non
+                esiste: questi arrivano dall'app, che li dichiara. */}
+            {dettaglio && !dettaglio.error && dettaglio.richieste !== undefined ? (
+              <div className="border-t border-slate-100 px-4 py-3">
+                {dettaglio.richieste === null ? (
+                  <div className="text-sm text-slate-400">
+                    Le richieste non si sono potute leggere.
+                  </div>
+                ) : dettaglio.richieste.length === 0 ? (
+                  <div className="text-[11px] uppercase tracking-wide text-slate-300">
+                    Nessuna richiesta registrata per questa giornata
+                  </div>
+                ) : (
+                  <>
+                    <div className="mb-2 text-[11px] uppercase tracking-wide text-slate-500">
+                      {dettaglio.richieste.length} richieste ·{" "}
+                      {dettaglio.richieste.filter((r) => r.esito === "assegnato").length} servite ·{" "}
+                      {dettaglio.richieste.filter((r) => r.esito !== "assegnato").length} no
+                    </div>
+                    {/* SOLO I "NO" IN ELENCO. Le richieste servite sono gia'
+                        raccontate dalla colonna qui sopra, con i numeri; qui
+                        servirebbero solo a far scorrere di piu'. */}
+                    <ul className="max-h-48 divide-y divide-slate-100 overflow-y-auto pr-3">
+                      {dettaglio.richieste
+                        .filter((r) => r.esito !== "assegnato")
+                        .map((r) => (
+                          <li key={r.id} className="flex items-center gap-3 py-1.5">
+                            <span className="w-10 shrink-0 text-xs tabular-nums text-slate-400">
+                              {ora(r.chiestoAt)}
+                            </span>
+                            <span className="w-40 shrink-0 truncate text-sm text-slate-900">
+                              {r.nome ?? "—"}
+                            </span>
+                            <span className="truncate text-xs text-slate-500" title={r.motivo ?? ""}>
+                              {r.motivo ?? "senza motivo registrato"}
+                            </span>
+                          </li>
+                        ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            ) : null}
             </>
           ) : null}
         </div>
