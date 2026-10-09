@@ -30,7 +30,7 @@ const HUBSPOT = "https://api.hubapi.com";
 type Appartenenza = {
   userId: string;
   teamId: string;
-  genere: "principale" | "secondario";
+  genere: "principale" | "secondario" | "nessuno";
   nome: string | null;
   email: string | null;
   teamNome: string | null;
@@ -192,8 +192,20 @@ export async function osservaTeam(token: string, scrivi = true, annota = true): 
   const chi = await anagrafica(token);
   if (!chi) return { ...vuoto, fermo: "l'elenco degli utenti non si e' potuto leggere" };
 
+  /**
+   * SENZA L'ELENCO DEGLI ATTIVI NON SI FA NIENTE.
+   *
+   * Prima qui c'era un avviso e si proseguiva. Il 9 ottobre 2026 quella lettura
+   * e' fallita una volta: senza filtro sono rientrati gli account disattivati,
+   * la fotografia e' stata riscritta con dentro i doppioni, e il confronto ha
+   * annotato otto ingressi alle 10:36 e le stesse otto uscite alle 10:38 -
+   * movimenti mai avvenuti, in una tabella che e' l'unica copia di quei dati.
+   *
+   * Una fotografia parziale e' peggio di nessuna fotografia: non si vede che e'
+   * parziale, e i non-eventi che genera restano scritti.
+   */
   const vivi = await attivi(token);
-  if (!vivi) console.warn("[team] proprietari non letti: non si escludono gli account disattivati");
+  if (!vivi) return { ...vuoto, fermo: "l'elenco degli utenti attivi non si e' potuto leggere" };
 
   const adesso = new Map<string, Appartenenza>();
   for (const s of squadre) {
@@ -201,7 +213,7 @@ export async function osservaTeam(token: string, scrivi = true, annota = true): 
     const metti = (userId: string, genere: "principale" | "secondario") => {
       // Gli account disattivati restano nei team per sempre: si saltano, o la
       // stessa persona comparirebbe due volte con team diversi.
-      if (vivi && !vivi.has(String(userId))) return;
+      if (!vivi.has(String(userId))) return;
       const u = chi.get(String(userId));
       adesso.set(`${userId}|${teamId}|${genere}`, {
         userId: String(userId),
@@ -218,6 +230,34 @@ export async function osservaTeam(token: string, scrivi = true, annota = true): 
 
   if (!adesso.size) return { ...vuoto, fermo: "nessuna appartenenza nei team letti" };
 
+  /**
+   * ANCHE CHI NON STA IN NESSUN TEAM LASCIA UNA RIGA.
+   *
+   * Senza, "HubSpot dice che non ha team" e "HubSpot non lo conosce" si
+   * leggerebbero uguali - in entrambi i casi la fotografia non ha righe - e chi
+   * legge tornerebbe a fidarsi del foglio. Togliendo una persona da ogni team
+   * dalla finestra, la Dashboard avrebbe continuato a mostrarla dov'era: un
+   * comando che sembra non fare niente.
+   *
+   * Non sono appartenenze e non entrano nel confronto: servono solo a dire
+   * "questa persona l'abbiamo vista, e non e' in nessun team".
+   */
+  const SENZA_TEAM = "-";
+  {
+    for (const u of vivi) {
+      if ([...adesso.values()].some((v) => v.userId === u)) continue;
+      const c = chi.get(u);
+      adesso.set(`${u}|${SENZA_TEAM}|nessuno`, {
+        userId: u,
+        teamId: SENZA_TEAM,
+        genere: "nessuno",
+        nome: c?.nome ?? null,
+        email: c?.email ?? null,
+        teamNome: null
+      });
+    }
+  }
+
   const db = getDb();
   const { rows: prima } = await db.query<{
     user_id: string;
@@ -230,13 +270,17 @@ export async function osservaTeam(token: string, scrivi = true, annota = true): 
   const primaChiavi = new Map(prima.map((r) => [`${r.user_id}|${r.team_id}|${r.genere}`, r]));
   const primaVolta = prima.length === 0;
 
-  const ingressi = [...adesso.entries()].filter(([k]) => !primaChiavi.has(k)).map(([, v]) => v);
+  // Le righe "nessuno" non sono appartenenze: entrare o uscire da "nessun team"
+  // non e' un movimento, e annotarlo riempirebbe lo storico di non-eventi.
+  const ingressi = [...adesso.entries()]
+    .filter(([k, v]) => !primaChiavi.has(k) && v.genere !== "nessuno")
+    .map(([, v]) => v);
   const uscite = [...primaChiavi.entries()]
-    .filter(([k]) => !adesso.has(k))
+    .filter(([k, r]) => !adesso.has(k) && r.genere !== "nessuno")
     .map(([, r]) => ({
       userId: r.user_id,
       teamId: r.team_id,
-      genere: r.genere as "principale" | "secondario",
+      genere: r.genere as "principale" | "secondario" | "nessuno",
       nome: r.nome,
       email: null,
       teamNome: r.team_nome

@@ -20,6 +20,15 @@ export type Appartenenze = {
   principale: Map<string, string>;
   /** nome normalizzato -> nome del sotto-team, uno solo per persona. */
   sotto: Record<string, string>;
+  /**
+   * Chi HubSpot conosce, anche se non sta in nessun team.
+   *
+   * SERVE A DISTINGUERE DUE SILENZI. Senza, "HubSpot dice che non ha team" e
+   * "HubSpot non lo conosce" si leggono uguali - in entrambi i casi non c'e'
+   * una riga - e chi legge tornerebbe a fidarsi del foglio. Togliendo una
+   * persona da ogni team, la Dashboard avrebbe continuato a mostrarla dov'era.
+   */
+  noti: Set<string>;
 };
 
 /**
@@ -27,7 +36,7 @@ export type Appartenenze = {
  * caso torna a fare come prima, invece di presentare pagine senza nessuno.
  */
 export async function appartenenze(): Promise<Appartenenze> {
-  const vuote: Appartenenze = { principale: new Map(), sotto: {} };
+  const vuote: Appartenenze = { principale: new Map(), sotto: {}, noti: new Set() };
   try {
     const { rows } = await getDb().query<{
       nome: string | null;
@@ -37,13 +46,16 @@ export async function appartenenze(): Promise<Appartenenze> {
 
     const principale = new Map<string, string>();
     const sotto: Record<string, string> = {};
+    const noti = new Set<string>();
     for (const r of rows) {
-      if (!r.nome || !r.team_nome) continue;
+      if (!r.nome) continue;
       const k = chiaveNome(r.nome);
+      noti.add(k);
+      if (!r.team_nome) continue;
       if (r.genere === "principale") principale.set(k, r.team_nome);
-      else sotto[k] = r.team_nome;
+      else if (r.genere === "secondario") sotto[k] = r.team_nome;
     }
-    return { principale, sotto };
+    return { principale, sotto, noti };
   } catch (e) {
     console.error("[appartenenze]", e instanceof Error ? e.message : e);
     return vuote;

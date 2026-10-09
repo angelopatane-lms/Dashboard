@@ -39,6 +39,7 @@ type Evento = {
   azione: string;
   genere: string | null;
   team: string | null;
+  teamId: string;
   /** 'modifica' | 'osservato' | 'ricostruito'. */
   fonte: string | null;
   /** "18/20" sulle ricostruite: su quanti contatti si e' visto quel cambio. */
@@ -171,15 +172,22 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
     }));
   }, [dati, principaleScelto, nomiTeam]);
 
+  // SENZA diventa stringa vuota: "nessun sotto-team" e' una scelta, non
+  // l'assenza di una scelta.
   const sottoScelto =
-    scelta.sotto ??
-    (sottoAmmessi.some((x) => x.id === persona?.sottoTeam[0]?.id) ? persona?.sottoTeam[0]?.id ?? "" : "");
+    scelta.sotto !== undefined
+      ? scelta.sotto === SENZA
+        ? ""
+        : scelta.sotto
+      : sottoAmmessi.some((x) => x.id === persona?.sottoTeam[0]?.id)
+        ? persona?.sottoTeam[0]?.id ?? ""
+        : "";
 
   const cambiaPrincipale = principaleScelto !== (persona?.principale?.id ?? "");
   // Il sotto-team cade da se' quando non appartiene al principale scelto: va
   // detto, o sembrerebbe sparito per sbaglio.
   const sottoCade =
-    cambiaPrincipale && Boolean(persona?.sottoTeam[0]) && !sottoScelto;
+    cambiaPrincipale && Boolean(persona?.sottoTeam[0]) && !sottoScelto && scelta.sotto === undefined;
   const cambiaSotto = sottoScelto !== (persona?.sottoTeam[0]?.id ?? "") && !sottoCade;
   const inSospeso = cambiaPrincipale || cambiaSotto;
 
@@ -208,10 +216,24 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
       ? persona.sottoTeam[0]
       : null;
 
+  /**
+   * I suoi spostamenti, senza quelli verso team che non esistono piu'.
+   *
+   * PERCHE' SI TOLGONO. Il 1 giugno 2026 sette persone sono uscite dal team
+   * 141675847, che e' stato poi cancellato: quella riga si legge "uscita da
+   * team 141675847" e non dice niente a nessuno. L'altra meta' dello stesso
+   * spostamento - "entrata in Advisor" - resta, ed e' quella che serve.
+   *
+   * SI CONFRONTA L'ID E NON IL NOME: di un team cancellato il nome non c'e'
+   * piu', e quello che conserviamo e' solo il numero. Cosi' quando se ne
+   * archivia un altro, le sue righe spariscono da se'.
+   */
   const storiaSua = useMemo(() => {
     if (!dati || !persona) return [];
-    return dati.storia.filter((e) => e.nome && chiaveNome(e.nome) === persona.chiave);
-  }, [dati, persona]);
+    return dati.storia.filter(
+      (e) => e.nome && chiaveNome(e.nome) === persona.chiave && nomiTeam.has(e.teamId)
+    );
+  }, [dati, persona, nomiTeam]);
 
   /**
    * Applica quello che e' stato scelto, in una chiamata sola.
@@ -325,11 +347,11 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
                 disabled={inCorso}
                 className={`${menu} mb-4`}
               >
-                {persona.principale ? null : (
-                  <option value="" disabled>
-                    —
-                  </option>
-                )}
+                {/* SI PUO' TOGLIERE DA OGNI TEAM. Prima era un trattino non
+                    selezionabile, perche' il menu agiva da solo e tornare
+                    indietro per sbaglio era un clic: ora che si conferma, la
+                    scelta e' deliberata e si puo' offrire. */}
+                <option value="">nessun team</option>
                 {fuoriElenco ? (
                   <option value={fuoriElenco.id} disabled>
                     {fuoriElenco.nome}
@@ -345,21 +367,13 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
               <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                 Cambia sotto-team
               </label>
-              {/* NIENTE "NESSUNO" FRA LE SCELTE: da qui si sposta, non si
-                  svuota. Chi un sotto-team non ce l'ha vede un trattino che non
-                  si puo' selezionare - lo stato vero si legge, ma indietro non
-                  ci si torna per sbaglio. */}
               <select
                 value={sottoScelto || SENZA}
                 onChange={(e) => setScelta({ ...scelta, sotto: e.target.value })}
-                disabled={inCorso || !sottoAmmessi.length}
+                disabled={inCorso}
                 className={menu}
               >
-                {persona.sottoTeam.length ? null : (
-                  <option value={SENZA} disabled>
-                    —
-                  </option>
-                )}
+                <option value={SENZA}>nessun sotto-team</option>
                 {sottoFuoriElenco ? (
                   <option value={sottoFuoriElenco.id} disabled>
                     {sottoFuoriElenco.nome}
@@ -444,7 +458,7 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
               <div className="mt-5 border-t border-slate-100 pt-3">
                 <div className="mb-1 flex items-baseline justify-between gap-2">
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    Movimenti
+                    Spostamenti
                   </span>
                   <button
                     type="button"

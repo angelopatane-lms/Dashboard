@@ -307,8 +307,29 @@ function movimentiDi(
   );
   console.log(`righe ricostruite precedenti rimosse: ${tolte}`);
 
+  /**
+   * QUELLO CHE GIA' SAPPIAMO NON SI RIDEDUCE.
+   *
+   * Uno spostamento fatto dalla finestra, o visto dall'osservatore, e' gia'
+   * scritto con il suo momento esatto. Il recupero lo ritrova anche sui
+   * contatti, e inserirlo di nuovo darebbe due righe per lo stesso movimento -
+   * nella finestra si leggono come se la persona si fosse spostata due volte.
+   * Il recupero riempie i buchi; dove c'e' gia' qualcosa di piu' preciso, tace.
+   */
+  const { rows: gia } = await db.query<{ chiave: string }>(
+    `SELECT nome || '|' || team_id || '|' || azione || '|' || quando::date AS chiave
+       FROM utente_team_storia WHERE fonte <> 'ricostruito'`
+  );
+  const noti = new Set(gia.map((r) => r.chiave));
+
   let scritte = 0;
+  let saltate = 0;
   for (const x of tutti) {
+    const chiave = `${x.nome}|${x.teamId}|${x.azione}|${x.quando.toISOString().slice(0, 10)}`;
+    if (noti.has(chiave)) {
+      saltate++;
+      continue;
+    }
     await db.query(
       `INSERT INTO utente_team_storia
          (quando, user_id, nome, email, azione, genere, team_id, team_nome, prima, dopo, fonte, prove)
@@ -331,7 +352,7 @@ function movimentiDi(
     );
     scritte++;
   }
-  console.log(`righe scritte: ${scritte}`);
+  console.log(`righe scritte: ${scritte}${saltate ? ` (${saltate} gia' note da una fonte piu' precisa)` : ""}`);
 })()
   .then(() => process.exit(0))
   .catch((e) => {

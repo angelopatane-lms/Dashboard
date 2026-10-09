@@ -74,10 +74,14 @@ export async function operatoriDelTeam(team: string): Promise<OperatoriTeam | nu
     // "Advisor", e prenderlo per somiglianza cambia le righe della tabella.
     const suo = (r: Record<string, unknown>) => {
       const nome = chiaveNome((r["User"] ?? "").toString());
-      const daHubSpot = app.principale.get(nome);
+      // SE HUBSPOT LA CONOSCE, VALE QUELLO CHE DICE - anche quando dice che non
+      // sta in nessun team: chi viene tolto da ogni squadra deve sparire da
+      // tutte e due le pagine, o quel comando non si vedrebbe da nessuna parte.
       // Chi HubSpot non conosce resta giudicato dal foglio, com'era prima.
-      const quale = daHubSpot ?? (r["Team Principale"] ?? "").toString();
-      return chiaveNome(quale) === atteso;
+      const quale = app.noti.has(nome)
+        ? app.principale.get(nome) ?? ""
+        : (r["Team Principale"] ?? "").toString();
+      return Boolean(quale) && chiaveNome(quale) === atteso;
     };
 
     const soloLoro = righe.filter(suo);

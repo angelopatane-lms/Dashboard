@@ -337,11 +337,12 @@ export async function storiaTeam(userId?: string, limite = 50) {
     nome: string | null;
     azione: string;
     genere: string | null;
+    team_id: string;
     team_nome: string | null;
     fonte: string | null;
     prove: string | null;
   }>(
-    `SELECT quando, nome, azione, genere, team_nome, fonte, prove FROM utente_team_storia
+    `SELECT quando, nome, azione, genere, team_id, team_nome, fonte, prove FROM utente_team_storia
       WHERE ($1::text IS NULL OR user_id = $1)
       ORDER BY quando DESC LIMIT $2`,
     [userId ?? null, limite]
@@ -352,6 +353,9 @@ export async function storiaTeam(userId?: string, limite = 50) {
     azione: r.azione,
     genere: r.genere,
     team: r.team_nome,
+    // L'id serve a chi legge per sapere se quel team esiste ancora: il nome di
+    // un team cancellato e' solo un numero, e confrontarlo non direbbe niente.
+    teamId: r.team_id,
     // Una riga dedotta dai contatti non e' una riga osservata: chi guarda deve
     // poterlo distinguere, o la ricostruzione si spaccia per cronaca.
     fonte: r.fonte,
