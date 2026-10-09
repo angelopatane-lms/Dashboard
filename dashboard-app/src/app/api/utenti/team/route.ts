@@ -168,10 +168,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const esito = await impostaTeam(token, userId, voluto);
-    // Si riguarda subito, cosi' la fotografia e lo storico restano allineati
-    // con quello che e' appena cambiato invece di aspettare mezz'ora.
+    // Si rimette in pari la fotografia subito, SENZA annotare: gli eventi li ha
+    // gia' scritti impostaTeam, con il genere e gli elenchi prima/dopo. Facendo
+    // annotare anche qui, ogni modifica finirebbe nello storico due volte.
     try {
-      await osservaTeam(token, true);
+      await osservaTeam(token, true, false);
     } catch (e) {
       console.error("[api/utenti/team] osservazione dopo la modifica non riuscita:", e);
     }
