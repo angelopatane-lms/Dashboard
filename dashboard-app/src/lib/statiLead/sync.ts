@@ -1,5 +1,6 @@
 import { getDb } from "@/lib/db";
-import { ADVISOR_TELEFONICI, STATI_RILEVANTI } from "@/lib/statiLead";
+import { STATI_RILEVANTI } from "@/lib/statiLead";
+import { squadraTelefonici } from "@/lib/statiLead/squadra";
 
 /**
  * Porta in banca dati la cronologia degli Stati Lead dei quattro advisor che
@@ -50,31 +51,20 @@ async function hubspot<T>(token: string, url: string, body?: unknown): Promise<T
   throw new Error(`HubSpot continua a rispondere 429 su ${url}`);
 }
 
-/** Gli id dei quattro, dai nomi. Si ferma se qualcuno non si trova. */
+/**
+ * Chi sono gli advisor telefonici, e con quale id.
+ *
+ * LA FONTE E' IL TEAM SU HUBSPOT, non piu' un elenco di nomi scritto qui: la
+ * stessa informazione viveva in tre posti e il giorno in cui ne entra uno nuovo
+ * senza aggiornarli tutti, le sue colonne mostrano zero. Dettagli e rete di
+ * sicurezza in squadra.ts.
+ */
 async function proprietariTelefonici(token: string): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
-  let after: string | undefined;
-  do {
-    const u = `${HUBSPOT}/crm/v3/owners?limit=100&archived=false${after ? `&after=${after}` : ""}`;
-    const d = await hubspot<{
-      results?: Array<{ id: string; firstName?: string; lastName?: string }>;
-      paging?: { next?: { after?: string } };
-    }>(token, u);
-    for (const o of d.results ?? []) {
-      const nome = `${o.firstName ?? ""} ${o.lastName ?? ""}`.trim();
-      if ((ADVISOR_TELEFONICI as readonly string[]).includes(nome)) out.set(nome, Number(o.id));
-    }
-    after = d.paging?.next?.after;
-  } while (after);
-
-  const mancanti = ADVISOR_TELEFONICI.filter((n) => !out.has(n));
-  if (mancanti.length) {
-    throw new Error(
-      `questi advisor non si trovano fra i proprietari attivi di HubSpot: ${mancanti.join(", ")}. ` +
-        `Se hanno lasciato o sono stati rinominati, va aggiornato ADVISOR_TELEFONICI in src/lib/statiLead.ts.`
-    );
+  const s = await squadraTelefonici(token);
+  if (s.fonte === "riserva") {
+    console.warn("[stati-lead] squadra dalla lista di riserva: il team non si e' potuto leggere");
   }
-  return out;
+  return s.perNome;
 }
 
 /** Gli id dei contatti di quel proprietario toccati dalla data in poi. */

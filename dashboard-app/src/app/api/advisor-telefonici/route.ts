@@ -165,6 +165,14 @@ export async function GET(req: NextRequest) {
 
     // Chi sono, con il loro id: serve sia per leggere i Boom sia per dare un
     // nome alle righe.
+    // QUI LA LISTA RESTA QUELLA SCRITTA A MANO, e non il team Eventi, perche'
+    // le due domande sono diverse: il team dice di chi RACCOGLIERE gli Stati
+    // Lead, questa rotta decide di chi SOSTITUIRE i numeri con quelli
+    // ricavati da li'. Misurato il 9 ottobre 2026: degli otto del team, tre
+    // fanno 22-30 trattative al mese, e sostituirli vorrebbe dire cancellarle
+    // - a Roberto Esposito resterebbero 2 consulenze su 11. La sostituzione
+    // vale solo per chi trattative non ne ha, e sparira' del tutto quando le
+    // due fonti verranno unite con deduplica sulla coppia persona-contatto.
     const { rows: persone } = await db.query<{ id: string; nome: string }>(
       `SELECT id::text, nome FROM proprietario WHERE nome = ANY($1::text[])`,
       [[...ADVISOR_TELEFONICI]]
