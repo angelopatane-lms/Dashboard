@@ -183,6 +183,21 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
   const cambiaSotto = sottoScelto !== (persona?.sottoTeam[0]?.id ?? "") && !sottoCade;
   const inSospeso = cambiaPrincipale || cambiaSotto;
 
+  /** Gli spostamenti in sospeso, da leggere come "da -> a". */
+  const spostamenti: Array<{ da: string; a: string }> = [];
+  if (cambiaPrincipale) {
+    spostamenti.push({
+      da: persona?.principale?.nome ?? "nessun team",
+      a: nomiTeam.get(principaleScelto) ?? principaleScelto
+    });
+  }
+  if (cambiaSotto) {
+    spostamenti.push({
+      da: persona?.sottoTeam[0]?.nome ?? "nessun sotto-team",
+      a: nomiTeam.get(sottoScelto) ?? "nessun sotto-team"
+    });
+  }
+
   // Come per il principale: se sta in un sotto-team che la regola non prevede
   // per il suo team - Sabina Noia era Advisor + Telefonici, da prima che la
   // regola esistesse - va mostrato lo stesso, non selezionabile. Il menu deve
@@ -362,21 +377,21 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
                   ed e' anche cio' che fa capire che quei menu modificano. */}
               {inSospeso ? (
                 <div className="mt-4 rounded border border-slate-300 bg-slate-50 p-3">
+                  {/* LO SPOSTAMENTO E LA DOMANDA SULLA STESSA RIGA quando e'
+                      uno solo: "Eventi → Programmi: Confermi lo spostamento?"
+                      si legge in un colpo. Quando sono due, le righe restano
+                      separate e la domanda si fa una volta sola in fondo,
+                      invece di ripeterla due volte. */}
                   <div className="text-xs text-slate-800">
-                    {cambiaPrincipale ? (
-                      <div>
-                        Team: <strong>{persona.principale?.nome ?? "nessuno"}</strong> →{" "}
-                        <strong>{nomiTeam.get(principaleScelto) ?? principaleScelto}</strong>
+                    {spostamenti.map((s, i) => (
+                      <div key={i}>
+                        <strong>{s.da}</strong> → <strong>{s.a}</strong>
+                        {spostamenti.length === 1 ? ": Confermi lo spostamento?" : null}
                       </div>
-                    ) : null}
-                    {cambiaSotto ? (
-                      <div>
-                        Sotto-team: <strong>{persona.sottoTeam[0]?.nome ?? "nessuno"}</strong> →{" "}
-                        <strong>{nomiTeam.get(sottoScelto) ?? "nessuno"}</strong>
-                      </div>
-                    ) : null}
+                    ))}
+                    {spostamenti.length > 1 ? <div className="mt-0.5">Confermi lo spostamento?</div> : null}
                     {sottoCade ? (
-                      <div className="text-slate-600">
+                      <div className="mt-0.5 text-slate-600">
                         {persona.sottoTeam[0]?.nome} non appartiene a{" "}
                         {nomiTeam.get(principaleScelto) ?? principaleScelto}: viene tolto.
                       </div>
@@ -399,9 +414,14 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
                       type="button"
                       onClick={() => void applica()}
                       disabled={inCorso}
-                      className="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+                      /* ARANCIONE E NON ROSSO. Nella dashboard l'ambra e' gia' il
+                         colore dell'attenzione - i riquadri d'avviso e d'errore
+                         sono tutti cosi' - mentre il rosso vive solo sui "−"
+                         delle uscite qui sotto, e su un pulsante si leggerebbe
+                         come "elimina". */
+                      className="rounded bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:bg-amber-200"
                     >
-                      {inCorso ? "…" : "Applica"}
+                      {inCorso ? "…" : "Confermo"}
                     </button>
                     <button
                       type="button"
