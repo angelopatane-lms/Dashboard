@@ -311,8 +311,8 @@ export async function impostaTeam(
   for (const m of movimenti) {
     await db.query(
       `INSERT INTO utente_team_storia
-         (user_id, nome, email, azione, genere, team_id, team_nome, prima, dopo)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+         (user_id, nome, email, azione, genere, team_id, team_nome, prima, dopo, fonte)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'modifica')`,
       [
         utente.userId,
         utente.nome,
@@ -338,8 +338,10 @@ export async function storiaTeam(userId?: string, limite = 50) {
     azione: string;
     genere: string | null;
     team_nome: string | null;
+    fonte: string | null;
+    prove: string | null;
   }>(
-    `SELECT quando, nome, azione, genere, team_nome FROM utente_team_storia
+    `SELECT quando, nome, azione, genere, team_nome, fonte, prove FROM utente_team_storia
       WHERE ($1::text IS NULL OR user_id = $1)
       ORDER BY quando DESC LIMIT $2`,
     [userId ?? null, limite]
@@ -349,6 +351,10 @@ export async function storiaTeam(userId?: string, limite = 50) {
     nome: r.nome,
     azione: r.azione,
     genere: r.genere,
-    team: r.team_nome
+    team: r.team_nome,
+    // Una riga dedotta dai contatti non e' una riga osservata: chi guarda deve
+    // poterlo distinguere, o la ricostruzione si spaccia per cronaca.
+    fonte: r.fonte,
+    prove: r.prove
   }));
 }

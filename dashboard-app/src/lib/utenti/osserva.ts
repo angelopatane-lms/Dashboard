@@ -268,8 +268,8 @@ export async function osservaTeam(token: string, scrivi = true, annota = true): 
         for (const v of elenco) {
           await c.query(
             `INSERT INTO utente_team_storia
-               (user_id, nome, email, azione, genere, team_id, team_nome, prima, dopo)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL)`,
+               (user_id, nome, email, azione, genere, team_id, team_nome, prima, dopo, fonte)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, 'osservato')`,
             [v.userId, v.nome, v.email, azione, v.genere, v.teamId, v.teamNome]
           );
         }

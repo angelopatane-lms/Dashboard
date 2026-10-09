@@ -809,3 +809,27 @@ CREATE TABLE IF NOT EXISTS utente_team_adesso (
 -- telefono e chi no e' un SOTTO-team. Un evento che non dice quale dei due e'
 -- cambiato non permette di ricostruire ne' l'uno ne' l'altra.
 ALTER TABLE utente_team_storia ADD COLUMN IF NOT EXISTS genere TEXT;
+
+-- Da dove viene la riga: 'modifica' | 'osservato' | 'ricostruito'.
+--
+-- NON SONO LA STESSA COSA, e confonderle toglierebbe valore a tutte e tre.
+-- 'modifica' l'ha scritta chi ha premuto il pulsante, con il prima e il dopo
+-- esatti. 'osservato' nasce dal confronto fra due fotografie: il cambiamento
+-- e' certo, il momento e' preciso quanto il giro che l'ha visto. 'ricostruito'
+-- e' dedotto dalla cronologia di hs_owning_teams sui contatti - vedi
+-- scripts/recupera-storico-team.ts - ed e' l'unico che potrebbe sbagliarsi,
+-- perche' un contatto che cambia padrone somiglia a una persona che cambia
+-- squadra.
+ALTER TABLE utente_team_storia ADD COLUMN IF NOT EXISTS fonte TEXT;
+UPDATE utente_team_storia SET fonte = 'modifica' WHERE fonte IS NULL;
+
+-- Quanto regge una riga ricostruita: "18/20", cioe' su quanti contatti del
+-- campione si e' visto quel cambiamento.
+--
+-- SERVE A NON FAR SEMBRARE UGUALI DUE DEDUZIONI DIVERSE. Uno spostamento visto
+-- su venti contatti su venti e' praticamente certo; lo stesso visto su uno
+-- solo - perche' quella persona un contatto solo ne possiede - puo' essere un
+-- passaggio di mano sfuggito al controllo. Senza questo numero chi legge non
+-- ha modo di distinguerli. Vuoto sulle righe osservate e su quelle scritte da
+-- noi, dove non c'e' niente da dedurre.
+ALTER TABLE utente_team_storia ADD COLUMN IF NOT EXISTS prove TEXT;

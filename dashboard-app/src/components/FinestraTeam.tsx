@@ -39,6 +39,10 @@ type Evento = {
   azione: string;
   genere: string | null;
   team: string | null;
+  /** 'modifica' | 'osservato' | 'ricostruito'. */
+  fonte: string | null;
+  /** "18/20" sulle ricostruite: su quanti contatti si e' visto quel cambio. */
+  prove: string | null;
 };
 
 type Dati = {
@@ -348,6 +352,18 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
                             {e.azione === "tolto" ? "−" : "+"}
                           </span>{" "}
                           {e.team ?? "—"}
+                          {/* RICOSTRUITO NON E' OSSERVATO. Queste righe sono
+                              dedotte dalla cronologia dei contatti, e il numero
+                              dice quanto reggono: 20/20 e' praticamente certo,
+                              1/1 e' una persona con un contatto solo. */}
+                          {e.fonte === "ricostruito" ? (
+                            <span
+                              className="ml-1.5 text-[10px] text-slate-400"
+                              title={`Ricostruito dalla cronologia dei contatti${e.prove ? `, visto su ${e.prove}` : ""}`}
+                            >
+                              ~{e.prove ?? "ricostruito"}
+                            </span>
+                          ) : null}
                         </span>
                         <span className="shrink-0 tabular-nums text-slate-400">{quando(e.quando)}</span>
                       </li>
