@@ -348,14 +348,32 @@ export default function OperatorStatsTable({
   // LE CONSULENZE DI UN ADVISOR: quelle del foglio piu' quelle che sul CRM non
   // esistono. Sulla pagina Setter non si sommano: li' la colonna conta un'altra
   // cosa, e una call senza appuntamento non ha un setter a cui attribuirla.
-  // CHI LAVORA AL TELEFONO HA I SUOI NUMERI. Sostituiscono e non si sommano:
-  // il foglio e il CRM per loro valgono zero, e sommarli a zero darebbe lo
-  // stesso numero con un giro in piu' - ma sommarli il giorno in cui una di
-  // quelle fonti si riempisse darebbe un doppio conteggio silenzioso.
+  /**
+   * CHI LAVORA AL TELEFONO: IL MAGGIORE FRA LE DUE FONTI, non la sostituzione.
+   *
+   * PERCHE' NON SI SOMMA. Le due fonti si sovrappongono - misurato fra il 20 e
+   * il 55% delle consulenze - ma la sovrapposizione non si puo' togliere: il
+   * foglio Operatori e' aggregato per (data, operatore, campagna) e non porta
+   * nessun id di contatto, quindi non c'e' niente su cui deduplicare. Sommare
+   * conterebbe due volte le stesse consulenze senza che si veda.
+   *
+   * PERCHE' NON SI SOSTITUISCE PIU'. Fino al 9 ottobre 2026 il numero ricavato
+   * dal CRM prendeva il posto dell'altro. Andava bene finche' erano i quattro
+   * che trattative non ne hanno; allargando al team, a Roberto Esposito sarebbe
+   * rimasta 2 al posto di 11 - cioe' nove consulenze cancellate.
+   *
+   * IL MAGGIORE NON SBAGLIA IN NESSUNA DELLE DUE DIREZIONI PERICOLOSE: non
+   * raddoppia mai e non toglie mai niente. Resta un numero per difetto quando
+   * ciascuna fonte vede cose che l'altra non ha, e va bene cosi': fra un
+   * conteggio prudente e uno gonfiato, il primo si corregge, il secondo no.
+   * Per i quattro di sempre il foglio vale zero, quindi vince il CRM e i loro
+   * numeri restano quelli di prima.
+   */
   const effConsulenze = (r: OperatorSummary) => {
+    const base = r.consulenze + (isSetterView ? 0 : consulenzeFuoriCrm?.[normKey(r.operatore)] ?? 0);
     const tel = telefonici?.[normKey(r.operatore)];
-    if (tel && !isSetterView) return tel.consulenze;
-    return r.consulenze + (isSetterView ? 0 : consulenzeFuoriCrm?.[normKey(r.operatore)] ?? 0);
+    if (tel && !isSetterView) return Math.max(base, tel.consulenze);
+    return base;
   };
 
   const effConsulenzeChiusura = (r: OperatorSummary) =>
@@ -373,10 +391,14 @@ export default function OperatorStatsTable({
    */
   const effIncassoChiusure = (r: OperatorSummary) =>
     hubspotOverrides?.[normKey(r.operatore)]?.incassoChiusure ?? 0;
+  /** Stessa regola delle consulenze: il maggiore, mai la somma. Qui l'altra
+   *  fonte sono le trattative, una per appuntamento, e chi lavora al telefono
+   *  non ne ha - per loro vale il CRM, come prima. */
   const effAppuntamenti = (r: OperatorSummary) => {
+    const base = trattativeOverrides?.[normKey(r.operatore)] ?? 0;
     const tel = telefonici?.[normKey(r.operatore)];
-    if (tel && !isSetterView) return tel.appuntamenti;
-    return trattativeOverrides?.[normKey(r.operatore)] ?? 0;
+    if (tel && !isSetterView) return Math.max(base, tel.appuntamenti);
+    return base;
   };
   const effObiettivo = (r: OperatorSummary): number | null =>
     obiettivi?.[normKey(r.operatore)] ?? null;
@@ -659,11 +681,16 @@ export default function OperatorStatsTable({
                       pubbliche, vista Setter - resta il testo di prima. Cosi'
                       non c'e' un comando visibile a chi non puo' usarlo. */}
                   {onApriTeam ? (
+                    /* IL GRIGIO AL PASSAGGIO DEL MOUSE, e nient'altro. Il blu
+                       sottolineato prometteva una pagina da aprire, e qui
+                       invece si apre una finestra che cambia i team; un bordo
+                       disegnato attorno al nome, provato prima, faceva rumore
+                       su diciannove righe. */
                     <button
                       type="button"
                       onClick={() => onApriTeam(r.operatore)}
-                      className="text-left hover:text-blue-700 hover:underline"
-                      title="Team su HubSpot"
+                      className="-ml-1.5 cursor-pointer rounded px-1.5 py-0.5 text-left transition-colors hover:bg-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-400"
+                      title={`Team di ${r.operatore} su HubSpot`}
                     >
                       {r.operatore}
                     </button>

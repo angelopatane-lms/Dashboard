@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { ADVISOR_TELEFONICI, STATI_POST_CONSULENZA, STATO_NO_SHOW } from "@/lib/statiLead";
+import { squadraTelefonici } from "@/lib/statiLead/squadra";
 
 /**
  * Appuntamenti e Consulenze di chi lavora solo al telefono.
@@ -165,17 +166,31 @@ export async function GET(req: NextRequest) {
 
     // Chi sono, con il loro id: serve sia per leggere i Boom sia per dare un
     // nome alle righe.
-    // QUI LA LISTA RESTA QUELLA SCRITTA A MANO, e non il team Eventi, perche'
-    // le due domande sono diverse: il team dice di chi RACCOGLIERE gli Stati
-    // Lead, questa rotta decide di chi SOSTITUIRE i numeri con quelli
-    // ricavati da li'. Misurato il 9 ottobre 2026: degli otto del team, tre
-    // fanno 22-30 trattative al mese, e sostituirli vorrebbe dire cancellarle
-    // - a Roberto Esposito resterebbero 2 consulenze su 11. La sostituzione
-    // vale solo per chi trattative non ne ha, e sparira' del tutto quando le
-    // due fonti verranno unite con deduplica sulla coppia persona-contatto.
+    //
+    // ORA SONO QUELLI DEL TEAM e non piu' i quattro scritti nel codice. Fino al
+    // 9 ottobre 2026 restavano i quattro perche' questi numeri SOSTITUIVANO
+    // quelli della tabella, e allargarli avrebbe cancellato le trattative di
+    // chi ne fa: a Roberto Esposito sarebbero rimaste 2 consulenze su 11. Da
+    // quando la tabella prende il MAGGIORE fra le due fonti invece di
+    // sostituire - vedi effConsulenze in OperatorStatsTable - quel pericolo non
+    // c'e' piu', e restare in quattro voleva solo dire lasciare gli altri
+    // quattro senza i numeri che gli spettano.
+    //
+    // SE IL TEAM NON SI LEGGE si torna ai quattro invece di restare senza
+    // nessuno: una lista vuota qui farebbe sparire le colonne di tutti, e uno
+    // zero somiglia troppo a una giornata tranquilla.
+    let nomiSquadra: string[] = [...ADVISOR_TELEFONICI];
+    if (token) {
+      try {
+        const s = await squadraTelefonici(token);
+        if (s.perNome.size) nomiSquadra = [...s.perNome.keys()];
+      } catch (e) {
+        console.error("[advisor-telefonici] team non letto, uso la lista di riserva:", e);
+      }
+    }
     const { rows: persone } = await db.query<{ id: string; nome: string }>(
       `SELECT id::text, nome FROM proprietario WHERE nome = ANY($1::text[])`,
-      [[...ADVISOR_TELEFONICI]]
+      [nomiSquadra]
     );
     const nomePerId = new Map(persone.map((p) => [p.id, p.nome]));
 
