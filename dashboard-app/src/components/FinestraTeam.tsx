@@ -195,14 +195,14 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
   const spostamenti: Array<{ da: string; a: string }> = [];
   if (cambiaPrincipale) {
     spostamenti.push({
-      da: persona?.principale?.nome ?? "nessun team",
-      a: nomiTeam.get(principaleScelto) ?? principaleScelto
+      da: persona?.principale?.nome ?? "Nessuno",
+      a: nomiTeam.get(principaleScelto) ?? "Nessuno"
     });
   }
   if (cambiaSotto) {
     spostamenti.push({
-      da: persona?.sottoTeam[0]?.nome ?? "nessun sotto-team",
-      a: nomiTeam.get(sottoScelto) ?? "nessun sotto-team"
+      da: persona?.sottoTeam[0]?.nome ?? "Nessuno",
+      a: nomiTeam.get(sottoScelto) ?? "Nessuno"
     });
   }
 
@@ -339,7 +339,7 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
                   scopriva cambiandone uno. Scritto qui invece che in un titolo,
                   lo dice il comando stesso, nel momento in cui lo si guarda. */}
               <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                Cambia team
+                Cambia team principale
               </label>
               <select
                 value={principaleScelto}
@@ -351,7 +351,7 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
                     selezionabile, perche' il menu agiva da solo e tornare
                     indietro per sbaglio era un clic: ora che si conferma, la
                     scelta e' deliberata e si puo' offrire. */}
-                <option value="">nessun team</option>
+                <option value="">Nessuno</option>
                 {fuoriElenco ? (
                   <option value={fuoriElenco.id} disabled>
                     {fuoriElenco.nome}
@@ -365,7 +365,7 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
               </select>
 
               <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                Cambia sotto-team
+                Cambia team secondario
               </label>
               <select
                 value={sottoScelto || SENZA}
@@ -373,7 +373,7 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
                 disabled={inCorso}
                 className={menu}
               >
-                <option value={SENZA}>nessun sotto-team</option>
+                <option value={SENZA}>Nessuno</option>
                 {sottoFuoriElenco ? (
                   <option value={sottoFuoriElenco.id} disabled>
                     {sottoFuoriElenco.nome}
