@@ -415,14 +415,15 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
                   {/* L'AVVISO STA QUI E NON IN UNA FINESTRA DEL BROWSER: un
                       confirm si chiude per riflesso, questo si legge mentre si
                       guarda il pulsante che si sta per premere. */}
-                  {cambiaPrincipale ? (
-                    <div className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] leading-relaxed text-amber-900">
-                      Il team viene riscritto su <strong>tutti</strong> i suoi contatti e tutte le sue
-                      trattative, anche quelli di mesi fa, e quei record entrano o escono dai filtri
-                      per team dei flussi.
-                    </div>
-                  ) : null}
-
+                  {/* NESSUN AVVISO SUL CAMBIO DI TEAM.
+                      C'era un riquadro che spiegava la conseguenza - il team
+                      riscritto su tutti i contatti - ed e' stato letto come se
+                      i contatti restassero senza proprietario. Il proprietario
+                      non si tocca: cambia solo `hubspot_team_id`, che HubSpot
+                      tiene da se' e che dice il team DI CHI possiede il record.
+                      Un avviso che si fa capire male spaventa dalla cosa
+                      sbagliata, quindi e' stato tolto: resta la domanda, che e'
+                      la protezione vera. */}
                   <div className="mt-2.5 flex gap-2">
                     <button
                       type="button"
