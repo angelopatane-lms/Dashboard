@@ -248,6 +248,7 @@ export default function OperatorStatsTable({
   meseObiettivo,
   onSalvaObiettivo,
   onApriTeam,
+  sottoTeamPerPersona,
   telefonici,
   trattativeOverrides,
   precomputedTotals,
@@ -325,6 +326,14 @@ export default function OperatorStatsTable({
   onSalvaObiettivo?: (persona: string, mese: string, valore: number | null) => Promise<void> | void;
   /** Apre la finestra dei team per una persona. Assente = nome non cliccabile. */
   onApriTeam?: (nome: string) => void;
+  /**
+   * Il sotto-team di ciascuno, per nome normalizzato.
+   *
+   * Assente - pagine pubbliche, vista Setter - e la tabella si divide come
+   * prima, sui nomi scritti nel codice. Presente, le sezioni seguono
+   * l'appartenenza vera su HubSpot.
+   */
+  sottoTeamPerPersona?: Record<string, string>;
 }) {
   const isSetterView = operatorLabel === "Setter";
   /**
@@ -544,11 +553,50 @@ export default function OperatorStatsTable({
   // chat invece che chiamando. In entrambi i casi e' un mestiere diverso dagli
   // altri della stessa tabella, non una prestazione diversa.
   const inFondo = isSetterView ? eChatter : eAdvisorTelefonico;
-  const primoGruppo = righe.filter((r) => !inFondo(r.operatore));
-  const secondoGruppo = righe.filter((r) => inFondo(r.operatore));
-  // La separazione ha senso solo quando i gruppi in tabella sono due: con il
+
+  /**
+   * Il sotto-team che va per ultimo: fa un MESTIERE diverso dagli altri della
+   * stessa tabella, non una prestazione diversa. Sulla pagina Advisor e' Eventi,
+   * che lavora il low ticket al telefono senza fissare videochiamate; sulla
+   * Setter sono i chatter, che fissano dalla chat invece che chiamando.
+   */
+  const ULTIMO_GRUPPO = isSetterView ? "Chatter" : "Eventi";
+
+  /**
+   * Le sezioni della tabella, dall'appartenenza vera su HubSpot.
+   *
+   * PRIMA ERANO DUE E NASCEVANO DA UN ELENCO DI NOMI scritto nel codice. Quei
+   * nomi erano quattro, mentre i numeri della stessa tabella ormai arrivavano
+   * dagli otto del team: la riga di una persona poteva stare nel gruppo di
+   * sopra e avere i numeri di quello di sotto. Adesso la sezione e il numero
+   * rispondono alla stessa domanda.
+   *
+   * SENZA SOTTO-TEAM VENGONO PRIMI, perche' sono il grosso e il caso normale.
+   */
+  const sottoDi = (nome: string) => sottoTeamPerPersona?.[normKey(nome)] ?? "";
+  const gruppi: Array<{ etichetta: string | null; righe: typeof righe }> = (() => {
+    if (!sottoTeamPerPersona) {
+      return [
+        { etichetta: null, righe: righe.filter((r) => !inFondo(r.operatore)) },
+        { etichetta: null, righe: righe.filter((r) => inFondo(r.operatore)) }
+      ].filter((g) => g.righe.length);
+    }
+    const nomi = [...new Set(righe.map((r) => sottoDi(r.operatore)).filter(Boolean))].sort((a, b) =>
+      a === ULTIMO_GRUPPO ? 1 : b === ULTIMO_GRUPPO ? -1 : a.localeCompare(b)
+    );
+    return [
+      { etichetta: null, righe: righe.filter((r) => !sottoDi(r.operatore)) },
+      ...nomi.map((s) => ({ etichetta: s, righe: righe.filter((r) => sottoDi(r.operatore) === s) }))
+    ].filter((g) => g.righe.length);
+  })();
+
+  const ordinate = gruppi.flatMap((g) => g.righe);
+  // Dove comincia ogni sezione, e come si chiama. Il primo gruppo non apre
+  // niente: una linea in cima alla tabella separerebbe dall'intestazione.
+  // La separazione ha senso solo quando i gruppi sono piu' di uno: con il
   // filtro Team su un gruppo solo sarebbe una linea che non separa niente.
-  const dueGruppi = primoGruppo.length > 0 && secondoGruppo.length > 0;
+  const apre = new Map<string, string | null>();
+  for (const g of gruppi.slice(1)) apre.set(g.righe[0].operatore, g.etichetta);
 
   const totalTp = tassoPresa(totals.appuntamenti, totals.connessioni);
   // Sulla vista Setter il totale era soppresso perche' il denominatore era
@@ -645,9 +693,9 @@ export default function OperatorStatsTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {(dueGruppi ? [...primoGruppo, ...secondoGruppo] : righe).map((r, indice, elenco) => {
-            const primoTelefonico =
-              dueGruppi && indice === primoGruppo.length;
+          {ordinate.map((r) => {
+            const apreSezione = apre.has(r.operatore);
+            const etichettaSezione = apre.get(r.operatore) ?? null;
             const tp = tassoPresa(effAppuntamenti(r), r.connessioni);
             const tc = tassoChiusura(effChiusure(r), effConsulenzeChiusura(r));
             // Quanti dei suoi appuntamenti si sono tenuti. Il denominatore sono
@@ -656,19 +704,26 @@ export default function OperatorStatsTable({
             const pc = tassoPresa(effConsulenzeChiusura(r), effAppuntamenti(r));
             return (
               <Fragment key={r.operatore}>
-              {/* LA SEPARAZIONE: una riga di stacco con il nome del gruppo.
-                  Non e' un'intestazione di colonne - non ripete i titoli e non
-                  si puo' cliccare - ma una targhetta: con i filtri attivi, se
-                  il gruppo resta senza righe sparisce insieme a loro. */}
-              {/* LA SEPARAZIONE E' UNA LINEA, non una riga: una riga di
-                  intestazione ruberebbe spazio e, con il filtro Team su un
-                  gruppo solo, annuncerebbe un gruppo che non ha niente da cui
-                  essere separato. Il bordo sta sulla cella e non sul <tr>
-                  perche' `divide-y` sul corpo della tabella imposta il bordo
-                  dei figli con una specificita' piu' alta. */}
-              {primoTelefonico ? (
-                <tr aria-hidden="true">
-                  <td colSpan={30} className="border-t-2 border-slate-300 p-0" />
+              {/* LA SEPARAZIONE E' UNA LINEA, e porta il nome della sezione
+                  solo da quando le sezioni possono essere piu' di due: con due
+                  gruppi la linea bastava - sopra gli altri, sotto quelli di un
+                  altro mestiere - mentre con tre una linea muta diventa un
+                  indovinello. Non e' un'intestazione di colonne: non ripete i
+                  titoli e non si puo' cliccare. Se un filtro lascia la sezione
+                  senza righe, sparisce insieme a loro.
+
+                  Il bordo sta sulle celle e non sul <tr> perche' `divide-y` sul
+                  corpo della tabella imposta il bordo dei figli con una
+                  specificita' piu' alta. */}
+              {apreSezione ? (
+                <tr {...(etichettaSezione ? {} : { "aria-hidden": "true" })}>
+                  <td
+                    className={`${BLOCCATA} ${LINEA_DESTRA} border-t-2 border-slate-300 bg-white pt-2 pr-4 pb-0.5 pl-0 text-[10px] font-semibold tracking-wide text-slate-400 uppercase`}
+                    style={{ left: 0 }}
+                  >
+                    {etichettaSezione}
+                  </td>
+                  <td colSpan={29} className="border-t-2 border-slate-300 p-0" />
                 </tr>
               ) : null}
               <tr className="group hover:bg-slate-50/70 transition-colors">

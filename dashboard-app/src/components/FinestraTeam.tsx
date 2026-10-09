@@ -129,6 +129,16 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
     }));
   }, [dati, persona, nomiTeam]);
 
+  // Come per il principale: se sta in un sotto-team che la regola non prevede
+  // per il suo team - Sabina Noia era Advisor + Telefonici, da prima che la
+  // regola esistesse - va mostrato lo stesso, non selezionabile. Il menu deve
+  // dire dov'e' adesso anche quando e' un posto in cui non si puo' mandare
+  // nessuno; nasconderlo farebbe sembrare che non abbia nessun sotto-team.
+  const sottoFuoriElenco =
+    persona?.sottoTeam[0] && !sottoAmmessi.some((t) => t.id === persona.sottoTeam[0].id)
+      ? persona.sottoTeam[0]
+      : null;
+
   const storiaSua = useMemo(() => {
     if (!dati || !persona) return [];
     return dati.storia.filter((e) => e.nome && chiaveNome(e.nome) === persona.chiave);
@@ -258,6 +268,11 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
                     —
                   </option>
                 )}
+                {sottoFuoriElenco ? (
+                  <option value={sottoFuoriElenco.id} disabled>
+                    {sottoFuoriElenco.nome}
+                  </option>
+                ) : null}
                 {sottoAmmessi.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.nome}

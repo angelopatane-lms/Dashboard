@@ -104,6 +104,44 @@ export default function DashboardEnterprise({
   // Il nome su cui si e' cliccato, null quando la finestra e' chiusa.
   const [personaTeam, setPersonaTeam] = useState<string | null>(null);
 
+  /**
+   * Chi sta in quale sotto-team, per dividere la tabella in sezioni.
+   *
+   * SI CHIEDE SOLO DOVE SERVE: la rotta vuole la password piena, e le
+   * pagine pubbliche prenderebbero un 403. Senza, la tabella si divide come
+   * faceva prima, sui nomi scritti nel codice.
+   *
+   * SI RILEGGE QUANDO LA FINESTRA SI CHIUDE, perche' li' dentro i team si
+   * cambiano: altrimenti si sposta una persona e la sua riga resta nella
+   * sezione di prima fino al prossimo caricamento della pagina.
+   */
+  const [sottoTeamPerPersona, setSottoTeamPerPersona] = useState<Record<string, string> | undefined>(undefined);
+  useEffect(() => {
+    if (!gestioneTeam || personaTeam) return;
+    let vivo = true;
+    (async () => {
+      try {
+        const r = await fetch("/api/utenti/team", { cache: "no-store" });
+        if (!r.ok) return;
+        const d = (await r.json()) as {
+          persone?: Array<{ chiave: string | null; sottoTeam?: Array<{ nome: string | null }> }>;
+        };
+        if (!vivo) return;
+        const m: Record<string, string> = {};
+        for (const p of d.persone ?? []) {
+          const s = p.sottoTeam?.[0]?.nome;
+          if (p.chiave && s) m[p.chiave] = s;
+        }
+        setSottoTeamPerPersona(m);
+      } catch {
+        // Si resta con la divisione di prima invece di non averne nessuna.
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [gestioneTeam, personaTeam]);
+
   const periodoIniziale = useMemo(() => periodoScelto(PERIODO_DEFAULT), []);
   const defaultFrom = periodoIniziale.from;
   const defaultTo = periodoIniziale.to;
@@ -938,7 +976,7 @@ export default function DashboardEnterprise({
                   Caricamento dei dati in corso...
                 </div>
               ) : (
-              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} />
+              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} sottoTeamPerPersona={gestioneTeam && !soloTabella ? sottoTeamPerPersona : undefined} />
               )}
             </Card>
           </div>
