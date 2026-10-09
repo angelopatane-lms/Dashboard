@@ -86,6 +86,51 @@ async function mappaVarianti(nomiFoglio: Iterable<string>): Promise<MappaVariant
         if (set.has(base)) mappa[k] = base;
       }
     }
+
+    /**
+     * LA SPESA DI UN NOME CHE CAMPAGNA NON E'.
+     *
+     * Marketing nomina le inserzioni aggiungendo una coda alla campagna:
+     * "_broad", "_caldi", "_scaling", "_lookalike", "_test2", "_database",
+     * "_leadads", "_copertura"... L'elenco dei suffissi non le prende tutte -
+     * ha "lal" ma non "lookalike", "warm" ma non "caldi", "scale" ma non
+     * "scaling", e "test(_.+)?" prende "test_2" ma non "test2" - e ogni coda
+     * nuova e' un buco che si apre in silenzio. Misurato il 9 ottobre 2026:
+     * ventidue nomi, 29.000 EUR di spesa su righe senza un solo lead, mentre i
+     * lead stavano sulla riga base. Il CPL della base usciva gonfiato e quello
+     * della variante non esisteva.
+     *
+     * NON SERVE UN ELENCO PIU' LUNGO, serve una condizione: si fa solo quando
+     * quel nome NON E' una campagna. Se non e' una campagna non ha lead, e
+     * spostarlo muove soltanto il denaro - non puo' sommare le persone di due
+     * campagne diverse, che e' l'unico errore grave possibile qui. Le 9
+     * varianti che invece SONO campagne restano dove sono: misurata la
+     * sovrapposizione con la base, sta fra 0% e 20%, mentre quelle in elenco
+     * stanno al 90-100%. "lms_mep_ew_ikigai_vivere_felici" porta 48.597
+     * persone che con "ikigai" non c'entrano: e' una campagna, non un
+     * pubblico.
+     *
+     * SI PRENDE IL PREFISSO PIU' LUNGO che sia una campagna vera, perche' e'
+     * il piu' specifico: fra "lms_rem_workshop" e
+     * "lms_rem_workshop_liberi_col_mattone_aste" vince il secondo.
+     */
+    const { rows: tutte } = await db.query<{ nome: string }>(
+      `SELECT lower(trim(nome)) AS nome FROM campagna`
+    );
+    const campagne = new Set(tutte.map((r) => r.nome));
+    for (const nome of nomiFoglio) {
+      const k = nome.trim().toLowerCase();
+      if (!k || k in mappa || campagne.has(k)) continue;
+      const pezzi = k.split("_");
+      for (let i = pezzi.length - 1; i >= 2; i--) {
+        const base = pezzi.slice(0, i).join("_");
+        if (campagne.has(base) && baseAccettabile(base)) {
+          mappa[k] = base;
+          break;
+        }
+      }
+    }
+
     return mappa;
   } catch (err) {
     // Senza database la tabella deve continuare a funzionare: si rinuncia

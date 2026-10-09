@@ -452,6 +452,32 @@ export default function CampaignsDashboard({
     return map;
   }, [adsSpendRows, filters.from, filters.to, variante, varianti, defaultFrom, defaultTo]);
 
+  /**
+   * Per ogni riga unificata, i nomi che ci sono confluiti.
+   *
+   * SERVE PERCHE' LA RIGA PERDE I SUOI NOMI. Unificando, la spesa di
+   * "..._broad", "..._caldi", "..._lookalike" finisce sulla campagna base e
+   * quelle voci spariscono dalla tabella: chi guarda vede un numero piu' alto
+   * e non ha modo di sapere da dove viene. Il passaggio del mouse glielo dice,
+   * senza occupare spazio quando non serve.
+   */
+  const nomiUniti = useMemo(() => {
+    const chiaveSpesa = varianteEsegmento(variante) ? "unificate" : variante;
+    const map = new Map<string, Set<string>>();
+    for (const r of adsSpendRows) {
+      const nome = r.campagna.trim();
+      if (!nome) continue;
+      const key = chiaveCampagna(nome, chiaveSpesa, varianti);
+      if (!key || key.toLowerCase() === nome.toLowerCase()) continue;
+      const s = map.get(key) ?? new Set<string>();
+      s.add(nome);
+      map.set(key, s);
+    }
+    const out: Record<string, string[]> = {};
+    for (const [k, s] of map) out[k] = [...s].sort((a, b) => a.localeCompare(b, "it"));
+    return out;
+  }, [adsSpendRows, variante, varianti]);
+
   const todayIsoRome = useMemo(
     () =>
       new Date().toLocaleDateString("en-CA", {
@@ -636,6 +662,7 @@ export default function CampaignsDashboard({
         <Card className="mt-6">
           {pronto ? (
             <CampaignAdsTable
+              nomiUniti={nomiUniti}
               adsRows={campaignAdsRows}
               campaignSummary={campaignSummaryFull}
               funnelByCampagna={funnelByCampagna}

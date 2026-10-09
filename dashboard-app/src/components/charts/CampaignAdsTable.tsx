@@ -402,17 +402,26 @@ function MetricCells({ m, max }: { m: DerivedMetrics; max: MaxValues }) {
 function CellaNome({
   campagna,
   sinistra,
-  senzaMarcatore
+  senzaMarcatore,
+  uniti
 }: {
   campagna: string;
   sinistra: number;
   senzaMarcatore: boolean;
+  /** I nomi confluiti in questa riga, quando ce ne sono. */
+  uniti?: string[];
 }) {
+  // IL NOME INTERO, E QUELLI CHE HA ASSORBITO. La colonna e' troncata e dopo
+  // l'unificazione la riga porta anche la spesa di nomi che in tabella non
+  // compaiono piu': senza, quel numero piu' alto non si spiega.
+  const titolo = uniti?.length
+    ? [`${campagna}`, "", "comprende anche:", ...uniti.map((u) => `· ${u}`)].join("\n")
+    : campagna;
   return (
     <td
       className={`${BLOCCATA} ${LINEE_LATERALI} truncate bg-white px-3 py-1.5 text-slate-700 group-hover:bg-slate-50`}
       style={{ left: sinistra }}
-      title={campagna}
+      title={titolo}
     >
       {nomeVisibile(campagna, senzaMarcatore)}
     </td>
@@ -423,11 +432,14 @@ export default function CampaignAdsTable({
   adsRows,
   campaignSummary,
   funnelByCampagna,
-  senzaMarcatore = false
+  senzaMarcatore = false,
+  nomiUniti
 }: {
   adsRows: CampaignAdsRow[];
   campaignSummary: CampaignSummary[];
   funnelByCampagna?: Map<string, FunnelCampagna>;
+  /** Per ogni riga unificata, i nomi che ci sono confluiti. */
+  nomiUniti?: Record<string, string[]>;
   /** Vero nella vista Instant, dove il suffisso "_test_instant" ce l'hanno
    *  tutte le righe e quindi non distingue niente. */
   senzaMarcatore?: boolean;
@@ -697,6 +709,7 @@ export default function CampaignAdsTable({
                     campagna={r.campagna}
                     sinistra={larghezze.categoria}
                     senzaMarcatore={senzaMarcatore}
+                    uniti={nomiUniti?.[r.campagna]}
                   />
                   <MetricCells m={deriveMetrics(r.raw)} max={maxValues} />
                 </tr>
