@@ -144,13 +144,44 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
       ? persona.principale
       : null;
 
+  /**
+   * LA SCELTA IN SOSPESO: i menu scrivono qui, non su HubSpot.
+   *
+   * PERCHE' NON SI APPLICA AL CAMBIO. Un menu che agisce appena si sceglie fa
+   * danno da solo: basta la rotella del mouse sopra il campo, o una freccia
+   * della tastiera, e la persona e' stata spostata di squadra senza che nessuno
+   * abbia deciso niente. E chi apre la finestra per guardare non ha modo di
+   * sapere che quei menu non sono etichette.
+   *
+   * Cosi' invece scegliere non fa niente: compare un riquadro che dice cosa
+   * sta per succedere e un pulsante da premere. Il riquadro e' anche la risposta
+   * all'altro problema - adesso si vede che quei menu modificano qualcosa.
+   */
+  const [scelta, setScelta] = useState<{ principale?: string; sotto?: string }>({});
+  const principaleScelto = scelta.principale ?? persona?.principale?.id ?? "";
+
+  // I sotto-team seguono il principale SCELTO, non quello attuale: altrimenti
+  // scegliendo Setter resterebbero in elenco Programmi ed Eventi, che a un
+  // Setter non spettano.
   const sottoAmmessi = useMemo(() => {
-    if (!dati || !persona?.principale) return [];
-    return (dati.sottoPerPrincipale[persona.principale.id] ?? []).map((id) => ({
+    if (!dati || !principaleScelto) return [];
+    return (dati.sottoPerPrincipale[principaleScelto] ?? []).map((id) => ({
       id,
       nome: nomiTeam.get(id) ?? id
     }));
-  }, [dati, persona, nomiTeam]);
+  }, [dati, principaleScelto, nomiTeam]);
+
+  const sottoScelto =
+    scelta.sotto ??
+    (sottoAmmessi.some((x) => x.id === persona?.sottoTeam[0]?.id) ? persona?.sottoTeam[0]?.id ?? "" : "");
+
+  const cambiaPrincipale = principaleScelto !== (persona?.principale?.id ?? "");
+  // Il sotto-team cade da se' quando non appartiene al principale scelto: va
+  // detto, o sembrerebbe sparito per sbaglio.
+  const sottoCade =
+    cambiaPrincipale && Boolean(persona?.sottoTeam[0]) && !sottoScelto;
+  const cambiaSotto = sottoScelto !== (persona?.sottoTeam[0]?.id ?? "") && !sottoCade;
+  const inSospeso = cambiaPrincipale || cambiaSotto;
 
   // Come per il principale: se sta in un sotto-team che la regola non prevede
   // per il suo team - Sabina Noia era Advisor + Telefonici, da prima che la
@@ -158,7 +189,7 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
   // dire dov'e' adesso anche quando e' un posto in cui non si puo' mandare
   // nessuno; nasconderlo farebbe sembrare che non abbia nessun sotto-team.
   const sottoFuoriElenco =
-    persona?.sottoTeam[0] && !sottoAmmessi.some((t) => t.id === persona.sottoTeam[0].id)
+    !cambiaPrincipale && persona?.sottoTeam[0] && !sottoAmmessi.some((t) => t.id === persona.sottoTeam[0].id)
       ? persona.sottoTeam[0]
       : null;
 
@@ -167,38 +198,36 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
     return dati.storia.filter((e) => e.nome && chiaveNome(e.nome) === persona.chiave);
   }, [dati, persona]);
 
-  const manda = async (corpo: Record<string, string | null>) => {
-    if (!persona) return;
+  /**
+   * Applica quello che e' stato scelto, in una chiamata sola.
+   *
+   * IL SOTTO-TEAM SI MANDA SOLO SE E' STATO SCELTO: cambiando il principale,
+   * quello vecchio cade da se' lato server - vedi impostaTeam - e mandarlo
+   * esplicitamente darebbe un errore invece di una caduta.
+   */
+  const applica = async () => {
+    if (!persona || !inSospeso) return;
     setInCorso(true);
     setAvviso(null);
     try {
+      const corpo: Record<string, string | null> = { userId: persona.userId };
+      if (cambiaPrincipale) corpo.principale = principaleScelto;
+      if (cambiaSotto) corpo.sottoTeam = sottoScelto || null;
       const r = await fetch("/api/utenti/team", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: persona.userId, ...corpo })
+        body: JSON.stringify(corpo)
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d?.error || `errore ${r.status}`);
+      setScelta({});
       await carica();
-      if (!d.cambiato) setAvviso("Era già così.");
+      if (!d.cambiato) setAvviso("Era gia' cosi'.");
     } catch (e) {
       setAvviso(e instanceof Error ? e.message : "modifica non riuscita");
     } finally {
       setInCorso(false);
     }
-  };
-
-  // IL PRINCIPALE CHIEDE CONFERMA e il sotto-team no: l'uno riscrive il team su
-  // tutti i contatti e le trattative della persona, l'altro no.
-  const cambiaPrincipale = (id: string) => {
-    const vecchio = persona?.principale?.nome ?? "nessun team";
-    const nuovo = nomiTeam.get(id) ?? id;
-    const ok = window.confirm(
-      `Spostare ${persona?.nome ?? nome} da ${vecchio} a ${nuovo}?\n\n` +
-        "Il team viene riscritto su tutti i suoi contatti e tutte le sue trattative, " +
-        "anche quelli di mesi fa, e i record entrano o escono dai filtri per team dei flussi."
-    );
-    if (ok) void manda({ principale: id });
   };
 
   const menu =
@@ -268,12 +297,16 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
                 </>
               ) : null}
 
+              {/* IL VERBO STA SUL COMANDO. Chi apre la finestra per guardare
+                  non aveva modo di capire che quei menu modificano qualcosa: lo
+                  scopriva cambiandone uno. Scritto qui invece che in un titolo,
+                  lo dice il comando stesso, nel momento in cui lo si guarda. */}
               <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                Team
+                Cambia team
               </label>
               <select
-                value={persona.principale?.id ?? ""}
-                onChange={(e) => cambiaPrincipale(e.target.value)}
+                value={principaleScelto}
+                onChange={(e) => setScelta({ principale: e.target.value })}
                 disabled={inCorso}
                 className={`${menu} mb-4`}
               >
@@ -295,15 +328,15 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
               </select>
 
               <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                Sotto-team
+                Cambia sotto-team
               </label>
               {/* NIENTE "NESSUNO" FRA LE SCELTE: da qui si sposta, non si
                   svuota. Chi un sotto-team non ce l'ha vede un trattino che non
                   si puo' selezionare - lo stato vero si legge, ma indietro non
                   ci si torna per sbaglio. */}
               <select
-                value={persona.sottoTeam[0]?.id ?? SENZA}
-                onChange={(e) => void manda({ sottoTeam: e.target.value })}
+                value={sottoScelto || SENZA}
+                onChange={(e) => setScelta({ ...scelta, sotto: e.target.value })}
                 disabled={inCorso || !sottoAmmessi.length}
                 className={menu}
               >
@@ -323,6 +356,64 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
                   </option>
                 ))}
               </select>
+
+              {/* IL RIQUADRO E IL PULSANTE. Finche' non si preme non succede
+                  niente: e' la protezione contro il menu toccato per sbaglio,
+                  ed e' anche cio' che fa capire che quei menu modificano. */}
+              {inSospeso ? (
+                <div className="mt-4 rounded border border-slate-300 bg-slate-50 p-3">
+                  <div className="text-xs text-slate-800">
+                    {cambiaPrincipale ? (
+                      <div>
+                        Team: <strong>{persona.principale?.nome ?? "nessuno"}</strong> →{" "}
+                        <strong>{nomiTeam.get(principaleScelto) ?? principaleScelto}</strong>
+                      </div>
+                    ) : null}
+                    {cambiaSotto ? (
+                      <div>
+                        Sotto-team: <strong>{persona.sottoTeam[0]?.nome ?? "nessuno"}</strong> →{" "}
+                        <strong>{nomiTeam.get(sottoScelto) ?? "nessuno"}</strong>
+                      </div>
+                    ) : null}
+                    {sottoCade ? (
+                      <div className="text-slate-600">
+                        {persona.sottoTeam[0]?.nome} non appartiene a{" "}
+                        {nomiTeam.get(principaleScelto) ?? principaleScelto}: viene tolto.
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {/* L'AVVISO STA QUI E NON IN UNA FINESTRA DEL BROWSER: un
+                      confirm si chiude per riflesso, questo si legge mentre si
+                      guarda il pulsante che si sta per premere. */}
+                  {cambiaPrincipale ? (
+                    <div className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] leading-relaxed text-amber-900">
+                      Il team viene riscritto su <strong>tutti</strong> i suoi contatti e tutte le sue
+                      trattative, anche quelli di mesi fa, e quei record entrano o escono dai filtri
+                      per team dei flussi.
+                    </div>
+                  ) : null}
+
+                  <div className="mt-2.5 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void applica()}
+                      disabled={inCorso}
+                      className="rounded bg-slate-800 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+                    >
+                      {inCorso ? "…" : "Applica"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setScelta({})}
+                      disabled={inCorso}
+                      className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 disabled:text-slate-400"
+                    >
+                      Annulla
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
               {avviso ? (
                 <div className="mt-3 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
