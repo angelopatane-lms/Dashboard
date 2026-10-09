@@ -736,3 +736,76 @@ CREATE INDEX IF NOT EXISTS assegnazione_pool_quando
 -- una promessa.
 ALTER TABLE assegnazione_pool ADD COLUMN IF NOT EXISTS assegnabili_a INT;
 ALTER TABLE assegnazione_pool ADD COLUMN IF NOT EXISTS assegnabili_b INT;
+
+-- ============================================================================
+-- CHI STAVA IN QUALE SOTTO-TEAM, E DA QUANDO.
+--
+-- HUBSPOT NON LO CONSERVA. L'API dice chi c'e' adesso e basta: se una persona
+-- entra nel team Eventi oggi, i mesi passati si riscrivono come se ci fosse
+-- sempre stata, e non esiste modo di sapere com'era a giugno. E' lo stesso
+-- limite che rende impossibile attribuire correttamente il lavoro di chi si
+-- sposta a meta' anno, o di chi lavora al 50% su due squadre.
+--
+-- Da qui in poi ogni spostamento fatto dalla Dashboard lascia una riga. Non e'
+-- un registro di sicurezza - anche se serve pure a quello - e' la dimensione
+-- che mancava: l'appartenenza CON UNA DATA.
+--
+-- Non registra gli spostamenti fatti direttamente su HubSpot: quelli restano
+-- invisibili, ed e' una ragione in piu' per fare queste modifiche da qui.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS utente_team_storia (
+  id          BIGSERIAL   PRIMARY KEY,
+  quando      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  user_id     TEXT        NOT NULL,
+  nome        TEXT,
+  email       TEXT,
+  -- 'aggiunto' | 'tolto'. Uno spostamento sono due righe, non una: cosi' la
+  -- storia si legge come una sequenza di eventi e non come uno stato, ed e'
+  -- quello che serve per ricostruire un mese passato.
+  azione      TEXT        NOT NULL,
+  team_id     TEXT        NOT NULL,
+  team_nome   TEXT,
+  -- L'elenco completo prima e dopo: se un giorno una scrittura andasse storta,
+  -- e' l'unico modo per rimettere le cose come stavano.
+  prima       TEXT[],
+  dopo        TEXT[]
+);
+
+CREATE INDEX IF NOT EXISTS utente_team_storia_utente
+  ON utente_team_storia (user_id, quando DESC);
+
+-- ---------------------------------------------------------------------------
+-- La composizione dei team come era al giro precedente.
+--
+-- SERVE SOLO A FARE LA DIFFERENZA. HubSpot dice chi c'e' adesso e niente di
+-- piu': non esiste nessuno storico dell'appartenenza ai team, e quando una
+-- persona si sposta i mesi passati si rileggono come se ci fosse sempre stata.
+-- Tenendo qui la fotografia del giro prima, il confronto produce gli ingressi e
+-- le uscite con la loro data, che e' quello che serve per attribuire il lavoro
+-- di chi cambia squadra a meta' mese.
+--
+-- PERCHE' GUARDANDO E NON SCRIVENDO. Il 9 ottobre 2026 si e' misurato che
+-- togliere una persona da un sotto-team via API non si puo' - vedi
+-- src/lib/utenti/team.ts - quindi i cambi si fanno dal portale. Osservarli e'
+-- l'unico modo di vederli tutti, compresi quelli fatti a mano.
+CREATE TABLE IF NOT EXISTS utente_team_adesso (
+  user_id   TEXT        NOT NULL,
+  team_id   TEXT        NOT NULL,
+  -- 'principale' | 'secondario': la stessa persona puo' stare in un team come
+  -- primaria e in un altro come secondaria, e sono due appartenenze diverse.
+  genere    TEXT        NOT NULL,
+  nome      TEXT,
+  email     TEXT,
+  team_nome TEXT,
+  visto_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, team_id, genere)
+);
+
+-- Il genere dell'appartenenza che e' cambiata: 'principale' | 'secondario'.
+--
+-- SENZA, LO STORICO NON BASTA. Serve a rimettere le persone nella riga giusta
+-- guardando un mese passato, e le due righe della tabella Advisor sono due cose
+-- diverse: il gruppo e' il team PRINCIPALE, la separazione fra chi lavora al
+-- telefono e chi no e' un SOTTO-team. Un evento che non dice quale dei due e'
+-- cambiato non permette di ricostruire ne' l'uno ne' l'altra.
+ALTER TABLE utente_team_storia ADD COLUMN IF NOT EXISTS genere TEXT;

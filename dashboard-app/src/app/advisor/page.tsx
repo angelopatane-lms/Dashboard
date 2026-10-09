@@ -59,7 +59,11 @@ export default async function Page() {
           contrario - e insieme il filtro: l'agenda legge i meeting di TUTTO il
           portale e senza questo elenco mostrerebbe anche chi advisor non e'.
           Null quando il foglio degli utenti non risponde: meglio l'agenda
-          intera che nessuna agenda. */}
+          intera che nessuna agenda.
+
+          gestioneTeam: i nomi si cliccano per vedere e cambiare i loro team
+          su HubSpot. Solo qui: la pagina Setter e quelle pubbliche usano lo
+          stesso componente e non ricevono questo interruttore. */}
       <AdvisorSetterDashboardClient
         operatoriRows={operatoriRowsFiltered}
         operatoriRowsOggi={operatoriRowsOggiFiltered}
@@ -67,6 +71,7 @@ export default async function Page() {
         campaigns={campaigns}
         operatorLabel="Advisor"
         operatoriAmmessi={advisorNomi}
+        gestioneTeam
       />
     </Container>
   );

@@ -247,6 +247,7 @@ export default function OperatorStatsTable({
   consulenzeFuoriCrm,
   meseObiettivo,
   onSalvaObiettivo,
+  onApriTeam,
   telefonici,
   trattativeOverrides,
   precomputedTotals,
@@ -322,6 +323,8 @@ export default function OperatorStatsTable({
   meseObiettivo?: string | null;
   /** Salva la cifra digitata. Senza questa la colonna resta di sola lettura. */
   onSalvaObiettivo?: (persona: string, mese: string, valore: number | null) => Promise<void> | void;
+  /** Apre la finestra dei team per una persona. Assente = nome non cliccabile. */
+  onApriTeam?: (nome: string) => void;
 }) {
   const isSetterView = operatorLabel === "Setter";
   /**
@@ -651,7 +654,22 @@ export default function OperatorStatsTable({
                   className={`${BLOCCATA} ${LINEA_DESTRA} bg-white py-1.5 pr-4 pl-0 font-medium text-slate-800 whitespace-nowrap group-hover:bg-slate-50`}
                   style={{ left: 0 }}
                 >
-                  {r.operatore}
+                  {/* IL NOME SI CLICCA SOLO DOVE SERVE: la finestra dei team
+                      arriva come funzione, e dove non viene passata - pagine
+                      pubbliche, vista Setter - resta il testo di prima. Cosi'
+                      non c'e' un comando visibile a chi non puo' usarlo. */}
+                  {onApriTeam ? (
+                    <button
+                      type="button"
+                      onClick={() => onApriTeam(r.operatore)}
+                      className="text-left hover:text-blue-700 hover:underline"
+                      title="Team su HubSpot"
+                    >
+                      {r.operatore}
+                    </button>
+                  ) : (
+                    r.operatore
+                  )}
                 </td>
                 {/* Sotto i titoli nuovi un trattino, non il numero di HubSpot:
                     vedi CHATTER_DATI_ATTESI. Nella vista mista i titoli sono

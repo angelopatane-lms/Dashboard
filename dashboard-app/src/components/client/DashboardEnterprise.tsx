@@ -37,6 +37,7 @@ import type { AdvisorAndamentoRow } from "@/app/api/advisor-andamento/route";
 import CampaignSummaryBar from "@/components/charts/CampaignSummaryBar";
 import CampaignConversionPeaksChart from "@/components/charts/CampaignConversionPeaksChart";
 import OperatorStatsTable from "@/components/charts/OperatorStatsTable";
+import FinestraTeam from "@/components/FinestraTeam";
 import type { RawBoomRecord, RawDealRecord } from "@/app/api/hubspot-data/route";
 import { CHIUSURE_TIPOLOGIE, BOOM_TIPOLOGIE } from "@/lib/hubspotRegole";
 
@@ -58,6 +59,7 @@ export default function DashboardEnterprise({
   useHubspot,
   operatorLabel,
   operatoriAmmessi,
+  gestioneTeam,
 }: {
   operatoriRows: CsvRow[];
   operatoriRowsOggi: CsvRow[];
@@ -85,11 +87,23 @@ export default function DashboardEnterprise({
   /** Chi ha Team Principale "Advisor" fra gli utenti HubSpot, come chiave di
    *  nome. Null = elenco non disponibile, e allora non si filtra niente. */
   operatoriAmmessi?: string[] | null;
+  /**
+   * Rende cliccabili i nomi, per aprire i loro team su HubSpot.
+   *
+   * E' un interruttore e non il comportamento normale perche' questo
+   * componente serve anche le pagine pubbliche e la vista Setter: quella
+   * finestra legge l'anagrafica degli utenti e scrive sui team, e sta solo
+   * sulla Dashboard principale.
+   */
+  gestioneTeam?: boolean;
 }) {
   // Le pagine si aprono sul mese in corso. Le date arrivano dal periodo
   // predefinito invece di essere ricalcolate qui: erano scritte due volte, in
   // questa pagina e nell'altra, e sommavano il giorno sull'ora locale del
   // browser mentre lo leggevano sul fuso di Roma.
+  // Il nome su cui si e' cliccato, null quando la finestra e' chiusa.
+  const [personaTeam, setPersonaTeam] = useState<string | null>(null);
+
   const periodoIniziale = useMemo(() => periodoScelto(PERIODO_DEFAULT), []);
   const defaultFrom = periodoIniziale.from;
   const defaultTo = periodoIniziale.to;
@@ -924,7 +938,7 @@ export default function DashboardEnterprise({
                   Caricamento dei dati in corso...
                 </div>
               ) : (
-              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} />
+              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} />
               )}
             </Card>
           </div>
@@ -1183,6 +1197,13 @@ export default function DashboardEnterprise({
       )}
 
       </div>
+
+      {/* La finestra sta in fondo e non dentro la tabella: e' una sovrapposizione
+          su tutta la pagina, e annidarla in una cella la farebbe ereditare
+          l'overflow dello scorrimento orizzontale della tabella. */}
+      {personaTeam ? (
+        <FinestraTeam nome={personaTeam} onChiudi={() => setPersonaTeam(null)} />
+      ) : null}
     </div>
   );
 }
