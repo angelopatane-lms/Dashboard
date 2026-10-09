@@ -89,11 +89,30 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
   // HubSpot scrivono la stessa persona in modi diversi - maiuscole, spazi
   // doppi, l'apostrofo tipografico - e confrontarli tali e quali fallisce
   // proprio su chi ha un apostrofo nel cognome.
-  const persona = useMemo(() => {
-    if (!dati) return null;
+  const candidati = useMemo(() => {
+    if (!dati) return [];
     const k = chiaveNome(nome);
-    return dati.persone.find((p) => p.chiave === k) ?? null;
+    return dati.persone.filter((p) => p.chiave === k);
   }, [dati, nome]);
+
+  /**
+   * QUANDO LO STESSO NOME HA DUE ACCOUNT si deve scegliere, non indovinare.
+   *
+   * Sul portale sono sei - Nora D'Ascanio ne ha uno con l'indirizzo aziendale e
+   * uno con il gmail, e i team stanno solo sul primo. Cercando per nome si
+   * prendeva quello che capitava, e cambiare i team avrebbe potuto modificare
+   * l'account sbagliato senza che niente lo dicesse: quello vero sarebbe
+   * rimasto dov'era e la Dashboard avrebbe continuato a mostrarlo li'.
+   *
+   * Si parte da quello che ha gia' un sotto-team, perche' e' quello che qualcuno
+   * ha configurato; ma la scelta resta visibile e si puo' cambiare.
+   */
+  const [accountScelto, setAccountScelto] = useState<string | null>(null);
+  const persona = useMemo(() => {
+    if (!candidati.length) return null;
+    if (accountScelto) return candidati.find((c) => c.userId === accountScelto) ?? candidati[0];
+    return candidati.find((c) => c.sottoTeam.length) ?? candidati[0];
+  }, [candidati, accountScelto]);
 
   const nomiTeam = useMemo(
     () => new Map((dati?.team ?? []).map((t) => [t.id, t.nome])),
@@ -224,6 +243,27 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
             </div>
           ) : (
             <>
+              {candidati.length > 1 ? (
+                <>
+                  <label className="mb-1 block text-[11px] font-semibold tracking-wide text-amber-700 uppercase">
+                    Due account con questo nome
+                  </label>
+                  <select
+                    value={persona.userId}
+                    onChange={(e) => setAccountScelto(e.target.value)}
+                    disabled={inCorso}
+                    className={`${menu} mb-4 border-amber-300`}
+                  >
+                    {candidati.map((c) => (
+                      <option key={c.userId} value={c.userId}>
+                        {c.email || c.userId}
+                        {c.sottoTeam.length ? ` — ${c.sottoTeam[0].nome}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : null}
+
               <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                 Team
               </label>
