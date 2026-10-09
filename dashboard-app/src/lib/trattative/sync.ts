@@ -499,6 +499,15 @@ async function risolviIdCampagne(nomi: string[]): Promise<void> {
   for (const r of rows) idCampagne.set(r.nome as string, r.id as number);
 }
 
+/**
+ * Quanti giorni indietro cercare le trattative NATE, a ogni giro incrementale.
+ *
+ * Due e non uno: un giro che salta, o una creazione a cavallo della mezzanotte,
+ * non devono lasciare un buco. Sono una cinquantina di righe, gia' viste e
+ * riscritte identiche - costano una chiamata.
+ */
+const GIORNI_NATE = 2;
+
 export type TipoSyncTrattative = "bootstrap" | "incrementale";
 export type EsitoTrattative = {
   trattative: number;
@@ -834,8 +843,41 @@ export async function sincronizzaTrattative(
 
   const esito: EsitoTrattative = { trattative: 0, svolte: 0, noShow: 0, senzaCampagna: 0, troncato: false };
 
+  /**
+   * Prima le trattative NATE di recente, poi quelle modificate.
+   *
+   * IL GIRO INCREMENTALE CERCA PER DATA DI MODIFICA, e su questo portale
+   * qualcosa ne tocca in massa: il 9 ottobre 2026, dalle 05:21 del mattino,
+   * risultavano modificate 14.632 trattative della pipeline Appuntamenti,
+   * mentre quelle nate davvero quel giorno erano 24. Il giro ne lavora 1.200
+   * per volta, si tronca, riprende dal segnalibro e si tronca di nuovo: alle
+   * 17:57 era ancora agli id di due anni fa, e gli appuntamenti fissati quella
+   * mattina non erano mai arrivati. Non saltati - mai raggiunti, perche'
+   * l'arretrato si rigenera piu' in fretta di quanto lo smaltisca.
+   *
+   * E IL WEBHOOK NON COMPENSA: scatta sui passaggi di fase, non sulla nascita.
+   * Una trattativa appena creata non passa di li' finche' qualcuno non la
+   * muove, e intanto l'app di assegnazione legge zero appuntamenti per chi ne
+   * ha appena fissati due.
+   *
+   * Ventiquattro righe sono una chiamata sola e non troncano niente. Questo
+   * passaggio non tocca il segnalibro - quello appartiene alla ricerca per
+   * data di modifica, dove serve a non rifare il lavoro gia' fatto.
+   */
+  async function* daLavorare(): AsyncGenerator<{ ids: string[]; nate: boolean }> {
+    if (tipo === "incrementale") {
+      const daNate = new Date(Date.now() - GIORNI_NATE * 24 * 3600_000).toISOString();
+      for await (const b of cercaTrattative(token, daNate, "bootstrap", false, 0)) {
+        yield { ids: b, nate: true };
+      }
+    }
+    for await (const b of cercaTrattative(token, daIso, tipo, opzioni.perModifica, ripresa.daId)) {
+      yield { ids: b, nate: false };
+    }
+  }
+
   try {
-    for await (const blocco of cercaTrattative(token, daIso, tipo, opzioni.perModifica, ripresa.daId)) {
+    for await (const { ids: blocco, nate } of daLavorare()) {
       // Una chiamata per blocco, non una per trattativa.
       const contatti = await leggiContatti(token, blocco);
 
@@ -1004,11 +1046,15 @@ export async function sincronizzaTrattative(
         // IL SEGNALIBRO SI SPOSTA SOLO SU LAVORO FINITO. La ricerca impagina
         // per id crescente, quindi l'ultimo id di questo gruppo e' il punto
         // oltre il quale non resta niente da rifare.
-        ultimoIdVisto = Number(gruppoIds[gruppoIds.length - 1]) || ultimoIdVisto;
+        // NON DURANTE LE NATE: il segnalibro appartiene alla ricerca per data
+        // di modifica, e scriverci dentro l'id di una trattativa nuova farebbe
+        // ripartire quel giro da un punto che non ha mai lavorato.
+        if (!nate) ultimoIdVisto = Number(gruppoIds[gruppoIds.length - 1]) || ultimoIdVisto;
 
         await sleep(120);
 
         if (
+          !nate &&
           tipo === "incrementale" &&
           (esito.trattative >= MAX_INCREMENTALE || Date.now() - partito > BUDGET_MS)
         ) {
