@@ -60,6 +60,7 @@ export default async function Page() {
         campaigns={uniqueValues(righeMenu, "Campagna")}
         operatorLabel="Advisor"
         operatoriAmmessi={team ? team.nomi : null}
+        sottoTeamPerPersona={team?.sottoTeam}
         soloTabella
         hideCampagne
         hideInsights

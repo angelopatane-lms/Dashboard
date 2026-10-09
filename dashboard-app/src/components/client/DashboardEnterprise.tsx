@@ -42,6 +42,19 @@ import type { RawBoomRecord, RawDealRecord } from "@/app/api/hubspot-data/route"
 import { CHIUSURE_TIPOLOGIE, BOOM_TIPOLOGIE } from "@/lib/hubspotRegole";
 
 
+/**
+ * Il valore del menu Team e il nome del sotto-team su HubSpot.
+ *
+ * Non coincidono per uno solo - "telefonico" al singolare contro il team
+ * "Telefonici" - e bastava quello per far selezionare zero righe.
+ */
+const NOME_SOTTO_TEAM: Record<string, string> = {
+  programmi: "Programmi",
+  eventi: "Eventi",
+  telefonico: "Telefonici",
+  chatter: "Chatter"
+};
+
 type CampaignPeaksDatum = {
   date: string;
   [campaign: string]: string | number | null;
@@ -60,6 +73,7 @@ export default function DashboardEnterprise({
   operatorLabel,
   operatoriAmmessi,
   gestioneTeam,
+  sottoTeamPerPersona,
 }: {
   operatoriRows: CsvRow[];
   operatoriRowsOggi: CsvRow[];
@@ -96,6 +110,16 @@ export default function DashboardEnterprise({
    * sulla Dashboard principale.
    */
   gestioneTeam?: boolean;
+  /**
+   * Il sotto-team di ciascuno, per dividere la tabella in sezioni.
+   *
+   * ARRIVA DAL SERVER E NON DA UNA CHIAMATA DI QUESTO COMPONENTE: la rotta
+   * che lo serviva vuole la password piena, quindi le pagine pubbliche
+   * prendevano un 403 e si dividevano in modo diverso da quella interna -
+   * stessa tabella, due aspetti. Letto a monte, le quattro pagine mostrano
+   * le stesse sezioni e qui non si aspetta nessuna risposta.
+   */
+  sottoTeamPerPersona?: Record<string, string>;
 }) {
   // Le pagine si aprono sul mese in corso. Le date arrivano dal periodo
   // predefinito invece di essere ricalcolate qui: erano scritte due volte, in
@@ -104,43 +128,6 @@ export default function DashboardEnterprise({
   // Il nome su cui si e' cliccato, null quando la finestra e' chiusa.
   const [personaTeam, setPersonaTeam] = useState<string | null>(null);
 
-  /**
-   * Chi sta in quale sotto-team, per dividere la tabella in sezioni.
-   *
-   * SI CHIEDE SOLO DOVE SERVE: la rotta vuole la password piena, e le
-   * pagine pubbliche prenderebbero un 403. Senza, la tabella si divide come
-   * faceva prima, sui nomi scritti nel codice.
-   *
-   * SI RILEGGE QUANDO LA FINESTRA SI CHIUDE, perche' li' dentro i team si
-   * cambiano: altrimenti si sposta una persona e la sua riga resta nella
-   * sezione di prima fino al prossimo caricamento della pagina.
-   */
-  const [sottoTeamPerPersona, setSottoTeamPerPersona] = useState<Record<string, string> | undefined>(undefined);
-  useEffect(() => {
-    if (!gestioneTeam || personaTeam) return;
-    let vivo = true;
-    (async () => {
-      try {
-        const r = await fetch("/api/utenti/team", { cache: "no-store" });
-        if (!r.ok) return;
-        const d = (await r.json()) as {
-          persone?: Array<{ chiave: string | null; sottoTeam?: Array<{ nome: string | null }> }>;
-        };
-        if (!vivo) return;
-        const m: Record<string, string> = {};
-        for (const p of d.persone ?? []) {
-          const s = p.sottoTeam?.[0]?.nome;
-          if (p.chiave && s) m[p.chiave] = s;
-        }
-        setSottoTeamPerPersona(m);
-      } catch {
-        // Si resta con la divisione di prima invece di non averne nessuna.
-      }
-    })();
-    return () => {
-      vivo = false;
-    };
-  }, [gestioneTeam, personaTeam]);
 
   const periodoIniziale = useMemo(() => periodoScelto(PERIODO_DEFAULT), []);
   const defaultFrom = periodoIniziale.from;
@@ -389,13 +376,32 @@ export default function DashboardEnterprise({
   /** Chi finisce nel secondo gruppo, in fondo: dipende dalla pagina. */
   const secondoGruppo = vistaSetter ? eChatter : eAdvisorTelefonico;
 
+  /**
+   * Il menu Team filtra sul sotto-team vero, non su un elenco di nomi.
+   *
+   * PRIMA TRADUCEVA LA SCELTA IN UN SI' O NO su quattro nomi scritti nel
+   * codice: "Eventi" voleva dire "e' uno dei quattro telefonici", e tutto il
+   * resto era "Programmi". Dal momento in cui le sezioni della tabella hanno
+   * cominciato a seguire l'appartenenza vera, le due cose si sono separate:
+   * la sezione EVENTI ne mostrava otto e il filtro ne selezionava quattro.
+   * Lo stesso menu e la stessa tabella devono rispondere alla stessa domanda.
+   *
+   * SENZA LA FOTOGRAFIA si torna al comportamento di prima, che e' sbagliato
+   * ma noto: meglio di un filtro che non seleziona piu' niente.
+   */
   const righeTeam = useMemo(() => {
     if (!filters.team) return operatorSummaryAll;
+    if (sottoTeamPerPersona) {
+      const voluto = (NOME_SOTTO_TEAM[filters.team] ?? filters.team).toLowerCase();
+      return operatorSummaryAll.filter(
+        (r) => (sottoTeamPerPersona[chiaveNome(r.operatore)] ?? "").toLowerCase() === voluto
+      );
+    }
     // I valori del secondo gruppo, uno per pagina: "eventi" sulla Advisor
     // (il Team Eventi) e "chatter" sulla Setter.
     const sotto = filters.team === "eventi" || filters.team === "chatter";
     return operatorSummaryAll.filter((r) => secondoGruppo(r.operatore) === sotto);
-  }, [operatorSummaryAll, filters.team, secondoGruppo]);
+  }, [operatorSummaryAll, filters.team, secondoGruppo, sottoTeamPerPersona]);
 
 
   // L'AGENDA DEL GIORNO.
@@ -976,7 +982,7 @@ export default function DashboardEnterprise({
                   Caricamento dei dati in corso...
                 </div>
               ) : (
-              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} sottoTeamPerPersona={gestioneTeam && !soloTabella ? sottoTeamPerPersona : undefined} />
+              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} sottoTeamPerPersona={sottoTeamPerPersona} />
               )}
             </Card>
           </div>

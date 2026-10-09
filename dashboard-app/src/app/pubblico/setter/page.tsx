@@ -51,6 +51,7 @@ export default async function Page() {
         operators={uniqueValues(righeMenu, "Operatore")}
         campaigns={uniqueValues(righeMenu, "Campagna")}
         operatorLabel="Setter"
+        sottoTeamPerPersona={team?.sottoTeam}
         soloTabella
         hideCampagne
         hideInsights

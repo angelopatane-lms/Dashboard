@@ -9,6 +9,7 @@ export default function AdvisorSetterDashboardClient({
   operatorLabel,
   operatoriAmmessi,
   gestioneTeam,
+  sottoTeamPerPersona,
 }: {
   operatoriRows: CsvRow[];
   operatoriRowsOggi: CsvRow[];
@@ -17,6 +18,7 @@ export default function AdvisorSetterDashboardClient({
   operatorLabel?: string;
   operatoriAmmessi?: string[] | null;
   gestioneTeam?: boolean;
+  sottoTeamPerPersona?: Record<string, string>;
 }) {
   return (
     <DashboardEnterprise
@@ -27,6 +29,7 @@ export default function AdvisorSetterDashboardClient({
       operatorLabel={operatorLabel}
       operatoriAmmessi={operatoriAmmessi}
       gestioneTeam={gestioneTeam}
+      sottoTeamPerPersona={sottoTeamPerPersona}
       hideCampagne
       hideInsights
       useHubspot

@@ -32,7 +32,8 @@ export default async function Page() {
 
   // L'elenco dei Setter sta in una funzione sola, condivisa con la pagina
   // pubblica: vedi src/lib/operatoriTeam.ts.
-  const allowedOperatorSet = (await operatoriDelTeam("Setter"))?.chiavi ?? null;
+  const team = await operatoriDelTeam("Setter");
+  const allowedOperatorSet = team?.chiavi ?? null;
 
   const operatoriRowsFiltered = allowedOperatorSet
     ? operatoriRows.filter((r) => allowedOperatorSet!.has(chiaveNome((r["Operatore"] ?? "").toString())))
@@ -56,6 +57,7 @@ export default async function Page() {
         operators={operators}
         campaigns={campaigns}
         operatorLabel="Setter"
+        sottoTeamPerPersona={team?.sottoTeam}
       />
     </Container>
   );

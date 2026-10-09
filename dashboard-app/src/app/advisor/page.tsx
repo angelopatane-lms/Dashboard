@@ -71,6 +71,7 @@ export default async function Page() {
         campaigns={campaigns}
         operatorLabel="Advisor"
         operatoriAmmessi={advisorNomi}
+        sottoTeamPerPersona={team?.sottoTeam}
         gestioneTeam
       />
     </Container>

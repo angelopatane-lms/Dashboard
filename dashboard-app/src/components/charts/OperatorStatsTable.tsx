@@ -591,12 +591,26 @@ export default function OperatorStatsTable({
   })();
 
   const ordinate = gruppi.flatMap((g) => g.righe);
-  // Dove comincia ogni sezione, e come si chiama. Il primo gruppo non apre
-  // niente: una linea in cima alla tabella separerebbe dall'intestazione.
-  // La separazione ha senso solo quando i gruppi sono piu' di uno: con il
-  // filtro Team su un gruppo solo sarebbe una linea che non separa niente.
-  const apre = new Map<string, string | null>();
-  for (const g of gruppi.slice(1)) apre.set(g.righe[0].operatore, g.etichetta);
+
+  /**
+   * Dove comincia ogni sezione: il nome, e se ci va la linea sopra.
+   *
+   * IL PRIMO GRUPPO IL NOME CE L'HA LO STESSO, la linea no. Scritto la prima
+   * volta dando per scontato che il primo gruppo fosse sempre quello di chi un
+   * sotto-team non ce l'ha, e quindi senza nome da mostrare. Il 9 ottobre 2026
+   * sono entrate altre tre persone in Programmi: da quel momento ogni Advisor
+   * aveva un sotto-team, il primo gruppo era Programmi, e il suo nome spariva -
+   * dieci righe senza intestazione seguite da EVENTI, come se le prime non
+   * appartenessero a niente.
+   *
+   * La linea invece resta solo in mezzo: in cima separerebbe dall'intestazione
+   * delle colonne, che e' gia' una separazione.
+   */
+  const apre = new Map<string, { etichetta: string | null; linea: boolean }>();
+  gruppi.forEach((g, i) => {
+    if (i === 0 && !g.etichetta) return;
+    apre.set(g.righe[0].operatore, { etichetta: g.etichetta, linea: i > 0 });
+  });
 
   const totalTp = tassoPresa(totals.appuntamenti, totals.connessioni);
   // Sulla vista Setter il totale era soppresso perche' il denominatore era
@@ -694,8 +708,8 @@ export default function OperatorStatsTable({
         </thead>
         <tbody className="divide-y divide-slate-100">
           {ordinate.map((r) => {
-            const apreSezione = apre.has(r.operatore);
-            const etichettaSezione = apre.get(r.operatore) ?? null;
+            const sezione = apre.get(r.operatore);
+            const etichettaSezione = sezione?.etichetta ?? null;
             const tp = tassoPresa(effAppuntamenti(r), r.connessioni);
             const tc = tassoChiusura(effChiusure(r), effConsulenzeChiusura(r));
             // Quanti dei suoi appuntamenti si sono tenuti. Il denominatore sono
@@ -715,15 +729,18 @@ export default function OperatorStatsTable({
                   Il bordo sta sulle celle e non sul <tr> perche' `divide-y` sul
                   corpo della tabella imposta il bordo dei figli con una
                   specificita' piu' alta. */}
-              {apreSezione ? (
+              {sezione ? (
                 <tr {...(etichettaSezione ? {} : { "aria-hidden": "true" })}>
                   <td
-                    className={`${BLOCCATA} ${LINEA_DESTRA} border-t-2 border-slate-300 bg-white pt-2 pr-4 pb-0.5 pl-0 text-[10px] font-semibold tracking-wide text-slate-400 uppercase`}
+                    className={`${BLOCCATA} ${LINEA_DESTRA} bg-white pr-4 pb-0.5 pl-0 text-[10px] font-semibold tracking-wide text-slate-400 uppercase${sezione.linea ? " border-t-2 border-slate-300 pt-2" : " pt-1"}`}
                     style={{ left: 0 }}
                   >
                     {etichettaSezione}
                   </td>
-                  <td colSpan={29} className="border-t-2 border-slate-300 p-0" />
+                  <td
+                    colSpan={29}
+                    className={`p-0${sezione.linea ? " border-t-2 border-slate-300" : ""}`}
+                  />
                 </tr>
               ) : null}
               <tr className="group hover:bg-slate-50/70 transition-colors">
