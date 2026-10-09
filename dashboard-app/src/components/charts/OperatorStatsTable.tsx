@@ -673,7 +673,14 @@ export default function OperatorStatsTable({
               ) : null}
               <tr className="group hover:bg-slate-50/70 transition-colors">
                 <td
-                  className={`${BLOCCATA} ${LINEA_DESTRA} bg-white py-1.5 pr-4 pl-0 font-medium text-slate-800 whitespace-nowrap group-hover:bg-slate-50`}
+                  /* I MARGINI PASSANO AL PULSANTE quando il nome si puo'
+                     cliccare: cosi' riempie la cella e il grigio copre tutta
+                     la casella, non solo le lettere. Tenendoli qui, il
+                     passaggio del mouse avrebbe colorato un rettangolino
+                     attorno al testo con dei bordi bianchi intorno. Il p-0
+                     serve: una cella di tabella nasce con un pixel di padding
+                     per conto suo, e quel pixel restava bianco tutt'intorno. */
+                  className={`${BLOCCATA} ${LINEA_DESTRA} bg-white font-medium text-slate-800 whitespace-nowrap group-hover:bg-slate-50${onApriTeam ? " p-0" : " py-1.5 pr-4 pl-0"}`}
                   style={{ left: 0 }}
                 >
                   {/* IL NOME SI CLICCA SOLO DOVE SERVE: la finestra dei team
@@ -689,7 +696,7 @@ export default function OperatorStatsTable({
                     <button
                       type="button"
                       onClick={() => onApriTeam(r.operatore)}
-                      className="-ml-1.5 cursor-pointer rounded px-1.5 py-0.5 text-left transition-colors hover:bg-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-400"
+                      className="block h-full w-full cursor-pointer py-1.5 pr-4 pl-0 text-left transition-colors hover:bg-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-400"
                       title={`Team di ${r.operatore} su HubSpot`}
                     >
                       {r.operatore}

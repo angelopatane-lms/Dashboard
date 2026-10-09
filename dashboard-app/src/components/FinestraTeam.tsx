@@ -100,7 +100,26 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
     [dati]
   );
 
-  const principali = useMemo(() => (dati?.team ?? []).filter((t) => t.principale), [dati]);
+  /**
+   * I team fra cui si puo' scegliere: quelli per cui la regola definisce dei
+   * sotto-team, cioe' Advisor e Setter.
+   *
+   * SI RICAVA DALLA REGOLA invece di essere un secondo elenco: due liste da
+   * tenere allineate a mano divergono alla prima aggiunta, e la differenza si
+   * vedrebbe come un team che compare nel menu ma non offre nessun sotto-team.
+   */
+  const principali = useMemo(
+    () => (dati?.team ?? []).filter((t) => t.principale && dati?.sottoPerPrincipale[t.id]),
+    [dati]
+  );
+
+  // Se sta in un team che da qui non si sceglie - Customer Success, Coach LMS -
+  // va comunque mostrato: il menu deve dire la verita' su dov'e' adesso, anche
+  // quando non e' una destinazione possibile.
+  const fuoriElenco =
+    persona?.principale && !principali.some((t) => t.id === persona.principale!.id)
+      ? persona.principale
+      : null;
 
   const sottoAmmessi = useMemo(() => {
     if (!dati || !persona?.principale) return [];
@@ -204,7 +223,16 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
                 disabled={inCorso}
                 className={`${menu} mb-4`}
               >
-                {persona.principale ? null : <option value="">nessuno</option>}
+                {persona.principale ? null : (
+                  <option value="" disabled>
+                    —
+                  </option>
+                )}
+                {fuoriElenco ? (
+                  <option value={fuoriElenco.id} disabled>
+                    {fuoriElenco.nome}
+                  </option>
+                ) : null}
                 {principali.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.nome}
@@ -215,13 +243,21 @@ export default function FinestraTeam({ nome, onChiudi }: { nome: string; onChiud
               <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                 Sotto-team
               </label>
+              {/* NIENTE "NESSUNO" FRA LE SCELTE: da qui si sposta, non si
+                  svuota. Chi un sotto-team non ce l'ha vede un trattino che non
+                  si puo' selezionare - lo stato vero si legge, ma indietro non
+                  ci si torna per sbaglio. */}
               <select
                 value={persona.sottoTeam[0]?.id ?? SENZA}
-                onChange={(e) => void manda({ sottoTeam: e.target.value === SENZA ? null : e.target.value })}
+                onChange={(e) => void manda({ sottoTeam: e.target.value })}
                 disabled={inCorso || !sottoAmmessi.length}
                 className={menu}
               >
-                <option value={SENZA}>nessuno</option>
+                {persona.sottoTeam.length ? null : (
+                  <option value={SENZA} disabled>
+                    —
+                  </option>
+                )}
                 {sottoAmmessi.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.nome}
