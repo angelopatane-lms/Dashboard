@@ -112,10 +112,34 @@ async function lavora(dealId: string): Promise<void> {
   }
 }
 
+/**
+ * I SEGRETI CHE QUESTO ENDPOINT ACCETTA: uno per chiamante, non uno per tutti.
+ *
+ * PERCHE' DUE. Il valore di `HUBSPOT_WEBHOOK_SECRET` e' di tipo *Secret* su
+ * Vercel - si sostituisce, non si rilegge - e vive dentro la configurazione di
+ * un workflow che nessuno ricorda piu' quale sia. Il 9 ottobre 2026 serviva
+ * aggiungere un secondo chiamante, il flusso che annuncia le trattative appena
+ * create, e le strade erano due: cercare il vecchio valore nei flussi e negli
+ * Apps Script, oppure sostituirlo e aggiornare tutti i chiamanti insieme - con
+ * una finestra di 401 e il rischio di dimenticarne uno, che poi smette di
+ * consegnare in silenzio.
+ *
+ * Accettarne due toglie il problema: il chiamante che c'e' non si tocca, il
+ * nuovo nasce con una credenziale sua. Ed e' anche piu' sano in generale -
+ * quando si vuole ritirare la vecchia, la si spegne e si guarda chi smette di
+ * consegnare: e' l'unico modo serio per scoprire chi la stava usando.
+ *
+ * NON E' UN INDEBOLIMENTO: due valori validi non sono piu' indovinabili di
+ * uno, e ciascuno copre meno superficie.
+ */
+const NOMI_SEGRETO = ["HUBSPOT_WEBHOOK_SECRET", "HUBSPOT_TRATTATIVA_SECRET"] as const;
+
 export async function POST(req: NextRequest) {
-  const segreto = process.env.HUBSPOT_WEBHOOK_SECRET;
-  if (!segreto) {
-    await annota("errore", "HUBSPOT_WEBHOOK_SECRET non impostato");
+  const ammessi = NOMI_SEGRETO.map((n) => process.env[n]).filter(
+    (v): v is string => Boolean(v && v.length)
+  );
+  if (!ammessi.length) {
+    await annota("errore", `nessuno di ${NOMI_SEGRETO.join(" o ")} e' impostato`);
     return NextResponse.json({ error: "non configurato" }, { status: 500 });
   }
 
@@ -133,7 +157,11 @@ export async function POST(req: NextRequest) {
   // giusto, era giusto anche l'indirizzo, e il rifiuto arrivava senza dire
   // quale delle due cose non andava. Si accettano tutti e due.
   const dato = req.nextUrl.searchParams.get("segreto") ?? req.nextUrl.searchParams.get("k") ?? "";
-  if (!ugualiInSicurezza(dato, segreto)) {
+  // SI CONFRONTANO TUTTI, sempre, anche dopo averne trovato uno giusto: uscire
+  // al primo che combacia renderebbe il tempo di risposta diverso a seconda di
+  // quale segreto si e' indovinato.
+  const valido = ammessi.reduce((ok, s) => ugualiInSicurezza(dato, s) || ok, false);
+  if (!valido) {
     // COSA NON TORNAVA, senza scrivere il segreto nel log: se il parametro non
     // c'e' il problema e' il nome, se c'e' ma di lunghezza diversa e' un
     // valore sbagliato o uno spazio di troppo, se la lunghezza e' la stessa e'
@@ -142,7 +170,8 @@ export async function POST(req: NextRequest) {
     await annota(
       "respinto",
       dato
-        ? `valore diverso da quello configurato (arrivati ${dato.length} caratteri, attesi ${segreto.length})`
+        ? `valore diverso da quelli configurati (arrivati ${dato.length} caratteri, ` +
+          `attesi ${[...new Set(ammessi.map((s) => s.length))].join(" o ")})`
         : "nessun parametro segreto/k nell'indirizzo"
     );
     return NextResponse.json({ error: "non autorizzato" }, { status: 401 });
@@ -188,6 +217,8 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     webhook: "hubspot-trattativa",
-    segreto: Boolean(process.env.HUBSPOT_WEBHOOK_SECRET)
+    // Quanti segreti sono configurati, non quali: serve a capire se il
+    // nuovo chiamante puo' gia' passare, senza dire niente sui valori.
+    segreti: NOMI_SEGRETO.filter((n) => Boolean(process.env[n])).length
   });
 }
