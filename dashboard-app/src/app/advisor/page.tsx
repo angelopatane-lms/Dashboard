@@ -62,8 +62,10 @@ export default async function Page() {
           intera che nessuna agenda.
 
           gestioneTeam: i nomi si cliccano per vedere e cambiare i loro team
-          su HubSpot. Solo qui: la pagina Setter e quelle pubbliche usano lo
-          stesso componente e non ricevono questo interruttore. */}
+          su HubSpot. Ce l'ha anche la pagina Setter, e deve averla: spostando
+          un Advisor ai Setter la sua riga sparisce da qui, e senza la finestra
+          di la' non si potrebbe piu' riportarlo indietro. Le pagine pubbliche
+          restano in sola lettura. */}
       <AdvisorSetterDashboardClient
         operatoriRows={operatoriRowsFiltered}
         operatoriRowsOggi={operatoriRowsOggiFiltered}

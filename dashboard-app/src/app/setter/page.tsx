@@ -58,6 +58,7 @@ export default async function Page() {
         campaigns={campaigns}
         operatorLabel="Setter"
         sottoTeamPerPersona={team?.sottoTeam}
+        gestioneTeam
       />
     </Container>
   );
