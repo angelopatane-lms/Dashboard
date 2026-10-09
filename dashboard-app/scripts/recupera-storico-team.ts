@@ -158,7 +158,15 @@ const insieme = (v: string) =>
   new Set((v ?? "").split(";").map((x) => x.trim()).filter(Boolean));
 
 type Movimento = {
-  ownerId: string;
+  /**
+   * L'ID UTENTE, non quello proprietario.
+   *
+   * Sono due numeri diversi per la stessa persona, e qui dentro si parte
+   * dall'id proprietario perche' e' quello scritto sui contatti. Le righe
+   * osservate e quelle scritte dalla finestra usano l'id utente: salvare
+   * l'altro vorrebbe dire due meta' dello stesso storico che non si trovano.
+   */
+  userId: string;
   nome: string;
   quando: Date;
   azione: "aggiunto" | "tolto";
@@ -176,7 +184,7 @@ type Movimento = {
  */
 function movimentiDi(
   rec: Array<{ id: string; propertiesWithHistory?: Record<string, Voce[]> }>,
-  ownerId: string,
+  userId: string,
   nome: string
 ): Movimento[] {
   // giorno -> contatto -> {prima, dopo}
@@ -217,7 +225,7 @@ function movimentiDi(
     for (const [k, n] of conta) {
       if (n / rec.length < SOGLIA) continue;
       out.push({
-        ownerId,
+        userId,
         nome,
         quando: new Date(`${giorno}T12:00:00.000Z`),
         azione: k[0] === "+" ? "aggiunto" : "tolto",
@@ -259,7 +267,7 @@ function movimentiDi(
       continue;
     }
     const rec = await cronologie(token, ids);
-    const m = movimentiDi(rec, p.id, p.nome);
+    const m = movimentiDi(rec, p.userId, p.nome);
     if (!m.length) continue;
     tutti.push(...m);
     console.log(`${p.nome} (${ids.length} contatti)`);
@@ -307,12 +315,17 @@ function movimentiDi(
        VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, NULL, NULL, 'ricostruito', $8)`,
       [
         x.quando.toISOString(),
-        x.ownerId,
+        x.userId,
         x.nome,
         x.azione,
         PRINCIPALI.has(x.teamId) ? "principale" : "secondario",
         x.teamId,
-        nomiTeam.get(x.teamId) ?? null,
+        // UN TEAM CANCELLATO HA COMUNQUE UN NOME DA SCRIVERE: salvando null,
+        // la finestra mostrava "uscita da —", che si legge come "da niente".
+        // Il 1 giugno 2026 sette persone sono uscite dal team 141675847, che
+        // oggi non esiste piu': e' il movimento piu' importante dell'anno e
+        // sarebbe rimasto illeggibile.
+        nomiTeam.get(x.teamId) ?? `team ${x.teamId}`,
         `${x.visti}/${x.suQuanti}`
       ]
     );
