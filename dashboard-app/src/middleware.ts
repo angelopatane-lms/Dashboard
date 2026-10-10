@@ -64,7 +64,20 @@ export const config = {
   // per una rotta che il browser deve poter chiamare: lì il segreto finirebbe
   // nel codice servito, e chiunque apra gli strumenti per sviluppatori se lo
   // porterebbe via.
+  //
+  // `icone/` E' L'UNICA ECCEZIONE DI TIPO DIVERSO, e ha una regola sua: ci
+  // stanno SOLO immagini che devono essere raggiungibili da fuori senza
+  // password, perche' un servizio esterno le scarica dai propri server. La
+  // prima e' l'icona del bot Slack delle assegnazioni: Slack va a prendere
+  // l'immagine di `icon_url` da casa sua, e un file dietro autenticazione gli
+  // risponderebbe con la pagina di login - 9 KB di HTML al posto di un PNG,
+  // senza nessun errore visibile. Misurato il 10 ottobre 2026.
+  //
+  // DENTRO `icone/` NON VA NIENT'ALTRO. Non e' una cartella di file statici:
+  // e' un elenco di cose che abbiamo deciso di pubblicare. Un'immagine messa
+  // li' resta leggibile da chiunque conosca l'indirizzo, anche dopo che e'
+  // stata tolta dalla pagina.
   matcher: [
-    "/((?!_next/static|_next/image|favicon\\.ico|icon\\.svg|accesso|api/login|api/cron/|api/webhook/|api/trascrizione/|api/lms/).*)"
+    "/((?!_next/static|_next/image|favicon\\.ico|icon\\.svg|icone/|accesso|api/login|api/cron/|api/webhook/|api/trascrizione/|api/lms/).*)"
   ]
 };
