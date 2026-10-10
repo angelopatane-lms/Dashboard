@@ -162,7 +162,9 @@ function motivoBreve(testo: string): string {
   if (limite) {
     if (!limite[2]) return `limite ${limite[1]}`;
     const quanti = Number(limite[2]);
-    return `limite ${limite[1]} · ${quanti} ${quanti === 1 ? "appuntamento" : "appuntamenti"}`;
+    // LA BARRA E NON IL TRATTINO: fra due numeri "limite 6 - 2 appuntamenti"
+    // si legge come una sottrazione.
+    return `limite ${limite[1]}  |  ${quanti} ${quanti === 1 ? "appuntamento" : "appuntamenti"}`;
   }
 
   if (/nessun lead disponibile/i.test(m)) return "pool vuoto";
