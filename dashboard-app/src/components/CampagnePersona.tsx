@@ -233,23 +233,21 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
                   Stessa forma dei riquadri in cima alla sezione, perche'
                   dicono la stessa cosa: quanto materiale c'e'. */}
               {categorie.length ? (
-                <div className="mb-4 overflow-hidden rounded-lg border border-slate-200 bg-white">
-                  <div className="grid grid-cols-3 divide-x divide-y divide-slate-100 sm:grid-cols-6 sm:divide-y-0">
-                    {categorie.map((c) => (
-                      <div
-                        key={c.etichetta}
-                        title={`Campagne il cui nome contiene: ${c.frammenti.join(", ")}`}
-                        className="cursor-help px-4 py-2.5"
-                      >
-                        <div className="truncate text-[11px] uppercase leading-tight tracking-wide text-slate-500">
-                          {c.etichetta}
-                        </div>
-                        <div className="text-xl font-semibold leading-tight tabular-nums text-slate-900">
-                          {formatoNumero.format(c.assegnabili)}
-                        </div>
+                <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                  {categorie.map((c) => (
+                    <div
+                      key={c.etichetta}
+                      title={`${c.etichetta} — campagne il cui nome contiene: ${c.frammenti.join(", ")}`}
+                      className="cursor-help rounded-lg border border-slate-200 bg-white px-4 py-3"
+                    >
+                      <div className="truncate text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        {c.etichetta}
                       </div>
-                    ))}
-                  </div>
+                      <div className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
+                        {formatoNumero.format(c.assegnabili)}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 /* I RIQUADRI ARRIVANO DOPO L'ELENCO e lo dicono, invece di
@@ -269,7 +267,11 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
                   E IL RUOLO SPARISCE DALLE RIGHE, perche' lo dice la colonna:
                   ripeterlo ventinove volte era rumore che rubava lo spazio ai
                   nomi lunghi. */}
-              <div className="grid gap-x-8 gap-y-6 lg:grid-cols-2">
+              {/* DUE COLONNE SOLO SOPRA I 1280px. A 1024 ci stavano per
+                  larghezza ma non per contenuto: nome, targhette e tendina non
+                  entravano in una riga sola e la tendina finiva sotto il nome,
+                  che e' peggio di una colonna sola. */}
+              <div className="grid gap-x-8 gap-y-6 xl:grid-cols-2">
                 {gruppi.map(([ruolo, gente]) => (
                   <div key={ruolo}>
                     <div className="mb-1 flex items-baseline gap-2 border-b border-slate-200 pb-1.5">
