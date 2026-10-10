@@ -745,35 +745,34 @@ export default function AssegnazioneContatti() {
           bianco. */}
       {campagneAperte ? <CampagnePersonaPannello bloccato={bloccato} /> : null}
 
-      {/* IL DETTAGLIO IN UN RIQUADRO SUO, che compare solo da aperto: a elenco
-          chiuso sarebbe stata una carta vuota sotto i comandi. */}
+      {/* IL DETTAGLIO COMPARE SOLO DA APERTO: a elenco chiuso sarebbe stata
+          una carta vuota sotto i comandi. */}
       {!aperto ? null : (
-      <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white">
-
-        {/* CHI HA RICEVUTO, che e' l'unica cosa che i due numeri qui sopra non
-            dicono. Sta subito sotto di loro perche' ne e' la scomposizione: il
-            totale e la somma di questa colonna sono lo stesso numero. */}
         <div>
-          {/* TRE COSE SULLA STESSA RIGA: il giorno a sinistra, l'apertura al
-              centro, l'aggiornamento a destra. Il titolo fisso "Chi ha
-              ricevuto oggi" e' diventato il comando che apre: diceva quello
-              che l'elenco dice da se', e adesso almeno serve a qualcosa. */}
-          {/* LA TESTATA DEL RIQUADRO, con la riga che la chiude.
-              Senza quel bordo la barra galleggiava: il giorno e la rotellina
-              sembravano appoggiati sullo sfondo e il riquadro pareva
-              cominciare da "Serviti", che e' due righe piu' giu'. */}
-          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-slate-100 px-4 py-2.5">
+          {/* IL GIORNO E L'AGGIORNAMENTO STANNO SULLO SFONDO, fuori dal
+              riquadro. Non sono dati della giornata: sono i comandi che
+              scelgono quale giornata guardare e quando rileggerla. Dentro la
+              carta sembravano la sua prima riga; qui sopra si leggono per
+              quello che sono, e la carta comincia dove comincia il contenuto.
+
+              LE FRECCE INVECE DI UN CALENDARIO: quasi sempre si vuole ieri, e
+              con un calendario ieri costa tre clic invece di uno. */}
+          <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-1 pb-2">
             {/* LE FRECCE INVECE DI UN CALENDARIO: quasi sempre si vuole ieri,
                 e con un calendario ieri costa tre clic invece di uno.
                 Compaiono con l'elenco: a lista chiusa il giorno non si vede,
                 quindi cambiarlo non mostrerebbe niente. */}
-            <div className={`flex items-center gap-1 justify-self-start ${aperto ? "" : "invisible"}`}>
+            <span />
+
+            {/* IL GIORNO AL CENTRO, fra le due frecce: e' la prima cosa che
+                si cerca aprendo l'elenco, e in un angolo la si cercava. */}
+            <div className={`flex items-center gap-1 justify-self-center ${aperto ? "" : "invisible"}`}>
               <button
                 type="button"
                 aria-label="Giorno precedente"
                 onClick={() => vaiA(indietro + 1)}
                 disabled={dettaglioInCorso || indietro >= GIORNI_INDIETRO}
-                className="rounded px-1.5 py-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 disabled:hover:bg-transparent"
+                className="rounded px-2 py-0.5 text-xl leading-none text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 disabled:hover:bg-transparent"
               >
                 ‹
               </button>
@@ -785,13 +784,11 @@ export default function AssegnazioneContatti() {
                 aria-label="Giorno successivo"
                 onClick={() => vaiA(indietro - 1)}
                 disabled={dettaglioInCorso || indietro === 0}
-                className="rounded px-1.5 py-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 disabled:hover:bg-transparent"
+                className="rounded px-2 py-0.5 text-xl leading-none text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 disabled:hover:bg-transparent"
               >
                 ›
               </button>
             </div>
-
-            <span />
 
             {/* AGGIORNA SOLO SU OGGI. Una giornata passata non si ricalcola -
                 HubSpot non la sa piu' - quindi un bottone che promette di
@@ -830,10 +827,8 @@ export default function AssegnazioneContatti() {
             )}
           </div>
 
-          {/* NIENTE DA MOSTRARE FINCHE' E' CHIUSO: non e' solo questione
-              di spazio: a elenco chiuso il dettaglio non viene nemmeno
-              chiesto, e quelle chiamate a HubSpot non si spendono. */}
-          {aperto ? (
+          {/* IL RIQUADRO COMINCIA QUI, con il contenuto. */}
+          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
             <>
             {/* LE DUE FONTI A CONFRONTO, E IL RITARDO DISTINTO DAL GUASTO.
                 Il totale lo sa l'app e arriva fresco ogni minuto; il dettaglio
@@ -923,12 +918,31 @@ export default function AssegnazioneContatti() {
                 // LO SPAZIO A DESTRA E' PER LA BARRA. Senza, appoggia sui numeri
                 // e sembra tagliarli.
                 <>
-                  <div className="mb-1 flex items-baseline gap-2 border-b border-slate-200 pb-1.5">
+                  {/* RICHIESTE ACCOLTE, NON PERSONE SERVITE. I due numeri
+                      contavano cose diverse: qui le persone, nella colonna
+                      accanto le richieste. Una persona puo' chiedere due volte
+                      e ricevere due volte - oggi Mariarosaria ha 40 lead, cioe'
+                      due richieste da 20 - e contarla una sola volta faceva
+                      sembrare la giornata piu' corta di com'era.
+
+                      SE LE RICHIESTE NON SI LEGGONO si ricade sulle persone,
+                      che e' il numero che si ha: meglio un conteggio piu'
+                      basso di un trattino. */}
+                  <div
+                    className="mb-1 flex items-baseline gap-2 border-b border-slate-200 pb-1.5"
+                    title={
+                      dettaglio.richieste
+                        ? `${dettaglio.righe.length} persone`
+                        : "le richieste non si sono lette: questo e' il numero di persone"
+                    }
+                  >
                     <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Serviti
+                      Accolte
                     </span>
                     <span className="text-[11px] tabular-nums text-slate-400">
-                      {dettaglio.righe.length}
+                      {dettaglio.richieste
+                        ? dettaglio.richieste.filter((r) => r.esito === "assegnato").length
+                        : dettaglio.righe.length}
                     </span>
                   </div>
                   <ul className="max-h-[420px] overflow-y-auto pr-3">
@@ -993,7 +1007,7 @@ export default function AssegnazioneContatti() {
                       title={`${dettaglio.richieste.length} richieste in tutto, ${dettaglio.richieste.filter((r) => r.esito === "assegnato").length} servite`}
                     >
                       <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Non serviti
+                        Rifiutate
                       </span>
                       <span className="text-[11px] tabular-nums text-slate-400">
                         {dettaglio.richieste.filter((r) => r.esito !== "assegnato").length}
@@ -1028,9 +1042,8 @@ export default function AssegnazioneContatti() {
             ) : null}
             </div>
             </>
-          ) : null}
+          </div>
         </div>
-      </div>
       )}
 
       {/* L'ERRORE FUORI DAL RIQUADRO DEL DETTAGLIO: riguarda i comandi, non
