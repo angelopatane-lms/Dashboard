@@ -696,7 +696,7 @@ export default function AssegnazioneContatti() {
             <Riga
               nome="Campagne"
               aiuto="I contatti di queste campagne non vengono assegnati, finche' il filtro resta attivo. Si scelgono fra le campagne Live: una campagna e le sue varianti si aggiungono insieme e restano salvate con i nomi interi."
-              stato="Escluse dall'Assegnazione"
+              stato="Escluse dall'assegnazione"
             >
               <select
                 value=""
@@ -798,7 +798,7 @@ export default function AssegnazioneContatti() {
               Assegnazioni
             </span>
             <span className="min-w-0 flex-1 text-xs text-slate-500">
-              Dettaglio Richieste
+              Dettaglio richieste
             </span>
             <svg
               aria-hidden="true"
