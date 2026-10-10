@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { lineeCampagne } from "@/lib/assegnazioni/linee";
+import { categorieAssegnabili, MAX_CATEGORIE } from "@/lib/assegnazioni/categorie";
+import { CATEGORIE } from "@/lib/campaignCategory";
 
 /**
  * Le campagne che ciascuna persona riceve per prime.
@@ -67,31 +68,31 @@ async function chiama(metodo: "GET" | "POST", corpo?: unknown) {
 /**
  * Le linee accanto alle persone, in una risposta sola.
  *
- * LE DUE COSE ARRIVANO DA POSTI DIVERSI - le persone dall'app, le linee
- * dall'archivio campagne di qui - ma separarle in due chiamate vorrebbe dire
+ * LE DUE COSE ARRIVANO DA POSTI DIVERSI - le persone dall'app, le categorie
+ * dal serbatoio contato di qui - ma separarle in due chiamate vorrebbe dire
  * una pagina che puo' disegnare le caselle prima di sapere cosa c'e' dentro.
  *
- * SE LE LINEE NON SI LEGGONO non si fa cadere la sezione: si risponde con
+ * SE LE CATEGORIE NON SI LEGGONO non si fa cadere la sezione: si risponde con
  * l'elenco vuoto, la tendina lo dice, e le preferenze gia' impostate restano
  * visibili. Il contrario - mostrare le caselle senza sapere quali esistono -
- * farebbe sembrare che le linee siano finite.
+ * farebbe sembrare che le categorie siano finite.
  */
 async function rispondi(stato: number, dati: Record<string, unknown>) {
   if (stato !== 200) {
     return NextResponse.json(dati, { status: stato, headers: { "Cache-Control": "no-store" } });
   }
-  let linee: Awaited<ReturnType<typeof lineeCampagne>> = [];
+  let categorie: Awaited<ReturnType<typeof categorieAssegnabili>> = [];
   const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
   if (token) {
     try {
-      linee = await lineeCampagne(token);
+      categorie = await categorieAssegnabili(token);
     } catch (e) {
-      console.error("[campagne-persona] linee:", e);
+      console.error("[campagne-persona] categorie:", e);
     }
   }
   const persone = (Array.isArray(dati.persone) ? dati.persone : []) as Persona[];
   return NextResponse.json(
-    { persone, linee },
+    { persone, categorie, massimo: MAX_CATEGORIE },
     { headers: { "Cache-Control": "no-store" } }
   );
 }
@@ -109,19 +110,36 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "employee_id mancante o non valido" }, { status: 400 });
   }
 
-  // SI MANDA SOLO QUELLO CHE SI RICONOSCE. Le linee arrivano come elenco e si
-  // uniscono qui: all'app serve una stringa, ma farle viaggiare gia' unite
-  // vorrebbe dire fidarsi della pagina su come sono separate.
-  const scelte = Array.isArray(corpo.campagne) ? corpo.campagne : [];
-  const pulite = scelte
-    .filter((c: unknown): c is string => typeof c === "string")
-    .map((c: string) => c.trim().toLowerCase())
-    .filter(Boolean)
-    .slice(0, 40);
+  // SI MANDA SOLO QUELLO CHE SI RICONOSCE. I frammenti arrivano come elenco e
+  // si uniscono qui: all'app serve una stringa, ma farli viaggiare gia' uniti
+  // vorrebbe dire fidarsi della pagina su come sono separati.
+  const scelte: unknown[] = Array.isArray(corpo.campagne) ? corpo.campagne : [];
+  const pulite = [
+    ...new Set(
+      scelte
+        .filter((c): c is string => typeof c === "string")
+        .map((c) => c.trim().toLowerCase())
+        .filter(Boolean)
+    )
+  ];
+
+  // IL TETTO SI FA RISPETTARE ANCHE QUI, non solo nella pagina: oltre tre
+  // categorie la ricerca di HubSpot sfora i diciotto filtri totali e risponde
+  // 400, che dentro l'app fa `break` in silenzio - zero lead per tutti. Una
+  // regola che vive solo nell'interfaccia non e' una regola.
+  const categorieScelte = new Set(
+    pulite.map((f) => CATEGORIE.find((c) => c.frammenti.includes(f))?.etichetta ?? f)
+  );
+  if (categorieScelte.size > MAX_CATEGORIE) {
+    return NextResponse.json(
+      { error: `al massimo ${MAX_CATEGORIE} categorie per persona` },
+      { status: 400 }
+    );
+  }
 
   const { stato, dati } = await chiama("POST", {
     employee_id: id,
-    campagne: [...new Set(pulite)].join(",")
+    campagne: pulite.join(",")
   });
   return rispondi(stato, dati);
 }

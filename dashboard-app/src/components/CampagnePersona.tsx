@@ -15,9 +15,9 @@ import { useCallback, useEffect, useState } from "react";
  * campagne" invece di restare bianca - uno spazio vuoto si legge come
  * un'impostazione mancante, e questa invece e' un'impostazione precisa.
  *
- * CHIUSA DI PARTENZA. L'elenco delle linee costa una ventina di ricerche su
- * HubSpot, su un token condiviso con decine di flussi Zapier. Chi apre la
- * sezione quasi sempre viene per gli interruttori.
+ * CHIUSA DI PARTENZA. Contare quanti contatti ha ogni categoria costa una
+ * ventina di chiamate a HubSpot, su un token condiviso con decine di flussi
+ * Zapier. Chi apre la sezione quasi sempre viene per gli interruttori.
  */
 
 type Persona = {
@@ -28,14 +28,24 @@ type Persona = {
   campagne_preferite: string;
 };
 
-type Linea = { chiave: string; etichetta: string; assegnabili: number };
+/**
+ * Una categoria del marketing, con i frammenti che la definiscono.
+ *
+ * SI SALVANO I FRAMMENTI, NON L'ETICHETTA: l'app di assegnazione confronta
+ * `id_campagna_refresh` con quegli stessi frammenti - trattino basso finale
+ * compreso - percio' la categoria che decide chi riceve un lead e quella
+ * scritta nella tabella Campagne sono la stessa cosa.
+ */
+type Categoria = { etichetta: string; frammenti: string[]; assegnabili: number };
 
 const formatoNumero = new Intl.NumberFormat("it-IT");
 
 export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
   const [aperto, setAperto] = useState(false);
   const [persone, setPersone] = useState<Persona[]>([]);
-  const [linee, setLinee] = useState<Linea[]>([]);
+  const [categorie, setCategorie] = useState<Categoria[]>([]);
+  /** Quante se ne possono scegliere: lo dice il server, non una costante di qui. */
+  const [massimo, setMassimo] = useState(3);
   const [inCorso, setInCorso] = useState(false);
   const [errore, setErrore] = useState<string | null>(null);
   /** Chi si sta salvando in questo momento: la sua riga resta ferma. */
@@ -49,7 +59,8 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
       const d = await r.json();
       if (!r.ok) throw new Error(d?.error ?? `errore ${r.status}`);
       setPersone(d.persone ?? []);
-      setLinee(d.linee ?? []);
+      setCategorie(d.categorie ?? []);
+      if (typeof d.massimo === "number") setMassimo(d.massimo);
     } catch (e) {
       setErrore(e instanceof Error ? e.message : String(e));
     } finally {
@@ -84,7 +95,7 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
       const d = await r.json();
       if (!r.ok) throw new Error(d?.error ?? `errore ${r.status}`);
       setPersone(d.persone ?? []);
-      if (d.linee?.length) setLinee(d.linee);
+      if (d.categorie?.length) setCategorie(d.categorie);
     } catch (e) {
       setErrore(e instanceof Error ? e.message : String(e));
     } finally {
@@ -92,13 +103,35 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
     }
   }, []);
 
-  const scelteDi = (p: Persona) =>
+  /** I frammenti salvati per una persona. */
+  const frammentiDi = (p: Persona) =>
     (p.campagne_preferite || "")
       .split(",")
       .map((c) => c.trim())
       .filter(Boolean);
 
-  const conPreferenza = persone.filter((p) => scelteDi(p).length).length;
+  /**
+   * Le categorie di una persona, ricavate dai frammenti salvati.
+   *
+   * SI RISALE DAL FRAMMENTO ALL'ETICHETTA invece di salvare l'etichetta: se un
+   * giorno il marketing aggiunge un frammento a una categoria, le preferenze
+   * gia' impostate lo ereditano. Un frammento che nessuna categoria rivendica
+   * si mostra com'e' - e' sempre meglio di farlo sparire.
+   */
+  const categorieDi = (p: Persona) => {
+    const fr = frammentiDi(p);
+    const viste: { etichetta: string; frammenti: string[] }[] = [];
+    for (const c of categorie) {
+      if (c.frammenti.some((f) => fr.includes(f))) viste.push(c);
+    }
+    const coperti = new Set(viste.flatMap((c) => c.frammenti));
+    for (const f of fr) {
+      if (!coperti.has(f)) viste.push({ etichetta: f, frammenti: [f] });
+    }
+    return viste;
+  };
+
+  const conPreferenza = persone.filter((p) => frammentiDi(p).length).length;
 
   return (
     <div>
@@ -110,7 +143,7 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
       >
         <span
           className="w-44 shrink-0 cursor-help text-sm font-medium text-slate-800"
-          title="Le linee di campagna che ciascuna persona riceve per prime. Chi non ne ha scelta nessuna riceve tutte le campagne, come sempre. Non e' un'esclusione: se la linea scelta non basta, il resto arriva dalle altre."
+          title="Le categorie di campagna che ciascuna persona riceve per prime, le stesse della tabella Campagne. Chi non ne ha scelta nessuna riceve tutte le campagne, come sempre. Non e' un'esclusione: se le categorie scelte non bastano, il resto arriva dalle altre."
         >
           Campagne per Persona
         </span>
@@ -143,7 +176,7 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
 
           {inCorso && !persone.length ? (
             <p className="py-6 text-center text-xs text-slate-400">
-              lettura delle persone e delle linee…
+              lettura delle persone e delle categorie…
             </p>
           ) : !persone.length ? (
             <p className="py-6 text-center text-xs text-slate-400">
@@ -151,23 +184,36 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
             </p>
           ) : (
             <>
-              {/* QUANTI CONTATTI HA OGNI LINEA, in cima e una volta sola.
+              {/* QUANTI CONTATTI HA OGNI CATEGORIA, in cima e una volta sola.
                   Ripeterlo in ogni tendina sarebbe rumore, ma senza non si sa
-                  se una linea ha ancora qualcosa da dare: e' la differenza fra
-                  scegliere e indovinare. */}
+                  se una categoria ha ancora qualcosa da dare: e' la differenza
+                  fra scegliere e indovinare. */}
               <p className="mb-3 text-[11px] text-slate-400">
-                Linee disponibili:{" "}
-                {linee.length
-                  ? linee
-                      .map((l) => `${l.etichetta} ${formatoNumero.format(l.assegnabili)}`)
-                      .join(" · ")
-                  : "elenco non disponibile"}
+                {categorie.length ? (
+                  <>
+                    Assegnabili per categoria:{" "}
+                    {categorie
+                      .map((c) => `${c.etichetta} ${formatoNumero.format(c.assegnabili)}`)
+                      .join(" · ")}
+                    {" — "}
+                    <span
+                      title="Oltre questo numero la ricerca di HubSpot supera i 18 filtri totali e risponde 400, che dentro l'app si legge come 'nessun lead disponibile'. Misurato."
+                      className="cursor-help"
+                    >
+                      al massimo {massimo} per persona
+                    </span>
+                  </>
+                ) : (
+                  "elenco non disponibile"
+                )}
               </p>
 
               <div className="divide-y divide-slate-100">
                 {persone.map((p) => {
-                  const scelte = scelteDi(p);
-                  const disponibili = linee.filter((l) => !scelte.includes(l.chiave));
+                  const scelte = categorieDi(p);
+                  const prese = new Set(scelte.map((c) => c.etichetta));
+                  const disponibili = categorie.filter((c) => !prese.has(c.etichetta));
+                  const pieno = scelte.length >= massimo;
                   const fermo = bloccato || salvando === p.employee_id;
                   return (
                     <div
@@ -189,21 +235,24 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
                         {scelte.length ? (
                           scelte.map((c) => (
                             <span
-                              key={c}
+                              key={c.etichetta}
+                              title={`Campagne il cui nome contiene: ${c.frammenti.join(", ")}`}
                               className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700"
                             >
-                              <span className="font-mono">{c.toUpperCase()}</span>
+                              <span>{c.etichetta}</span>
                               <button
                                 type="button"
                                 disabled={fermo}
                                 onClick={() =>
                                   salva(
                                     p.employee_id,
-                                    scelte.filter((x) => x !== c)
+                                    scelte
+                                      .filter((x) => x.etichetta !== c.etichetta)
+                                      .flatMap((x) => x.frammenti)
                                   )
                                 }
                                 className="text-slate-300 transition hover:text-rose-600 disabled:cursor-not-allowed"
-                                title={`Togli ${c.toUpperCase()}`}
+                                title={`Togli ${c.etichetta}`}
                               >
                                 ×
                               </button>
@@ -216,22 +265,32 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
 
                       <select
                         value=""
-                        disabled={fermo || !disponibili.length}
+                        disabled={fermo || pieno || !disponibili.length}
                         onChange={(e) => {
-                          if (e.target.value) salva(p.employee_id, [...scelte, e.target.value]);
+                          const scelta = categorie.find((c) => c.etichetta === e.target.value);
+                          if (!scelta) return;
+                          // SI SALVANO I FRAMMENTI, tutti quelli della
+                          // categoria: MBE SALES ne ha tre, e tenerne uno solo
+                          // vorrebbe dire perdere due terzi delle sue campagne.
+                          salva(p.employee_id, [
+                            ...scelte.flatMap((c) => c.frammenti),
+                            ...scelta.frammenti
+                          ]);
                         }}
-                        className="w-40 shrink-0 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1 text-xs text-slate-500 outline-none transition hover:border-slate-400 focus:border-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="w-44 shrink-0 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1 text-xs text-slate-500 outline-none transition hover:border-slate-400 focus:border-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <option value="">
-                          {!linee.length
+                          {!categorie.length
                             ? "elenco non disponibile"
-                            : disponibili.length
-                              ? "aggiungi linea"
-                              : "tutte aggiunte"}
+                            : pieno
+                              ? `massimo ${massimo}`
+                              : disponibili.length
+                                ? "aggiungi categoria"
+                                : "tutte aggiunte"}
                         </option>
-                        {disponibili.map((l) => (
-                          <option key={l.chiave} value={l.chiave}>
-                            {l.etichetta} ({formatoNumero.format(l.assegnabili)})
+                        {disponibili.map((c) => (
+                          <option key={c.etichetta} value={c.etichetta}>
+                            {c.etichetta} ({formatoNumero.format(c.assegnabili)})
                           </option>
                         ))}
                       </select>

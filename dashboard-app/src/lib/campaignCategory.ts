@@ -60,6 +60,22 @@ export function categoriaResidua(categoria: string): boolean {
   return c === "altro" || c === "nessuna";
 }
 
+/**
+ * Le categorie e i frammenti che le definiscono, per chi deve farci altro.
+ *
+ * SERVE ALLE CAMPAGNE PREFERITE PER PERSONA, che salvano i FRAMMENTI e non le
+ * etichette: l'app di assegnazione confronta `id_campagna_refresh` con quegli
+ * stessi frammenti, trattino basso finale compreso, cosi' la categoria che
+ * decide chi riceve un lead e la categoria scritta nella tabella Campagne sono
+ * la stessa cosa e non due regole che si somigliano.
+ *
+ * Si espone l'elenco invece di ricopiarlo di la': una copia divergerebbe alla
+ * prima campagna nuova, e nessuno se ne accorgerebbe finche' qualcuno non si
+ * lamenta dei lead sbagliati.
+ */
+export const CATEGORIE: ReadonlyArray<{ etichetta: string; frammenti: readonly string[] }> =
+  CATEGORY_DEFS.map((d) => ({ etichetta: d.label, frammenti: d.contiene }));
+
 export function guessCategoria(campagna: string): string {
   const grezzo = campagna.trim();
   if (!grezzo) return "Nessuna";
