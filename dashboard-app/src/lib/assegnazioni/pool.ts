@@ -68,14 +68,47 @@ function intero(v: unknown): number | null {
  * ed e' la ragione per cui i filtri che restano si applicano nel codice e non
  * qui dentro.
  */
-function filtri(serie: string, daMs: number) {
+/**
+ * I CINQUE FILTRI COMUNI, senza la data: quella cambia fra i due gruppi.
+ */
+function comuni(serie: string) {
   return [
     { propertyName: "dispatch_outcome", operator: "CONTAINS_TOKEN", value: `*${serie}*` },
     { propertyName: "hubspot_owner_id", operator: "NOT_HAS_PROPERTY" },
     { propertyName: "countdown", operator: "NOT_HAS_PROPERTY" },
     { propertyName: "id_campagna_refresh", operator: "HAS_PROPERTY" },
-    { propertyName: "phone", operator: "HAS_PROPERTY" },
-    { propertyName: "createdate", operator: "GTE", value: String(daMs) }
+    { propertyName: "phone", operator: "HAS_PROPERTY" }
+  ];
+}
+
+/**
+ * DUE GRUPPI, PERCHE' LE DATE SONO DUE.
+ *
+ * L'app non guarda solo quando il contatto e' NATO: gli basta che sia recente
+ * una fra `createdate` e `recent_conversion_date` - lo dice la riga 64 di
+ * lead_assigner.py e lo fa nel codice, non nel filtro della ricerca. Qui si
+ * guardava solo la prima, e su questo portale e' quella che conta meno: i lead
+ * assegnabili sono quasi tutti contatti vecchi che si sono re-iscritti.
+ *
+ * Misurato il 10 ottobre 2026, a venti giorni: per serie A la data di nascita
+ * ne trovava 198 e quella di riconversione 1.074, per un totale di 1.084. La
+ * pagina dichiarava un quinto del serbatoio vero, e su quel numero si stava
+ * per decidere di allargare i tetti - cioe' si stava per curare il sintomo
+ * sbagliato.
+ *
+ * Due gruppi di filtri in OR sono il modo di HubSpot per dire "almeno una
+ * delle due": i contatti che soddisfano entrambe si contano una volta sola.
+ */
+function gruppi(serie: string, daMs: number) {
+  const quando = String(daMs);
+  return [
+    { filters: [...comuni(serie), { propertyName: "createdate", operator: "GTE", value: quando }] },
+    {
+      filters: [
+        ...comuni(serie),
+        { propertyName: "recent_conversion_date", operator: "GTE", value: quando }
+      ]
+    }
   ];
 }
 
@@ -84,7 +117,7 @@ async function quanti(token: string, serie: string, daMs: number): Promise<numbe
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     cache: "no-store",
-    body: JSON.stringify({ filterGroups: [{ filters: filtri(serie, daMs) }], limit: 1 })
+    body: JSON.stringify({ filterGroups: gruppi(serie, daMs), limit: 1 })
   });
   if (!r.ok) {
     // NULL E NON ZERO: un serbatoio vuoto e un serbatoio non misurato si
