@@ -758,7 +758,11 @@ export default function AssegnazioneContatti() {
               centro, l'aggiornamento a destra. Il titolo fisso "Chi ha
               ricevuto oggi" e' diventato il comando che apre: diceva quello
               che l'elenco dice da se', e adesso almeno serve a qualcosa. */}
-          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 pt-3">
+          {/* LA TESTATA DEL RIQUADRO, con la riga che la chiude.
+              Senza quel bordo la barra galleggiava: il giorno e la rotellina
+              sembravano appoggiati sullo sfondo e il riquadro pareva
+              cominciare da "Serviti", che e' due righe piu' giu'. */}
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-slate-100 px-4 py-2.5">
             {/* LE FRECCE INVECE DI UN CALENDARIO: quasi sempre si vuole ieri,
                 e con un calendario ieri costa tre clic invece di uno.
                 Compaiono con l'elenco: a lista chiusa il giorno non si vede,
@@ -887,7 +891,7 @@ export default function AssegnazioneContatti() {
                 e per confrontare le due meta' bisognava scorrere. Affiancate,
                 la larghezza serve a qualcosa e il confronto si fa guardando. */}
             <div className="grid gap-x-8 lg:grid-cols-2">
-            <div className="px-4 pb-3 pt-2">
+            <div className="px-4 pb-3 pt-3">
               {dettaglio?.error ? (
                 <div className="py-2 text-sm text-slate-400">
                   Il dettaglio non è disponibile: {dettaglio.error}
