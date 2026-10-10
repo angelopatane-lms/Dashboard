@@ -139,7 +139,10 @@ export default function FinestraRichieste({
             <span className="text-[11px] tabular-nums text-slate-400">{richieste.length}</span>
           </div>
 
-          {richieste.map((r) => (
+          {/* Dalla prima all'ultima, come nell'elenco da cui si arriva. */}
+          {[...richieste]
+            .sort((a, b) => (a.chiestoAt < b.chiestoAt ? -1 : a.chiestoAt > b.chiestoAt ? 1 : 0))
+            .map((r) => (
             <div
               key={r.id}
               className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded px-2 py-2 odd:bg-slate-50/70"

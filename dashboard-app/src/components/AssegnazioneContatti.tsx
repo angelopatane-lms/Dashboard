@@ -122,6 +122,19 @@ type Dettaglio = {
 };
 
 /**
+ * Dalla prima richiesta della giornata all'ultima.
+ *
+ * L'app le manda dalla piu' recente, che e' l'ordine giusto per un canale
+ * Slack - li' si guarda cos'e' appena successo. Qui si guarda una giornata
+ * intera, e una giornata si legge da come e' cominciata: chi ha chiesto per
+ * primo, quando si e' esaurito il serbatoio, a che ora sono arrivati i
+ * rifiuti. Al contrario bisogna leggerla dal fondo.
+ */
+function perOra<T extends { chiestoAt: string }>(righe: T[]): T[] {
+  return [...righe].sort((a, b) => (a.chiestoAt < b.chiestoAt ? -1 : a.chiestoAt > b.chiestoAt ? 1 : 0));
+}
+
+/**
  * Il nome ridotto a come si confronta.
  *
  * LE DUE FONTI SCRIVONO I NOMI DIVERSI. L'app dice "Mariarosaria Di Prisco",
@@ -1025,13 +1038,13 @@ export default function AssegnazioneContatti() {
                       nella finestra - ma raggruppa per persona e non puo'
                       dire questo. Se non si legge, si ricade su di lei. */}
                   {(dettaglio.richieste
-                    ? dettaglio.richieste.filter((r) => r.esito === "assegnato")
-                    : dettaglio.righe.map((r) => ({
+                    ? perOra(dettaglio.richieste.filter((r) => r.esito === "assegnato"))
+                    : perOra(dettaglio.righe.map((r) => ({
                         id: r.proprietarioId,
                         chiestoAt: r.ultima ?? r.prima ?? "",
                         nome: r.nome,
                         lead: r.lead
-                      }))
+                      })))
                   ).map((r) => (
                     <li
                       key={r.id}
@@ -1102,9 +1115,8 @@ export default function AssegnazioneContatti() {
                         raccontate dalla colonna qui sopra, con i numeri; qui
                         servirebbero solo a far scorrere di piu'. */}
                     <ul className="max-h-[420px] overflow-y-auto pr-3">
-                      {dettaglio.richieste
-                        .filter((r) => r.esito !== "assegnato")
-                        .map((r) => (
+                      {perOra(dettaglio.richieste.filter((r) => r.esito !== "assegnato")).map(
+                        (r) => (
                           <li
                             key={r.id}
                             className="flex items-center gap-3 rounded px-2 py-1.5 odd:bg-slate-50/70"
