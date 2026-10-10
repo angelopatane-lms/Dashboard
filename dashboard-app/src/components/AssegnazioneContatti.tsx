@@ -176,6 +176,34 @@ const FRESCHEZZA_DETTAGLIO_MINUTI = 5;
  * sparire: meglio una riga lunga di una vuota. La frase intera resta comunque
  * nel suggerimento, sempre.
  */
+/**
+ * Un rifiuto regolare e un rifiuto che segnala un guasto non sono la stessa
+ * cosa, e si leggono di colore diverso.
+ *
+ * AMBRA E' LA NORMALITA'. "Sei richieste raggiunte" e' il sistema che funziona
+ * come deve; "pool vuoto" e' una condizione del serbatoio; "arretrato" e' la
+ * regola che chiede di smaltire prima di ricevere ancora. Nessuno deve fare
+ * niente: domani ricomincia.
+ *
+ * ROSSO E' QUALCOSA DA SISTEMARE, e nessun altro lo segnala. L'assegnazione
+ * spenta per una persona e' una configurazione che qualcuno ha cambiato e
+ * forse ha dimenticato; un utente sconosciuto e' l'anagrafica che non torna;
+ * un arretrato illeggibile e' un controllo che non siamo riusciti a fare, e
+ * quel rifiuto potrebbe essere immeritato.
+ *
+ * PERCHE' NON TUTTO ROSSO, che era la versione di prima: il rosso usato per la
+ * normalita' si consuma, e il giorno che serve davvero nessuno lo guarda piu'.
+ * E' la stessa ragione per cui la banda di confronto qui sopra e' ambra.
+ */
+function gravitaMotivo(testo: string): "guasto" | "regola" {
+  const m = testo.trim();
+  if (/assegnazione lead disattivata/i.test(m)) return "guasto";
+  if (/utente non trovato/i.test(m)) return "guasto";
+  if (/non riesco a verificare/i.test(m)) return "guasto";
+  if (/non è attivo|non e' attivo/i.test(m)) return "guasto";
+  return "regola";
+}
+
 function motivoBreve(testo: string): string {
   const m = testo.trim();
 
@@ -1130,15 +1158,16 @@ export default function AssegnazioneContatti() {
                             <span className="w-40 shrink-0 truncate text-sm text-slate-900">
                               {r.nome ?? "—"}
                             </span>
-                            {/* IL MOTIVO IN ROSSO, che e' il segnale che
-                                prima dava il triangolo: un colore non occupa
-                                spazio in una colonna stretta, e si vede con la
-                                coda dell'occhio scorrendo l'elenco.
-                                Sulla colonna accanto - le accolte - non c'e'
-                                niente di rosso, quindi il contrasto fra le due
-                                meta' si legge senza leggere. */}
+                            {/* IL COLORE E' IL SEGNALE, e non occupa spazio
+                                in una colonna stretta: ambra quando il sistema
+                                ha solo applicato una regola, rosso quando c'e'
+                                qualcosa da sistemare. Vedi gravitaMotivo. */}
                             <span
-                              className="truncate text-xs text-rose-600"
+                              className={`truncate text-xs ${
+                                r.motivo && gravitaMotivo(r.motivo) === "guasto"
+                                  ? "font-medium text-rose-600"
+                                  : "text-amber-700"
+                              }`}
                               title={r.motivo ?? "senza motivo registrato"}
                             >
                               {r.motivo ? motivoBreve(r.motivo) : "senza motivo"}
