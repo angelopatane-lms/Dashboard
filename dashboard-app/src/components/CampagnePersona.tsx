@@ -131,8 +131,6 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
     return viste;
   };
 
-  const conPreferenza = persone.filter((p) => frammentiDi(p).length).length;
-
   return (
     <div>
       <button
@@ -147,12 +145,16 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
         >
           Campagne per Persona
         </span>
-        <span className="min-w-0 flex-1 text-xs text-slate-500">
-          {!aperto && !persone.length
-            ? "chiusa"
-            : conPreferenza
-              ? `${conPreferenza} ${conPreferenza === 1 ? "persona ha" : "persone hanno"} una preferenza`
-              : "nessuna preferenza: tutti ricevono tutte le campagne"}
+        {/* IL TETTO E NON LO STATO. Qui prima si leggeva quante persone
+            hanno una preferenza: un'informazione che la riga dice gia' da
+            sola, appena si apre, e che sulla riga chiusa e' solo una frase
+            lunga. Il tetto invece e' l'unica cosa che non si scopre
+            guardando. */}
+        <span
+          className="min-w-0 flex-1 cursor-help text-xs text-slate-500"
+          title="Oltre tre categorie la ricerca di HubSpot supera i 18 filtri totali e risponde 400, che dentro l'app si legge come 'nessun lead disponibile'. Misurato."
+        >
+          Al massimo {massimo}
         </span>
         <svg
           aria-hidden="true"
@@ -195,13 +197,6 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
                     {categorie
                       .map((c) => `${c.etichetta} ${formatoNumero.format(c.assegnabili)}`)
                       .join(" · ")}
-                    {" — "}
-                    <span
-                      title="Oltre questo numero la ricerca di HubSpot supera i 18 filtri totali e risponde 400, che dentro l'app si legge come 'nessun lead disponibile'. Misurato."
-                      className="cursor-help"
-                    >
-                      al massimo {massimo} per persona
-                    </span>
                   </>
                 ) : (
                   "elenco non disponibile"
