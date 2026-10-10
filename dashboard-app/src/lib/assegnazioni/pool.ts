@@ -64,7 +64,21 @@ const FRESCHEZZA_MINUTI = 5;
 /** Un campione ogni dieci minuti basta a ricostruire l'andamento della giornata. */
 const CAMPIONE_MINUTI = 10;
 
-export type Assegnabili = { serieA: number; serieB: number; presoAt: string };
+/**
+ * NULL E NON ZERO, FINO IN FONDO.
+ *
+ * `quanti()` torna null quando HubSpot non ha risposto, e fino al 10 ottobre
+ * 2026 quel null diventava zero proprio qui all'uscita (`a ?? 0`). Risultato
+ * visto in pagina: "POOL SERIE B — 0, assegnabili su 31.895", cioe' una
+ * ricerca andata storta travestita da serbatoio esaurito. Il null arriva fino
+ * a chi disegna, che sa gia' cosa farne: mostra il grezzo, come prima di
+ * questi conteggi.
+ */
+export type Assegnabili = {
+  serieA: number | null;
+  serieB: number | null;
+  presoAt: string;
+};
 
 export type StatoApp = {
   pool_a?: unknown;
@@ -179,8 +193,8 @@ export async function assegnabili(token: string, stato?: StatoApp): Promise<Asse
 
   if (fresco) {
     return {
-      serieA: u.assegnabili_a ?? 0,
-      serieB: u.assegnabili_b ?? 0,
+      serieA: u.assegnabili_a,
+      serieB: u.assegnabili_b,
       presoAt: new Date(u.preso_at).toISOString()
     };
   }
@@ -223,5 +237,5 @@ export async function assegnabili(token: string, stato?: StatoApp): Promise<Asse
     );
   }
 
-  return { serieA: a ?? 0, serieB: b ?? 0, presoAt: new Date().toISOString() };
+  return { serieA: a, serieB: b, presoAt: new Date().toISOString() };
 }

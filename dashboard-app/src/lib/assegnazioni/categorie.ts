@@ -48,6 +48,21 @@ const FRESCHEZZA_MINUTI = 30;
 /** Quante pagine al massimo per ogni interrogazione: una cintura, non un tetto atteso. */
 const PAGINE_MAX = 40;
 
+/**
+ * Quante volte riprovare quando HubSpot dice di rallentare.
+ *
+ * SERVE DAVVERO, non e' prudenza: questa enumerazione fa una ventina di
+ * ricerche di fila, e il tetto di 19 al secondo e' condiviso con decine di
+ * flussi Zapier e con il conteggio dei due serbatoi, che gira sulla stessa
+ * pagina. Senza un secondo tentativo bastava che le due cose si incrociassero
+ * perche' i sei riquadri uscissero vuoti - e vuoto si legge "non ci sono
+ * categorie", che e' falso.
+ */
+const TENTATIVI = 3;
+const RESPIRO_MS = 1200;
+
+const attendi = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /** La categoria che l'assegnatore scarta comunque, a valle della ricerca. */
 const MAI = "ICMD";
 
@@ -114,22 +129,27 @@ export async function categorieAssegnabili(token: string): Promise<Categoria[]> 
     for (const campo of ["createdate", "recent_conversion_date"]) {
       let dopo: string | undefined;
       for (let pagina = 0; pagina < PAGINE_MAX; pagina++) {
-        const r = await fetch(`${HUBSPOT}/crm/v3/objects/contacts/search`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          cache: "no-store",
-          body: JSON.stringify({
-            filterGroups: [
-              { filters: [...comuni(serie), { propertyName: campo, operator: "GTE", value: quando }] }
-            ],
-            properties: ["id_campagna_refresh"],
-            sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }],
-            limit: 100,
-            after: dopo
-          })
-        });
-        if (!r.ok) {
-          console.error(`[categorie] ${serie}/${campo}: HubSpot ${r.status}`);
+        let r: Response | null = null;
+        for (let tentativo = 1; tentativo <= TENTATIVI; tentativo++) {
+          r = await fetch(`${HUBSPOT}/crm/v3/objects/contacts/search`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({
+              filterGroups: [
+                { filters: [...comuni(serie), { propertyName: campo, operator: "GTE", value: quando }] }
+              ],
+              properties: ["id_campagna_refresh"],
+              sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }],
+              limit: 100,
+              after: dopo
+            })
+          });
+          if (r.ok || r.status !== 429) break;
+          await attendi(RESPIRO_MS * tentativo);
+        }
+        if (!r || !r.ok) {
+          console.error(`[categorie] ${serie}/${campo}: HubSpot ${r?.status}`);
           qualcosaAndatoStorto = true;
           break;
         }

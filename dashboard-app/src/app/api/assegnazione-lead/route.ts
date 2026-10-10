@@ -96,7 +96,14 @@ export async function GET() {
     // scrivere zero, che si leggerebbe come "non c'e' piu' niente".
     if (!quanti) return risposta;
     return NextResponse.json(
-      { ...dati, assegnabili_a: quanti.serieA, assegnabili_b: quanti.serieB },
+      {
+        ...dati,
+        // SOLO SE MISURATI. Un conteggio mancato non deve comparire come zero:
+        // lasciando fuori il campo, la card mostra il serbatoio grezzo come
+        // faceva prima che questi numeri esistessero.
+        ...(quanti.serieA != null ? { assegnabili_a: quanti.serieA } : {}),
+        ...(quanti.serieB != null ? { assegnabili_b: quanti.serieB } : {})
+      },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (e) {
