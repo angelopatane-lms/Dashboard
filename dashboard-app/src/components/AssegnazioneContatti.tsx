@@ -160,7 +160,9 @@ function motivoBreve(testo: string): string {
   // definitivo quando non lo era.
   const limite = m.match(/limite giornaliero \((\d+)\) raggiunto(?: con (\d+) appuntament)?/i);
   if (limite) {
-    return limite[2] ? `limite ${limite[1]} · ${limite[2]} appunt.` : `limite ${limite[1]}`;
+    if (!limite[2]) return `limite ${limite[1]}`;
+    const quanti = Number(limite[2]);
+    return `limite ${limite[1]} · ${quanti} ${quanti === 1 ? "appuntamento" : "appuntamenti"}`;
   }
 
   if (/nessun lead disponibile/i.test(m)) return "pool vuoto";
