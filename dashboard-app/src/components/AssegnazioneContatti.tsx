@@ -826,6 +826,13 @@ export default function AssegnazioneContatti() {
               })()
             ) : null}
 
+            {/* LE DUE META' DELLA GIORNATA, AFFIANCATE. Chi ha ricevuto e chi
+                ha chiesto senza ricevere erano due elenchi impilati, ciascuno
+                largo tutta la sezione per dire un nome e due numeri: a schermo
+                intero ogni riga era vuota per oltre meta' della sua larghezza,
+                e per confrontare le due meta' bisognava scorrere. Affiancate,
+                la larghezza serve a qualcosa e il confronto si fa guardando. */}
+            <div className="grid gap-x-8 lg:grid-cols-2">
             <div className="px-4 pb-3 pt-2">
               {dettaglio?.error ? (
                 <div className="py-2 text-sm text-slate-400">
@@ -857,11 +864,20 @@ export default function AssegnazioneContatti() {
                 //
                 // LO SPAZIO A DESTRA E' PER LA BARRA. Senza, appoggia sui numeri
                 // e sembra tagliarli.
-                <ul className="max-h-[659px] divide-y divide-slate-100 overflow-y-auto pr-3">
+                <>
+                  <div className="mb-1 flex items-baseline gap-2 border-b border-slate-200 pb-1.5">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Serviti
+                    </span>
+                    <span className="text-[11px] tabular-nums text-slate-400">
+                      {dettaglio.righe.length}
+                    </span>
+                  </div>
+                  <ul className="max-h-[420px] overflow-y-auto pr-3">
                   {dettaglio.righe.map((r) => (
                     <li
                       key={r.proprietarioId}
-                      className="flex items-center justify-between gap-3 py-1.5"
+                      className="flex items-center justify-between gap-3 rounded px-2 py-1.5 odd:bg-slate-50/70"
                     >
                       <span className="truncate text-sm text-slate-900">{r.nome}</span>
                       <span className="flex shrink-0 items-center gap-3">
@@ -885,7 +901,8 @@ export default function AssegnazioneContatti() {
                       </span>
                     </li>
                   ))}
-                </ul>
+                  </ul>
+                </>
               )}
             </div>
 
@@ -897,7 +914,7 @@ export default function AssegnazioneContatti() {
                 Un rifiuto non tocca nessun contatto, quindi su HubSpot non
                 esiste: questi arrivano dall'app, che li dichiara. */}
             {dettaglio && !dettaglio.error && dettaglio.richieste !== undefined ? (
-              <div className="border-t border-slate-100 px-4 py-3">
+              <div className="px-4 pb-3 pt-2">
                 {dettaglio.richieste === null ? (
                   <div className="text-sm text-slate-400">
                     Le richieste non si sono potute leggere.
@@ -908,19 +925,33 @@ export default function AssegnazioneContatti() {
                   </div>
                 ) : (
                   <>
-                    <div className="mb-2 text-[11px] uppercase tracking-wide text-slate-500">
-                      {dettaglio.richieste.length} richieste ·{" "}
-                      {dettaglio.richieste.filter((r) => r.esito === "assegnato").length} servite ·{" "}
-                      {dettaglio.richieste.filter((r) => r.esito !== "assegnato").length} no
+                    {/* STESSA INTESTAZIONE DELLA COLONNA ACCANTO, cosi' le
+                        due meta' si leggono come due meta' e non come due
+                        riquadri diversi. Il totale delle richieste sta nel
+                        suggerimento: in testa serve il numero di questa
+                        colonna, non quello di tutte e due. */}
+                    <div
+                      className="mb-1 flex cursor-help items-baseline gap-2 border-b border-slate-200 pb-1.5"
+                      title={`${dettaglio.richieste.length} richieste in tutto, ${dettaglio.richieste.filter((r) => r.esito === "assegnato").length} servite`}
+                    >
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Non serviti
+                      </span>
+                      <span className="text-[11px] tabular-nums text-slate-400">
+                        {dettaglio.richieste.filter((r) => r.esito !== "assegnato").length}
+                      </span>
                     </div>
                     {/* SOLO I "NO" IN ELENCO. Le richieste servite sono gia'
                         raccontate dalla colonna qui sopra, con i numeri; qui
                         servirebbero solo a far scorrere di piu'. */}
-                    <ul className="max-h-48 divide-y divide-slate-100 overflow-y-auto pr-3">
+                    <ul className="max-h-[420px] overflow-y-auto pr-3">
                       {dettaglio.richieste
                         .filter((r) => r.esito !== "assegnato")
                         .map((r) => (
-                          <li key={r.id} className="flex items-center gap-3 py-1.5">
+                          <li
+                            key={r.id}
+                            className="flex items-center gap-3 rounded px-2 py-1.5 odd:bg-slate-50/70"
+                          >
                             <span className="w-10 shrink-0 text-xs tabular-nums text-slate-400">
                               {ora(r.chiestoAt)}
                             </span>
@@ -937,6 +968,7 @@ export default function AssegnazioneContatti() {
                 )}
               </div>
             ) : null}
+            </div>
             </>
           ) : null}
         </div>
