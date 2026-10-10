@@ -189,19 +189,37 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
               {/* QUANTI CONTATTI HA OGNI CATEGORIA, in cima e una volta sola.
                   Ripeterlo in ogni tendina sarebbe rumore, ma senza non si sa
                   se una categoria ha ancora qualcosa da dare: e' la differenza
-                  fra scegliere e indovinare. */}
-              <p className="mb-3 text-[11px] text-slate-400">
-                {categorie.length ? (
-                  <>
-                    Assegnabili per categoria:{" "}
-                    {categorie
-                      .map((c) => `${c.etichetta} ${formatoNumero.format(c.assegnabili)}`)
-                      .join(" · ")}
-                  </>
-                ) : (
-                  "elenco non disponibile"
-                )}
-              </p>
+                  fra scegliere e indovinare.
+
+                  A RIQUADRI E NON IN FILA. Erano sei coppie nome-numero
+                  separate da puntini su una riga sola: per sapere quanti ne ha
+                  MBE MKTG bisognava leggere la frase fino a trovarlo. Nei
+                  riquadri il numero sta sotto il suo nome e si trova
+                  guardando, che e' il modo in cui questa riga viene letta.
+                  Stessa forma dei riquadri in cima alla sezione, perche'
+                  dicono la stessa cosa: quanto materiale c'e'. */}
+              {categorie.length ? (
+                <div className="mb-4 overflow-hidden rounded-lg border border-slate-200 bg-white">
+                  <div className="grid grid-cols-3 divide-x divide-y divide-slate-100 sm:grid-cols-6 sm:divide-y-0">
+                    {categorie.map((c) => (
+                      <div
+                        key={c.etichetta}
+                        title={`Campagne il cui nome contiene: ${c.frammenti.join(", ")}`}
+                        className="cursor-help px-4 py-2.5"
+                      >
+                        <div className="truncate text-[11px] uppercase leading-tight tracking-wide text-slate-500">
+                          {c.etichetta}
+                        </div>
+                        <div className="text-xl font-semibold leading-tight tabular-nums text-slate-900">
+                          {formatoNumero.format(c.assegnabili)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="mb-3 text-[11px] text-slate-400">elenco non disponibile</p>
+              )}
 
               <div className="divide-y divide-slate-100">
                 {persone.map((p) => {
