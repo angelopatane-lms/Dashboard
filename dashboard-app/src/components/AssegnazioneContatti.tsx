@@ -175,11 +175,11 @@ function motivoBreve(testo: string): string {
   // definitivo quando non lo era.
   const limite = m.match(/limite giornaliero \((\d+)\) raggiunto(?: con (\d+) appuntament)?/i);
   if (limite) {
-    if (!limite[2]) return `limite ${limite[1]}`;
+    if (!limite[2]) return `! ${limite[1]} Richieste`;
     const quanti = Number(limite[2]);
-    // LA BARRA E NON IL TRATTINO: fra due numeri "limite 6 - 2 appuntamenti"
+    // LA BARRA E NON IL TRATTINO: fra due numeri "6 Richieste - 2 Appuntamenti"
     // si legge come una sottrazione.
-    return `limite ${limite[1]}  |  ${quanti} ${quanti === 1 ? "appuntamento" : "appuntamenti"}`;
+    return `! ${limite[1]} Richieste  |  ${quanti} ${quanti === 1 ? "Appuntamento" : "Appuntamenti"}`;
   }
 
   if (/nessun lead disponibile/i.test(m)) return "pool vuoto";
