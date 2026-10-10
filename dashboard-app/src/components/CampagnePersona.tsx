@@ -50,22 +50,42 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
   const [errore, setErrore] = useState<string | null>(null);
   /** Chi si sta salvando in questo momento: la sua riga resta ferma. */
   const [salvando, setSalvando] = useState<number | null>(null);
+  /** I riquadri dei numeri arrivano dopo l'elenco, e lo dicono. */
+  const [categorieInCorso, setCategorieInCorso] = useState(false);
 
+  /**
+   * Le due letture partono insieme e si disegnano appena arrivano, ciascuna
+   * per conto suo.
+   *
+   * LE PERSONE ARRIVANO IN MEZZO SECONDO, i numeri delle categorie in sette e
+   * mezzo: contarli vuol dire enumerare il serbatoio su HubSpot. Aspettando
+   * entrambi, aprire la scheda voleva dire guardare un rettangolo bianco alto
+   * mille pixel per dieci secondi, con l'elenco gia' pronto dietro.
+   */
   const leggi = useCallback(async () => {
     setInCorso(true);
     setErrore(null);
-    try {
-      const r = await fetch("/api/campagne-persona", { cache: "no-store" });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d?.error ?? `errore ${r.status}`);
-      setPersone(d.persone ?? []);
-      setCategorie(d.categorie ?? []);
-      if (typeof d.massimo === "number") setMassimo(d.massimo);
-    } catch (e) {
-      setErrore(e instanceof Error ? e.message : String(e));
-    } finally {
-      setInCorso(false);
-    }
+
+    const gente = fetch("/api/campagne-persona", { cache: "no-store" })
+      .then(async (r) => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d?.error ?? `errore ${r.status}`);
+        setPersone(d.persone ?? []);
+        if (typeof d.massimo === "number") setMassimo(d.massimo);
+      })
+      .catch((e) => setErrore(e instanceof Error ? e.message : String(e)))
+      .finally(() => setInCorso(false));
+
+    // I NUMERI NON FANNO FALLIRE NIENTE: se non arrivano, i riquadri restano
+    // vuoti e la scheda funziona lo stesso. Per questo non toccano `errore`.
+    fetch("/api/campagne-persona/categorie", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setCategorie(d.categorie ?? []))
+      .catch(() => setCategorie([]))
+      .finally(() => setCategorieInCorso(false));
+
+    setCategorieInCorso(true);
+    await gente;
   }, []);
 
   useEffect(() => {
@@ -95,7 +115,6 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
       const d = await r.json();
       if (!r.ok) throw new Error(d?.error ?? `errore ${r.status}`);
       setPersone(d.persone ?? []);
-      if (d.categorie?.length) setCategorie(d.categorie);
     } catch (e) {
       setErrore(e instanceof Error ? e.message : String(e));
     } finally {
@@ -118,6 +137,23 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
    * gia' impostate lo ereditano. Un frammento che nessuna categoria rivendica
    * si mostra com'e' - e' sempre meglio di farlo sparire.
    */
+  /**
+   * Le persone divise per ruolo, nell'ordine in cui l'app le manda.
+   *
+   * UNA COLONNA PER RUOLO, e sono due: sedici Advisor e tredici Setter, quasi
+   * pari. Si ricavano dai dati invece di scriverli qui: il giorno che nasce un
+   * terzo ruolo compare da solo, e non c'e' un elenco da tenere allineato a
+   * mano con quello dell'app.
+   */
+  const gruppi: [string, Persona[]][] = (() => {
+    const per = new Map<string, Persona[]>();
+    for (const p of persone) {
+      const r = (p.role || "Senza ruolo").trim();
+      per.set(r, [...(per.get(r) ?? []), p]);
+    }
+    return [...per.entries()];
+  })();
+
   const categorieDi = (p: Persona) => {
     const fr = frammentiDi(p);
     const viste: { etichetta: string; frammenti: string[] }[] = [];
@@ -177,9 +213,7 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
           ) : null}
 
           {inCorso && !persone.length ? (
-            <p className="py-6 text-center text-xs text-slate-400">
-              lettura delle persone e delle categorie…
-            </p>
+            <p className="py-6 text-center text-xs text-slate-400">lettura delle persone…</p>
           ) : !persone.length ? (
             <p className="py-6 text-center text-xs text-slate-400">
               nessuna persona da impostare
@@ -218,33 +252,55 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
                   </div>
                 </div>
               ) : (
-                <p className="mb-3 text-[11px] text-slate-400">elenco non disponibile</p>
+                /* I RIQUADRI ARRIVANO DOPO L'ELENCO e lo dicono, invece di
+                   lasciare un buco: contarli costa una ventina di chiamate a
+                   HubSpot, l'elenco mezzo secondo. */
+                <p className="mb-3 text-[11px] text-slate-400">
+                  {categorieInCorso ? "conteggio delle categorie…" : "elenco non disponibile"}
+                </p>
               )}
 
-              <div className="divide-y divide-slate-100">
-                {persone.map((p) => {
-                  const scelte = categorieDi(p);
-                  const prese = new Set(scelte.map((c) => c.etichetta));
-                  const disponibili = categorie.filter((c) => !prese.has(c.etichetta));
-                  const pieno = scelte.length >= massimo;
-                  const fermo = bloccato || salvando === p.employee_id;
-                  return (
-                    <div
-                      key={p.employee_id}
-                      className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2.5"
-                    >
-                      {/* PIU' LARGA DELLE ALTRE ETICHETTE DELLA SEZIONE: qui
-                          dentro ci stanno nome, cognome e ruolo, e a 11rem
-                          "Valentina Mandarino" andava a capo portandosi
-                          dietro la riga. */}
-                      <span className="w-56 shrink-0 text-sm text-slate-800">
-                        {p.first_name} {p.last_name}
-                        <span className="ml-2 text-[11px] uppercase tracking-wide text-slate-400">
-                          {p.role}
-                        </span>
-                      </span>
+              {/* UNA COLONNA PER RUOLO. A schermo intero ogni riga era vuota
+                  per sessanta centimetri su cento - nome a sinistra, due
+                  parole grigie, e la tendina inchiodata all'estrema destra -
+                  moltiplicato per ventinove righe. Divisi per ruolo le righe
+                  diventano meta' e la larghezza viene usata.
 
-                      <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                  E IL RUOLO SPARISCE DALLE RIGHE, perche' lo dice la colonna:
+                  ripeterlo ventinove volte era rumore che rubava lo spazio ai
+                  nomi lunghi. */}
+              <div className="grid gap-x-8 gap-y-6 lg:grid-cols-2">
+                {gruppi.map(([ruolo, gente]) => (
+                  <div key={ruolo}>
+                    <div className="mb-1 flex items-baseline gap-2 border-b border-slate-200 pb-1.5">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        {ruolo}
+                      </span>
+                      <span className="text-[11px] tabular-nums text-slate-400">{gente.length}</span>
+                    </div>
+                    {gente.map((p) => {
+                      const scelte = categorieDi(p);
+                      const prese = new Set(scelte.map((c) => c.etichetta));
+                      const disponibili = categorie.filter((c) => !prese.has(c.etichetta));
+                      const pieno = scelte.length >= massimo;
+                      const fermo = bloccato || salvando === p.employee_id;
+                      return (
+                        <div
+                          key={p.employee_id}
+                          /* RIGHE ALTERNATE APPENA TINTE: su una colonna di
+                             sedici nomi aiutano l'occhio ad attraversare la
+                             riga, che e' il gesto che qui si fa di continuo -
+                             dal nome alla sua tendina. */
+                          className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded px-2 py-2 odd:bg-slate-50/70"
+                        >
+                          <span
+                            className="w-36 shrink-0 truncate text-sm text-slate-800"
+                            title={`${p.first_name} ${p.last_name}`}
+                          >
+                            {p.first_name} {p.last_name}
+                          </span>
+
+                          <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
                         {scelte.length ? (
                           scelte.map((c) => (
                             <span
@@ -276,9 +332,9 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
                         )}
                       </span>
 
-                      <select
-                        value=""
-                        disabled={fermo || pieno || !disponibili.length}
+                          <select
+                            value=""
+                            disabled={fermo || pieno || !disponibili.length}
                         onChange={(e) => {
                           const scelta = categorie.find((c) => c.etichetta === e.target.value);
                           if (!scelta) return;
@@ -306,10 +362,12 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
                             {c.etichetta} ({formatoNumero.format(c.assegnabili)})
                           </option>
                         ))}
-                      </select>
-                    </div>
-                  );
-                })}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
             </>
           )}

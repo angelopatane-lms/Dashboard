@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { categorieAssegnabili, MAX_CATEGORIE } from "@/lib/assegnazioni/categorie";
+import { MAX_CATEGORIE } from "@/lib/assegnazioni/categorie";
 import { CATEGORIE } from "@/lib/campaignCategory";
 
 /**
@@ -68,31 +68,19 @@ async function chiama(metodo: "GET" | "POST", corpo?: unknown) {
 /**
  * Le linee accanto alle persone, in una risposta sola.
  *
- * LE DUE COSE ARRIVANO DA POSTI DIVERSI - le persone dall'app, le categorie
- * dal serbatoio contato di qui - ma separarle in due chiamate vorrebbe dire
- * una pagina che puo' disegnare le caselle prima di sapere cosa c'e' dentro.
- *
- * SE LE CATEGORIE NON SI LEGGONO non si fa cadere la sezione: si risponde con
- * l'elenco vuoto, la tendina lo dice, e le preferenze gia' impostate restano
- * visibili. Il contrario - mostrare le caselle senza sapere quali esistono -
- * farebbe sembrare che le categorie siano finite.
+ * SOLO LE PERSONE, NON I NUMERI DELLE CATEGORIE. Quelli costano una ventina
+ * di chiamate a HubSpot - sette secondi e mezzo misurati - e stanno in una
+ * rotta a parte, /api/campagne-persona/categorie. Finche' viaggiavano insieme,
+ * aprire la scheda voleva dire guardare un rettangolo bianco per dieci
+ * secondi: le persone erano pronte da un pezzo e aspettavano i riquadri.
  */
 async function rispondi(stato: number, dati: Record<string, unknown>) {
   if (stato !== 200) {
     return NextResponse.json(dati, { status: stato, headers: { "Cache-Control": "no-store" } });
   }
-  let categorie: Awaited<ReturnType<typeof categorieAssegnabili>> = [];
-  const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
-  if (token) {
-    try {
-      categorie = await categorieAssegnabili(token);
-    } catch (e) {
-      console.error("[campagne-persona] categorie:", e);
-    }
-  }
   const persone = (Array.isArray(dati.persone) ? dati.persone : []) as Persona[];
   return NextResponse.json(
-    { persone, categorie, massimo: MAX_CATEGORIE },
+    { persone, massimo: MAX_CATEGORIE },
     { headers: { "Cache-Control": "no-store" } }
   );
 }
