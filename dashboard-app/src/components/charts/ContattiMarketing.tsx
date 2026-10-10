@@ -145,7 +145,7 @@ export default function ContattiMarketing() {
            e se un giorno la riga cambia altezza basta correggere una costante
            invece di indovinare di nuovo. */
         <div
-          className="mt-4 overflow-auto rounded-lg border border-slate-200"
+          className="mt-4 overflow-auto rounded-lg border border-slate-200 bg-white"
           style={{ maxHeight: ALTEZZA_INTESTAZIONE + RIGHE_VISIBILI * ALTEZZA_RIGA }}
         >
           <table className="w-full text-sm">
