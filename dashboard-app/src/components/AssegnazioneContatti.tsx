@@ -188,11 +188,9 @@ function motivoBreve(testo: string): string {
   // definitivo quando non lo era.
   const limite = m.match(/limite giornaliero \((\d+)\) raggiunto(?: con (\d+) appuntament)?/i);
   if (limite) {
-    if (!limite[2]) return `⚠️ ${limite[1]} Richieste`;
+    if (!limite[2]) return `${limite[1]} Richieste`;
     const quanti = Number(limite[2]);
-    // LA BARRA E NON IL TRATTINO: fra due numeri "6 Richieste - 2 Appuntamenti"
-    // si legge come una sottrazione.
-    return `⚠️ ${limite[1]} Richieste  |  ${quanti} ${quanti === 1 ? "Appuntamento" : "Appuntamenti"}`;
+    return `${limite[1]} Richieste - ${quanti} ${quanti === 1 ? "Appuntamento" : "Appuntamenti"}`;
   }
 
   if (/nessun lead disponibile/i.test(m)) return "pool vuoto";
@@ -1132,8 +1130,15 @@ export default function AssegnazioneContatti() {
                             <span className="w-40 shrink-0 truncate text-sm text-slate-900">
                               {r.nome ?? "—"}
                             </span>
+                            {/* IL MOTIVO IN ROSSO, che e' il segnale che
+                                prima dava il triangolo: un colore non occupa
+                                spazio in una colonna stretta, e si vede con la
+                                coda dell'occhio scorrendo l'elenco.
+                                Sulla colonna accanto - le accolte - non c'e'
+                                niente di rosso, quindi il contrasto fra le due
+                                meta' si legge senza leggere. */}
                             <span
-                              className="truncate text-xs text-slate-500"
+                              className="truncate text-xs text-rose-600"
                               title={r.motivo ?? "senza motivo registrato"}
                             >
                               {r.motivo ? motivoBreve(r.motivo) : "senza motivo"}
