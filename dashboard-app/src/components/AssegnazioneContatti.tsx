@@ -121,6 +121,16 @@ type Dettaglio = {
 };
 
 /** L'ora di una marca temporale, come la si legge a colpo d'occhio. */
+/**
+ * Per quanto si riusa la ricostruzione del dettaglio, in minuti.
+ *
+ * E' lo stesso valore di FRESCHEZZA_MINUTI in src/lib/assegnazioni/giorno.ts,
+ * dove la ricostruzione viene davvero riusata. Qui serve solo a distinguere
+ * "elenco in ritardo" da "elenco incompleto": se di la' si cambia, qui si
+ * sbaglia la distinzione, non il dato.
+ */
+const FRESCHEZZA_DETTAGLIO_MINUTI = 5;
+
 function ora(iso: string | null): string {
   if (!iso) return "--:--";
   const d = new Date(iso);
@@ -767,17 +777,53 @@ export default function AssegnazioneContatti() {
               chiesto, e quelle chiamate a HubSpot non si spendono. */}
           {aperto ? (
             <>
-            {/* LE DUE FONTI A CONFRONTO. Il totale lo sa l'app, il dettaglio lo
-                ricostruiamo da HubSpot: se non coincidono il dettaglio e'
-                incompleto, e dirlo vale piu' che mostrare numeri che sembrano
-                buoni. Il caso tipico e' un contatto riassegnato a mano dopo:
-                HubSpot tiene solo l'ultima assegnazione. */}
+            {/* LE DUE FONTI A CONFRONTO, E IL RITARDO DISTINTO DAL GUASTO.
+                Il totale lo sa l'app e arriva fresco ogni minuto; il dettaglio
+                lo ricostruiamo da HubSpot e si riusa per cinque minuti, perche'
+                rifarlo costa una trentina di chiamate. Quindi appena qualcuno
+                riceve lead i due numeri DEVONO discordare, per qualche minuto,
+                e non c'e' niente che non va.
+
+                Fino al 10 ottobre 2026 qui si leggeva sempre "il dettaglio e'
+                incompleto": misurato quel giorno, l'app ne dichiarava 80 e il
+                dettaglio 60 - una richiesta intera - e cinque minuti dopo i
+                due numeri coincidevano da soli. Un messaggio che grida al
+                guasto per una cosa che si sistema aspettando insegna a non
+                leggerlo, e il giorno che il guasto c'e' davvero nessuno lo
+                guarda piu'.
+
+                Il guasto vero esiste e resta segnalato: quando la
+                ricostruzione e' fresca e i conti comunque non tornano. Il caso
+                tipico e' un contatto riassegnato a mano dopo, perche' HubSpot
+                tiene solo l'ultima assegnazione. */}
             {dettaglio && !dettaglio.error && dettaglio.atteso != null &&
             dettaglio.atteso !== dettaglio.totale ? (
-              <div className="mx-4 mt-2 rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">
-                L&apos;app ne dichiara {formatInt(dettaglio.atteso)}, qui se ne contano{" "}
-                {formatInt(dettaglio.totale)}: il dettaglio qui sotto è incompleto.
-              </div>
+              (() => {
+                const minuti = Math.floor(
+                  (Date.now() - new Date(dettaglio.aggiornatoAt).getTime()) / 60_000
+                );
+                const inRitardo = minuti < FRESCHEZZA_DETTAGLIO_MINUTI;
+                return (
+                  <div
+                    className={`mx-4 mt-2 rounded border px-2.5 py-1.5 text-xs ${
+                      inRitardo
+                        ? "border-slate-200 bg-slate-50 text-slate-600"
+                        : "border-amber-200 bg-amber-50 text-amber-900"
+                    }`}
+                  >
+                    L&apos;app ne dichiara {formatInt(dettaglio.atteso)}, qui se ne contano{" "}
+                    {formatInt(dettaglio.totale)}:{" "}
+                    {inRitardo ? (
+                      <>
+                        l&apos;elenco è di {minuti === 0 ? "meno di un minuto" : `${minuti} minuti`}{" "}
+                        fa e si rifà da sé entro cinque, oppure aggiornalo adesso.
+                      </>
+                    ) : (
+                      <>il dettaglio qui sotto è incompleto.</>
+                    )}
+                  </div>
+                );
+              })()
             ) : null}
 
             <div className="px-4 pb-3 pt-2">
