@@ -154,7 +154,7 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
           className="min-w-0 flex-1 cursor-help text-xs text-slate-500"
           title="Oltre tre categorie la ricerca di HubSpot supera i 18 filtri totali e risponde 400, che dentro l'app si legge come 'nessun lead disponibile'. Misurato."
         >
-          Al massimo {massimo}
+          Limite di {massimo} campagne
         </span>
         <svg
           aria-hidden="true"

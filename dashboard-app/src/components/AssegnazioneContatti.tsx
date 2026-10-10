@@ -819,15 +819,19 @@ export default function AssegnazioneContatti() {
                     >
                       <span className="truncate text-sm text-slate-900">{r.nome}</span>
                       <span className="flex shrink-0 items-center gap-3">
-                        {/* SCRITTO A PAROLE, non come "10:21-13:31": quel
-                            trattino si legge come un orario unico spezzato, e
-                            non dice che sono due momenti distinti. Primo e
-                            ultimo servono perche' due richieste alle 9 e alle 18
-                            sono una giornata diversa da due alle 9 e alle 9:01. */}
+                        {/* SOLO L'ULTIMA RICHIESTA, non l'intervallo.
+                            Prima qui si leggeva "dalle 10:21 alle 13:31": due
+                            orari per riga, su venti righe, erano quaranta
+                            numeri da scorrere per rispondere all'unica domanda
+                            che si fa guardando questo elenco - a che punto e'
+                            questa persona adesso. Il primo orario non serviva
+                            a deciderlo.
+
+                            SCRITTO A PAROLE e non secco, perche' "13:31" da
+                            solo accanto a un numero di lead si legge come un
+                            secondo numero. */}
                         <span className="text-xs tabular-nums text-slate-400">
-                          {r.ultima && ora(r.ultima) !== ora(r.prima)
-                            ? `dalle ${ora(r.prima)} alle ${ora(r.ultima)}`
-                            : `alle ${ora(r.prima)}`}
+                          {`alle ${ora(r.ultima ?? r.prima)}`}
                         </span>
                         <span className="w-12 text-right text-sm font-semibold tabular-nums text-slate-900">
                           {formatInt(r.lead)}
