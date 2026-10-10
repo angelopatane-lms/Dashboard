@@ -131,6 +131,47 @@ type Dettaglio = {
  */
 const FRESCHEZZA_DETTAGLIO_MINUTI = 5;
 
+/**
+ * Il motivo del rifiuto, ridotto all'osso.
+ *
+ * I motivi li scrive l'app e sono frasi intere - "Non e' stato possibile
+ * assegnarti altri Leads, ne hai ancora 12 da chiamare con stato NUOVO!" -
+ * pensate per un messaggio su Slack, dove c'e' una riga tutta per loro. In una
+ * colonna accanto a un nome e un orario non ci stanno, e tagliate a meta' non
+ * dicono piu' niente.
+ *
+ * SI TIENE IL NUMERO, che e' l'unica parte che cambia da un rifiuto all'altro:
+ * dodici lead arretrati e due sono la stessa frase ma non la stessa giornata.
+ *
+ * QUELLO CHE NON RICONOSCE PASSA INTERO. Un motivo nuovo - perche' l'app ne
+ * aggiunge uno, o perche' cambia una parola - si vede com'e' invece di
+ * sparire: meglio una riga lunga di una vuota. La frase intera resta comunque
+ * nel suggerimento, sempre.
+ */
+function motivoBreve(testo: string): string {
+  const m = testo.trim();
+
+  const arretrato = m.match(/ne hai ancora (\d+) da chiamare/i);
+  if (arretrato) return `arretrato: ${arretrato[1]}`;
+
+  // GLI APPUNTAMENTI RESTANO, e non per completezza: con tre il bonus scatta
+  // e la richiesta viene servita lo stesso. "limite 6 - 2 appunt." dice che a
+  // quella persona ne mancava uno; senza quel numero il rifiuto sembra
+  // definitivo quando non lo era.
+  const limite = m.match(/limite giornaliero \((\d+)\) raggiunto(?: con (\d+) appuntament)?/i);
+  if (limite) {
+    return limite[2] ? `limite ${limite[1]} · ${limite[2]} appunt.` : `limite ${limite[1]}`;
+  }
+
+  if (/nessun lead disponibile/i.test(m)) return "pool vuoto";
+  if (/non riesco a verificare/i.test(m)) return "arretrato non leggibile";
+  if (/assegnazione lead disattivata/i.test(m)) return "assegnazione spenta";
+  if (/non è attivo|non e' attivo/i.test(m)) return "non attivo";
+  if (/utente non trovato/i.test(m)) return "utente sconosciuto";
+
+  return m;
+}
+
 function ora(iso: string | null): string {
   if (!iso) return "--:--";
   const d = new Date(iso);
@@ -1030,8 +1071,11 @@ export default function AssegnazioneContatti() {
                             <span className="w-40 shrink-0 truncate text-sm text-slate-900">
                               {r.nome ?? "—"}
                             </span>
-                            <span className="truncate text-xs text-slate-500" title={r.motivo ?? ""}>
-                              {r.motivo ?? "senza motivo registrato"}
+                            <span
+                              className="truncate text-xs text-slate-500"
+                              title={r.motivo ?? "senza motivo registrato"}
+                            >
+                              {r.motivo ? motivoBreve(r.motivo) : "senza motivo"}
                             </span>
                           </li>
                         ))}
