@@ -585,22 +585,25 @@ export default function AssegnazioneContatti() {
             aiuto="Nei giorni scelti il Sistema si accende da solo alle 07:00 e si spegne alle 20:00. Senza nessun giorno non si muove da solo: resta dove lo metti tu."
             stato={stato ? GIORNI_ETICHETTA[stato.giorni] ?? stato.giorni : null}
           >
-            {/* QUANDO "TUTTI I GIORNI" E' ACCESO GLI ALTRI DUE SONO SPENTI E
-                FERMI. Non perche' il sistema non lavori nei feriali - ci
-                lavora, e' proprio quello che "tutti i giorni" vuol dire - ma
-                perche' quella scelta li ha gia' inghiottiti: tenerli accesi
-                faceva sembrare che fossero tre decisioni da prendere invece
-                di una. Per tornare a scegliere giorno per giorno si spegne
-                "Tutti i giorni", ed e' la stessa mossa che il sistema fa gia'
-                da solo - spegnerlo significa nessun giorno. */}
+            {/* QUANDO "TUTTI I GIORNI" E' ACCESO GLI ALTRI DUE RESTANO
+                ACCESI MA FERMI.
+                Spegnerli sarebbe stato piu' pulito da guardare e falso da
+                leggere: il sistema in quei giorni lavora eccome, ed e' proprio
+                cio' che "tutti i giorni" significa. Due interruttori spenti
+                accanto a una finestra che dice "LUN - DOM" costringono chi
+                guarda a capire quale dei due mente.
+                Accesi e bloccati dicono invece la cosa giusta: questi due sono
+                gia' compresi, e non li decidi separatamente finche' vale la
+                scelta di sopra. Per tornare a sceglierli uno per uno si spegne
+                "Tutti i Giorni". */}
             <Interruttore
-              acceso={feriali && !tuttiIGiorni}
+              acceso={feriali}
               etichetta="Feriali"
               disabilitato={bloccato || tuttiIGiorni}
               onChange={(v) => comanda({ feriali: v, weekend })}
             />
             <Interruttore
-              acceso={weekend && !tuttiIGiorni}
+              acceso={weekend}
               etichetta="Week End"
               disabilitato={bloccato || tuttiIGiorni}
               onChange={(v) => comanda({ feriali, weekend: v })}
