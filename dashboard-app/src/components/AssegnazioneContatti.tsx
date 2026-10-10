@@ -3,6 +3,7 @@
 import type * as React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import CampagnePersonaRiga, { CampagnePersonaPannello } from "@/components/CampagnePersona";
+import FinestraRichieste from "@/components/FinestraRichieste";
 import SectionTitle from "@/components/ui/SectionTitle";
 import { formatInt } from "@/lib/format";
 
@@ -119,6 +120,20 @@ type Dettaglio = {
   }> | null;
   error?: string;
 };
+
+/**
+ * Il nome ridotto a come si confronta.
+ *
+ * LE DUE FONTI SCRIVONO I NOMI DIVERSI. L'app dice "Mariarosaria Di Prisco",
+ * HubSpot "Mariarosaria di Prisco": una maiuscola, e un confronto esatto
+ * fallisce. Senza questa riduzione il totale confermato restava sempre un
+ * trattino proprio per le persone che avevano un "di" o un "de" nel cognome -
+ * cioe' il controllo incrociato si spegneva in silenzio, che e' il modo
+ * peggiore in cui puo' spegnersi.
+ */
+function chiaveNome(n: string): string {
+  return n.trim().toLowerCase().replace(/\s+/g, " ");
+}
 
 /** L'ora di una marca temporale, come la si legge a colpo d'occhio. */
 /**
@@ -395,6 +410,9 @@ export default function AssegnazioneContatti() {
    * non possono condividere uno stato che vive in uno solo di loro.
    */
   const [campagneAperte, setCampagneAperte] = useState(false);
+
+  /** Di chi e' aperta la finestra con tutte le sue richieste. */
+  const [personaAperta, setPersonaAperta] = useState<string | null>(null);
 
   const giornoIso = useCallback((scostamento: number) => {
     const d = new Date();
@@ -991,30 +1009,52 @@ export default function AssegnazioneContatti() {
                     </span>
                   </div>
                   <ul className="max-h-[420px] overflow-y-auto pr-3">
-                  {dettaglio.righe.map((r) => (
-                    <li
-                      key={r.proprietarioId}
-                      className="flex items-center justify-between gap-3 rounded px-2 py-1.5 odd:bg-slate-50/70"
-                    >
-                      <span className="truncate text-sm text-slate-900">{r.nome}</span>
-                      <span className="flex shrink-0 items-center gap-3">
-                        {/* SOLO L'ULTIMA RICHIESTA, non l'intervallo.
-                            Prima qui si leggeva "dalle 10:21 alle 13:31": due
-                            orari per riga, su venti righe, erano quaranta
-                            numeri da scorrere per rispondere all'unica domanda
-                            che si fa guardando questo elenco - a che punto e'
-                            questa persona adesso. Il primo orario non serviva
-                            a deciderlo.
+                  {/* UNA RIGA PER RICHIESTA, non per persona.
+                      Chi chiede due volte compare due volte: e' la stessa
+                      unita' che conta il numero in testa, e raggruppando si
+                      perdeva proprio il fatto che qualcuno era tornato.
 
-                            SCRITTO A PAROLE e non secco, perche' "13:31" da
-                            solo accanto a un numero di lead si legge come un
-                            secondo numero. */}
-                        <span className="text-xs tabular-nums text-slate-400">
-                          {`alle ${ora(r.ultima ?? r.prima)}`}
-                        </span>
-                        <span className="w-12 text-right text-sm font-semibold tabular-nums text-slate-900">
-                          {formatInt(r.lead)}
-                        </span>
+                      ORARIO DAVANTI AL NOME come nella colonna accanto: le
+                      due meta' si leggono di fianco, e due impaginazioni
+                      diverse costringevano a riorientarsi ogni volta.
+
+                      DAL REGISTRO DELL'APP e non dalla ricostruzione HubSpot:
+                      solo il registro sa quante richieste sono state e quanti
+                      lead ha portato ciascuna. La ricostruzione resta - serve
+                      alla banda di confronto qui sopra e al totale confermato
+                      nella finestra - ma raggruppa per persona e non puo'
+                      dire questo. Se non si legge, si ricade su di lei. */}
+                  {(dettaglio.richieste
+                    ? dettaglio.richieste.filter((r) => r.esito === "assegnato")
+                    : dettaglio.righe.map((r) => ({
+                        id: r.proprietarioId,
+                        chiestoAt: r.ultima ?? r.prima ?? "",
+                        nome: r.nome,
+                        lead: r.lead
+                      }))
+                  ).map((r) => (
+                    <li
+                      key={r.id}
+                      className="flex items-center gap-3 rounded px-2 py-1.5 odd:bg-slate-50/70"
+                    >
+                      <span className="w-10 shrink-0 text-xs tabular-nums text-slate-400">
+                        {r.chiestoAt ? ora(r.chiestoAt) : "--:--"}
+                      </span>
+                      {/* IL NOME APRE IL TOTALE. Da quando le righe sono
+                          richieste, nessuna riga dice piu' quanto ha preso una
+                          persona in tutto: quel numero sta un clic piu' in la',
+                          insieme al confronto con quello che HubSpot conferma. */}
+                      <button
+                        type="button"
+                        onClick={() => setPersonaAperta(r.nome ?? "")}
+                        disabled={!r.nome}
+                        className="min-w-0 flex-1 truncate text-left text-sm text-slate-900 transition hover:text-indigo-700 disabled:cursor-default disabled:hover:text-slate-900"
+                        title={r.nome ? `Tutte le richieste di ${r.nome}` : undefined}
+                      >
+                        {r.nome ?? "—"}
+                      </button>
+                      <span className="w-12 shrink-0 text-right text-sm font-semibold tabular-nums text-slate-900">
+                        {formatInt(r.lead)}
                       </span>
                     </li>
                   ))}
@@ -1093,6 +1133,40 @@ export default function AssegnazioneContatti() {
           </div>
         </div>
       )}
+
+      {/* IL TOTALE DI UNA PERSONA, che da quando le righe sono richieste non
+          lo dice piu' nessuna riga. Dentro c'e' anche il confronto fra quello
+          che l'app dichiara e quello che HubSpot conferma: il controllo
+          incrociato non sparisce, si sposta a portata di clic. */}
+      {personaAperta && dettaglio?.richieste ? (
+        <FinestraRichieste
+          nome={personaAperta}
+          ruolo={
+            dettaglio.richieste.find((r) => r.nome && chiaveNome(r.nome) === chiaveNome(personaAperta))
+              ?.ruolo ?? null
+          }
+          giorno={etichettaGiorno(indietro).toLowerCase()}
+          richieste={dettaglio.richieste
+            .filter(
+              (r) =>
+                r.nome && chiaveNome(r.nome) === chiaveNome(personaAperta) && r.esito === "assegnato"
+            )
+            .map((r) => ({
+              id: r.id,
+              chiestoAt: r.chiestoAt,
+              lead: r.lead,
+              serie: r.serie,
+              richiestaN: r.richiestaN,
+              pendenti: r.pendenti,
+              appuntamenti: r.appuntamenti
+            }))}
+          confermati={
+            dettaglio.righe.find((x) => chiaveNome(x.nome) === chiaveNome(personaAperta))?.lead ??
+            null
+          }
+          onChiudi={() => setPersonaAperta(null)}
+        />
+      ) : null}
 
       {/* L'ERRORE FUORI DAL RIQUADRO DEL DETTAGLIO: riguarda i comandi, non
           l'elenco, e dentro quel riquadro sarebbe sparito ogni volta che
