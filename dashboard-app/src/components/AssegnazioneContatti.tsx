@@ -2,7 +2,7 @@
 
 import type * as React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import CampagnePersona from "@/components/CampagnePersona";
+import CampagnePersonaRiga, { CampagnePersonaPannello } from "@/components/CampagnePersona";
 import SectionTitle from "@/components/ui/SectionTitle";
 import { formatInt } from "@/lib/format";
 
@@ -341,6 +341,16 @@ export default function AssegnazioneContatti() {
   /** Se l'elenco e' aperto. Chiuso finche' qualcuno non lo chiede. */
   const [aperto, setAperto] = useState(false);
 
+  /**
+   * Se la scheda delle campagne per persona e' aperta.
+   *
+   * STA QUI E NON DENTRO QUEL COMPONENTE perche' i suoi due pezzi finiscono in
+   * due posti diversi: la riga fra i comandi, dentro il riquadro bianco, e il
+   * pannello fuori, sul grigio della pagina. Due pezzi in due punti dell'albero
+   * non possono condividere uno stato che vive in uno solo di loro.
+   */
+  const [campagneAperte, setCampagneAperte] = useState(false);
+
   const giornoIso = useCallback((scostamento: number) => {
     const d = new Date();
     d.setDate(d.getDate() - scostamento);
@@ -672,8 +682,23 @@ export default function AssegnazioneContatti() {
               parlano della stessa materia - le campagne - e l'ordine conta:
               prima quello che non esce per nessuno, poi a chi esce per primo
               quello che resta. */}
-          <CampagnePersona bloccato={bloccato} />
+          <CampagnePersonaRiga
+            aperto={campagneAperte}
+            onToggle={() => setCampagneAperte((v) => !v)}
+          />
         </div>
+      </div>
+
+      {/* IL PANNELLO FUORI DAL RIQUADRO, sul grigio della pagina: cosi' i suoi
+          riquadri si allineano a quelli in cima alla sezione invece di essere
+          rientrati di sedici pixel, e sono carte bianche su grigio come
+          quelle. Dentro il riquadro bianco sarebbero state carte bianche su
+          bianco. */}
+      {campagneAperte ? <CampagnePersonaPannello bloccato={bloccato} /> : null}
+
+      {/* IL DETTAGLIO IN UN RIQUADRO SUO, perche' adesso quello dei comandi si
+          chiude prima. */}
+      <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white">
 
         {/* CHI HA RICEVUTO, che e' l'unica cosa che i due numeri qui sopra non
             dicono. Sta subito sotto di loro perche' ne e' la scomposizione: il

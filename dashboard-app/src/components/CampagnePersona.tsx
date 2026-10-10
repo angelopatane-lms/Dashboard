@@ -40,8 +40,76 @@ type Categoria = { etichetta: string; frammenti: string[]; assegnabili: number }
 
 const formatoNumero = new Intl.NumberFormat("it-IT");
 
-export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
-  const [aperto, setAperto] = useState(false);
+/**
+ * Quante categorie si possono scegliere, per la riga chiusa.
+ *
+ * E' una COPIA di MAX_CATEGORIE del server, e serve solo a scrivere la frase
+ * sulla riga prima che il pannello si apra. Chi fa rispettare il tetto davvero
+ * sono il pannello - col valore che gli manda il server - e il ponte, che
+ * rifiuta il salvataggio. Se i due numeri divergessero, qui si leggerebbe una
+ * frase sbagliata; non si potrebbe scegliere piu' del dovuto.
+ */
+const MASSIMO_ATTESO = 3;
+
+/**
+ * La riga dentro il riquadro dei comandi.
+ *
+ * SEPARATA DAL PANNELLO perche' i due pezzi stanno in due posti diversi: la
+ * riga fra gli altri comandi, dentro il riquadro bianco; il pannello fuori,
+ * sul grigio della pagina, cosi' i suoi riquadri si allineano a quelli in
+ * cima alla sezione invece di essere rientrati di sedici pixel.
+ */
+export default function CampagnePersonaRiga({
+  aperto,
+  onToggle
+}: {
+  aperto: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={aperto}
+      className="flex w-full items-center gap-x-4 px-4 py-3 text-left transition hover:bg-slate-50"
+    >
+      <span
+        className="w-44 shrink-0 cursor-help text-sm font-medium text-slate-800"
+        title="Le categorie di campagna che ciascuna persona riceve per prime, le stesse della tabella Campagne. Chi non ne ha scelta nessuna riceve tutte le campagne, come sempre. Non e' un'esclusione: se le categorie scelte non bastano, il resto arriva dalle altre."
+      >
+        Campagne per Persona
+      </span>
+      {/* IL TETTO E NON LO STATO. Qui prima si leggeva quante persone hanno
+          una preferenza: un'informazione che il pannello dice gia' da solo,
+          appena si apre, e che sulla riga chiusa e' solo una frase lunga. Il
+          tetto invece e' l'unica cosa che non si scopre guardando. */}
+      <span
+        className="min-w-0 flex-1 cursor-help text-xs text-slate-500"
+        title="Oltre tre categorie la ricerca di HubSpot supera i 18 filtri totali e risponde 400, che dentro l'app si legge come 'nessun lead disponibile'. Misurato."
+      >
+        Limite di {MASSIMO_ATTESO} campagne
+      </span>
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 20 20"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        className={`h-3 w-3 shrink-0 text-slate-400 transition-transform ${aperto ? "rotate-180" : ""}`}
+      >
+        <path d="M5 7.5 10 12.5 15 7.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  );
+}
+
+/**
+ * Il pannello, fuori dal riquadro dei comandi e sul grigio della pagina.
+ *
+ * Si monta quando la riga si apre e si smonta quando si chiude: per questo
+ * legge all'avvio e non ha bisogno di sapere se e' aperto.
+ */
+export function CampagnePersonaPannello({ bloccato }: { bloccato?: boolean }) {
   const [persone, setPersone] = useState<Persona[]>([]);
   const [categorie, setCategorie] = useState<Categoria[]>([]);
   /** Quante se ne possono scegliere: lo dice il server, non una costante di qui. */
@@ -89,11 +157,12 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
   }, []);
 
   useEffect(() => {
-    if (aperto && !persone.length && !inCorso) void leggi();
-    // Si legge una volta all'apertura: queste impostazioni non si muovono da
+    void leggi();
+    // Una volta sola, all'apertura: il pannello si monta quando la riga si
+    // apre, quindi questo e' il momento. Queste impostazioni non si muovono da
     // sole, e rileggerle a intervalli sarebbe spendere chiamate per niente.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aperto]);
+  }, []);
 
   /**
    * Salva e riusa la risposta.
@@ -168,44 +237,7 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
   };
 
   return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setAperto((v) => !v)}
-        aria-expanded={aperto}
-        className="flex w-full items-center gap-x-4 px-4 py-3 text-left transition hover:bg-slate-50"
-      >
-        <span
-          className="w-44 shrink-0 cursor-help text-sm font-medium text-slate-800"
-          title="Le categorie di campagna che ciascuna persona riceve per prime, le stesse della tabella Campagne. Chi non ne ha scelta nessuna riceve tutte le campagne, come sempre. Non e' un'esclusione: se le categorie scelte non bastano, il resto arriva dalle altre."
-        >
-          Campagne per Persona
-        </span>
-        {/* IL TETTO E NON LO STATO. Qui prima si leggeva quante persone
-            hanno una preferenza: un'informazione che la riga dice gia' da
-            sola, appena si apre, e che sulla riga chiusa e' solo una frase
-            lunga. Il tetto invece e' l'unica cosa che non si scopre
-            guardando. */}
-        <span
-          className="min-w-0 flex-1 cursor-help text-xs text-slate-500"
-          title="Oltre tre categorie la ricerca di HubSpot supera i 18 filtri totali e risponde 400, che dentro l'app si legge come 'nessun lead disponibile'. Misurato."
-        >
-          Limite di {massimo} campagne
-        </span>
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 20 20"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className={`h-3 w-3 shrink-0 text-slate-400 transition-transform ${aperto ? "rotate-180" : ""}`}
-        >
-          <path d="M5 7.5 10 12.5 15 7.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
-
-      {!aperto ? null : (
-        <div className="border-t border-slate-100 px-4 pb-4 pt-3">
+    <div className="mt-4">
           {errore ? (
             <p className="mb-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
               {errore}
@@ -213,9 +245,11 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
           ) : null}
 
           {inCorso && !persone.length ? (
-            <p className="py-6 text-center text-xs text-slate-400">lettura delle persone…</p>
+            <p className="rounded-lg border border-slate-200 bg-white py-6 text-center text-xs text-slate-400">
+              lettura delle persone…
+            </p>
           ) : !persone.length ? (
-            <p className="py-6 text-center text-xs text-slate-400">
+            <p className="rounded-lg border border-slate-200 bg-white py-6 text-center text-xs text-slate-400">
               nessuna persona da impostare
             </p>
           ) : (
@@ -271,7 +305,7 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
                   larghezza ma non per contenuto: nome, targhette e tendina non
                   entravano in una riga sola e la tendina finiva sotto il nome,
                   che e' peggio di una colonna sola. */}
-              <div className="grid gap-x-8 gap-y-6 xl:grid-cols-2">
+              <div className="grid gap-x-8 gap-y-6 rounded-lg border border-slate-200 bg-white px-4 py-4 xl:grid-cols-2">
                 {gruppi.map(([ruolo, gente]) => (
                   <div key={ruolo}>
                     <div className="mb-1 flex items-baseline gap-2 border-b border-slate-200 pb-1.5">
@@ -371,9 +405,7 @@ export default function CampagnePersona({ bloccato }: { bloccato?: boolean }) {
                   </div>
                 ))}
               </div>
-            </>
-          )}
-        </div>
+        </>
       )}
     </div>
   );
