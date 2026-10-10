@@ -6,6 +6,27 @@ import SogliaMarketing from "@/components/charts/SogliaMarketing";
 import { formatInt } from "@/lib/format";
 
 /**
+ * Quante righe dell'elenco esecuzioni si vedono prima che cominci a scorrere.
+ *
+ * L'elenco cresce di una riga a notte e non si ferma: senza un tetto la
+ * sezione diventerebbe per meta' questa tabella, e quello che le sta sotto
+ * finirebbe sempre piu' lontano.
+ */
+const RIGHE_VISIBILI = 20;
+
+/**
+ * Le due altezze, misurate a schermo il 10 ottobre 2026: una riga della
+ * tabella (text-sm con py-1.5) e l'intestazione (text-xs con py-2).
+ *
+ * Stanno qui scritte e non dentro un'altezza in pixel scelta a occhio: il
+ * tetto si calcola dalle righe, cosi' cambiando RIGHE_VISIBILI si cambia
+ * quello che si vede, e se un giorno la riga cambia altezza basta correggere
+ * una costante invece di rimisurare tutto.
+ */
+const ALTEZZA_RIGA = 32.5;
+const ALTEZZA_INTESTAZIONE = 32;
+
+/**
  * I contatti di marketing, e quanto manca alla soglia dell'abbonamento.
  *
  * IL NUMERO GRANDE DI HUBSPOT NON E' QUELLO CHE CONTA. HubSpot mostra come "di
@@ -115,15 +136,29 @@ export default function ContattiMarketing() {
       </p>
 
       {dati.storico.length > 1 ? (
-        <div className="mt-4 overflow-x-auto">
-          <table className="text-sm">
-            <thead>
+        /* VENTI RIGHE E POI SI SCORRE. L'elenco cresce di una riga a notte e
+           non si ferma: senza un tetto, da qui in poi la pagina sarebbe per
+           meta' questa tabella, e tutto quello che le sta sotto sparirebbe
+           sempre piu' lontano.
+           L'ALTEZZA SI CALCOLA DALLE RIGHE, non e' un numero di pixel scelto a
+           occhio: cosi' cambiando RIGHE_VISIBILI si cambia quello che si vede,
+           e se un giorno la riga cambia altezza basta correggere una costante
+           invece di indovinare di nuovo. */
+        <div
+          className="mt-4 overflow-auto rounded-lg border border-slate-200"
+          style={{ maxHeight: ALTEZZA_INTESTAZIONE + RIGHE_VISIBILI * ALTEZZA_RIGA }}
+        >
+          <table className="w-full text-sm">
+            {/* L'INTESTAZIONE RESTA ATTACCATA IN ALTO mentre si scorre: cinque
+                colonne di numeri senza i loro nomi non si leggono, e in una
+                tabella che scorre i nomi sono i primi a sparire. */}
+            <thead className="sticky top-0 z-10 bg-white">
               <tr className="text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <th className="py-2 pr-4 text-left">Esecuzioni</th>
-                <th className="px-3 py-2">Contatti di marketing</th>
-                <th className="px-3 py-2">In attesa di rinnovo</th>
-                <th className="px-3 py-2">Declassati extra</th>
-                <th className="px-3 py-2">Declassati totali</th>
+                <th className="border-b border-slate-200 py-2 pl-4 pr-4 text-left">Esecuzioni</th>
+                <th className="border-b border-slate-200 px-3 py-2">Contatti di marketing</th>
+                <th className="border-b border-slate-200 px-3 py-2">In attesa di rinnovo</th>
+                <th className="border-b border-slate-200 px-3 py-2">Declassati extra</th>
+                <th className="border-b border-slate-200 px-3 py-2 pr-4">Declassati totali</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -135,7 +170,7 @@ export default function ContattiMarketing() {
                     {/* L'ORA ACCANTO ALLA DATA: due righe possono essere dello
                         stesso giorno con fotografie prese a ore diverse, e senza
                         l'ora non si capirebbe quale finestra misurano. */}
-                    <td className="py-1.5 pr-4 text-left text-slate-700">
+                    <td className="py-1.5 pl-4 pr-4 text-left text-slate-700">
                       {r.giorno.split("-").reverse().join("/")} - {r.presoAlle}
                     </td>
                     <td className="px-3 py-1.5">{formatInt(r.reali)}</td>
@@ -147,7 +182,7 @@ export default function ContattiMarketing() {
                         stima ricavata dalla serie che HubSpot pubblica su Slack.
                         Si mostra come gli altri, senza segni particolari - resta
                         scritto nel suggerimento da dove viene. */}
-                    <td className="px-3 py-1.5 text-slate-500">
+                    <td className="px-3 py-1.5 pr-4 text-slate-500">
                       {delta !== null ? (
                         delta > 0 ? `+${formatInt(delta)}` : formatInt(delta)
                       ) : r.declassatiStima !== null ? (
