@@ -96,16 +96,7 @@ export async function GET() {
     // scrivere zero, che si leggerebbe come "non c'e' piu' niente".
     if (!quanti) return risposta;
     return NextResponse.json(
-      {
-        ...dati,
-        assegnabili_a: quanti.serieA,
-        assegnabili_b: quanti.serieB,
-        // Fin dove arriva il secondo serbatoio, quello a 45 giorni su cui
-        // l'app ripiega. Assenti quando HubSpot non li ha contati: la card
-        // allora non ne parla, invece di dire un numero inventato.
-        esteso_a: quanti.estesoA,
-        esteso_b: quanti.estesoB
-      },
+      { ...dati, assegnabili_a: quanti.serieA, assegnabili_b: quanti.serieB },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (e) {

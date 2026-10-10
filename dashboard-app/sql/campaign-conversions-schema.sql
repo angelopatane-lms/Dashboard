@@ -737,21 +737,26 @@ CREATE INDEX IF NOT EXISTS assegnazione_pool_quando
 ALTER TABLE assegnazione_pool ADD COLUMN IF NOT EXISTS assegnabili_a INT;
 ALTER TABLE assegnazione_pool ADD COLUMN IF NOT EXISTS assegnabili_b INT;
 
--- I TETTI DI ETA' SONO DUE, NON UNO.
+-- IL SECONDO SERBATOIO: DUE COLONNE CHE NON SI RIEMPIONO PIU'.
 --
--- `assegnabili_a` e `assegnabili_b` contano a venti giorni, che e'
--- MAX_LEAD_AGE_DAYS: il tetto del serbatoio principale, quello da cui si pesca
--- normalmente. Ma l'app ne ha un secondo - MAX_LEAD_AGE_HOURS_FALLBACK, 45
--- giorni - su cui ripiega quando il principale non copre la richiesta, e fino
--- al 10 ottobre 2026 queste due colonne lo ignoravano: la pagina dichiarava
--- 1.095 e 855 dove l'app, arrivata al ripiego, pesca da 3.352 e 4.141.
+-- L'app ha due tetti d'eta': venti giorni sul serbatoio principale
+-- (MAX_LEAD_AGE_DAYS, che e' quello che contano le due colonne di sopra) e
+-- quarantacinque su quello esteso, da cui ripiega quando il primo non copre la
+-- richiesta. Il 10 ottobre 2026 queste due colonne sono nate per contare il
+-- secondo - 3.379 e 4.146 contro 1.097 e 855 - e poche ore dopo si e' smesso
+-- di riempirle.
 --
--- IL NUMERO IN GRANDE RESTA QUELLO A VENTI GIORNI, perche' e' quello che si
--- usa quasi sempre: con mille lead disponibili e richieste da venti, il
--- ripiego non scatta quasi mai. Questi due dicono fin dove si arriva quando
--- scatta.
+-- PERCHE' SI E' SMESSO, contato su `lead_assignments` dell'app: dal 22 maggio
+-- al 10 ottobre sono stati assegnati 33.810 lead, di cui 5.000 oltre i venti
+-- giorni, cioe' dal serbatoio esteso. Ma nelle tre settimane precedenti al 10
+-- ottobre quel numero e' ZERO tutti i giorni: con millenovecento contatti
+-- pescabili e cinquecento richieste al giorno il ripiego non scatta mai, e due
+-- ricerche HubSpot ogni cinque minuti per un numero che nessuno guarda sono
+-- budget tolto ai flussi che lo condividono.
 --
--- NON SONO UNA SOMMA: i contatti entro venti giorni sono gia' dentro questi.
+-- LE COLONNE RESTANO, vuote: cancellarle costerebbe una migrazione distruttiva
+-- per recuperare niente, e il giorno in cui gli assegnabili scendono sotto la
+-- domanda il ripiego ricomincia a lavorare e tornano a servire.
 ALTER TABLE assegnazione_pool ADD COLUMN IF NOT EXISTS esteso_a INT;
 ALTER TABLE assegnazione_pool ADD COLUMN IF NOT EXISTS esteso_b INT;
 

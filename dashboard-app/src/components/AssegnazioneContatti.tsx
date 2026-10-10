@@ -73,19 +73,6 @@ type Stato = {
    */
   assegnabili_a?: number | null;
   assegnabili_b?: number | null;
-  /**
-   * Fin dove arriva il SECONDO serbatoio, quello a 45 giorni.
-   *
-   * I tetti di eta' sono due: venti giorni sul serbatoio principale,
-   * quarantacinque su quello esteso, da cui l'app completa la richiesta
-   * quando il primo non basta. Fino al 10 ottobre 2026 la pagina dichiarava
-   * solo il primo.
-   *
-   * NON SI SOMMANO agli assegnabili: quelli entro venti giorni sono gia'
-   * contati qui dentro.
-   */
-  esteso_a?: number | null;
-  esteso_b?: number | null;
 };
 
 /**
@@ -173,38 +160,6 @@ const GIORNI_ETICHETTA: Record<string, string> = {
  * LO ZERO E' SMORZATO perche' "niente" non deve attirare l'occhio quanto un
  * numero vero: a parita' di nero, `0 assegnati oggi` gridava come `31.753`.
  */
-/**
- * Le due righe sotto il numero di un serbatoio.
- *
- * PRIMA SU QUANTI, POI FIN DOVE. Il numero in grande sono gli assegnabili a
- * venti giorni - `MAX_LEAD_AGE_DAYS`, il tetto del serbatoio principale, da
- * cui si pesca quasi sempre. La prima riga dice su quanti contatti grezzi sono
- * calcolati; la seconda dice fin dove si arriva col serbatoio esteso, quello a
- * quarantacinque giorni su cui l'app ripiega quando il principale non copre la
- * richiesta.
- *
- * IL NUMERO IN GRANDE NON DIVENTA QUELLO ESTESO, pur essendo molto piu' grosso:
- * con mille lead disponibili e richieste da venti, il ripiego non scatta quasi
- * mai, e mettere in grande un numero che si usa raramente direbbe che c'e' piu'
- * materiale di quanto se ne usi davvero.
- *
- * LA SECONDA RIGA SPARISCE SE NON E' STATA MISURATA, invece di mostrare uno
- * zero: un serbatoio esteso vuoto e un serbatoio esteso non contato si leggono
- * diversissimi.
- */
-function Serbatoio({ grezzo, esteso }: { grezzo: number; esteso?: number | null }) {
-  return (
-    <>
-      <div>assegnabili, su {formatInt(grezzo)}</div>
-      {esteso != null ? (
-        <div title="Il secondo serbatoio, a 45 giorni: l'app ci ripiega quando il primo non basta a coprire la richiesta. Comprende gli assegnabili qui sopra, non si somma a loro.">
-          {formatInt(esteso)} col serbatoio esteso
-        </div>
-      ) : null}
-    </>
-  );
-}
-
 function Numero({
   valore,
   etichetta,
@@ -212,8 +167,8 @@ function Numero({
 }: {
   valore: string;
   etichetta: string;
-  /** Le righe piccole sotto il numero: servono a dire da cosa e' ricavato. */
-  nota?: React.ReactNode;
+  /** Una riga piccola sotto il numero: serve a dire da cosa e' ricavato. */
+  nota?: string;
 }) {
   const vuoto = valore === "0" || valore === "–";
   return (
@@ -532,9 +487,9 @@ export default function AssegnazioneContatti() {
             }
             etichetta="Pool serie A"
             nota={
-              stato?.assegnabili_a != null && stato?.pool_a != null ? (
-                <Serbatoio grezzo={stato.pool_a} esteso={stato.esteso_a} />
-              ) : undefined
+              stato?.assegnabili_a != null && stato?.pool_a != null
+                ? `assegnabili, su ${formatInt(stato.pool_a)}`
+                : undefined
             }
           />
           <Numero
@@ -547,9 +502,9 @@ export default function AssegnazioneContatti() {
             }
             etichetta="Pool serie B"
             nota={
-              stato?.assegnabili_b != null && stato?.pool_b != null ? (
-                <Serbatoio grezzo={stato.pool_b} esteso={stato.esteso_b} />
-              ) : undefined
+              stato?.assegnabili_b != null && stato?.pool_b != null
+                ? `assegnabili, su ${formatInt(stato.pool_b)}`
+                : undefined
             }
           />
           <Numero valore={stato ? `${stato.riserva}/${stato.riserva_max}` : "–"} etichetta="Riserva A oggi" />
