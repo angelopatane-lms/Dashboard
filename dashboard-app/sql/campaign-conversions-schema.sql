@@ -737,6 +737,24 @@ CREATE INDEX IF NOT EXISTS assegnazione_pool_quando
 ALTER TABLE assegnazione_pool ADD COLUMN IF NOT EXISTS assegnabili_a INT;
 ALTER TABLE assegnazione_pool ADD COLUMN IF NOT EXISTS assegnabili_b INT;
 
+-- I TETTI DI ETA' SONO DUE, NON UNO.
+--
+-- `assegnabili_a` e `assegnabili_b` contano a venti giorni, che e'
+-- MAX_LEAD_AGE_DAYS: il tetto del serbatoio principale, quello da cui si pesca
+-- normalmente. Ma l'app ne ha un secondo - MAX_LEAD_AGE_HOURS_FALLBACK, 45
+-- giorni - su cui ripiega quando il principale non copre la richiesta, e fino
+-- al 10 ottobre 2026 queste due colonne lo ignoravano: la pagina dichiarava
+-- 1.095 e 855 dove l'app, arrivata al ripiego, pesca da 3.352 e 4.141.
+--
+-- IL NUMERO IN GRANDE RESTA QUELLO A VENTI GIORNI, perche' e' quello che si
+-- usa quasi sempre: con mille lead disponibili e richieste da venti, il
+-- ripiego non scatta quasi mai. Questi due dicono fin dove si arriva quando
+-- scatta.
+--
+-- NON SONO UNA SOMMA: i contatti entro venti giorni sono gia' dentro questi.
+ALTER TABLE assegnazione_pool ADD COLUMN IF NOT EXISTS esteso_a INT;
+ALTER TABLE assegnazione_pool ADD COLUMN IF NOT EXISTS esteso_b INT;
+
 -- ============================================================================
 -- CHI STAVA IN QUALE SOTTO-TEAM, E DA QUANDO.
 --

@@ -29,6 +29,23 @@ const HUBSPOT = "https://api.hubapi.com";
 const GIORNI_MAX = 20;
 
 /**
+ * L'eta' massima del SECONDO serbatoio, su cui l'app ripiega.
+ *
+ * I TETTI SONO DUE E QUI SE NE GUARDAVA UNO SOLO. `MAX_LEAD_AGE_DAYS` vale 20
+ * e governa il serbatoio principale; `MAX_LEAD_AGE_HOURS_FALLBACK` vale 45
+ * giorni e governa quello esteso, da cui `fetch_fallback_leads` completa la
+ * richiesta quando il principale non basta. Fino al 10 ottobre 2026 questa
+ * pagina dichiarava solo il primo: 1.095 e 855, dove arrivando al ripiego
+ * l'app pesca da 3.352 e 4.141.
+ *
+ * LA DIFFERENZA E' TUTTA NELLA SERIE B, ed e' enorme: a venti giorni ne
+ * sopravvive il 3%, a quarantacinque arriva a 4.141. La serie A e' flusso -
+ * entra ed esce - mentre la serie B e' deposito, e un tetto a venti giorni su
+ * un deposito taglia quasi tutto.
+ */
+const GIORNI_ESTESO = 45;
+
+/**
  * Quanto vale un conteggio prima di rifarlo.
  *
  * La sezione interroga l'app ogni minuto mentre qualcuno la guarda: rifare due
@@ -41,7 +58,17 @@ const FRESCHEZZA_MINUTI = 5;
 /** Un campione ogni dieci minuti basta a ricostruire l'andamento della giornata. */
 const CAMPIONE_MINUTI = 10;
 
-export type Assegnabili = { serieA: number; serieB: number; presoAt: string };
+export type Assegnabili = {
+  serieA: number;
+  serieB: number;
+  /**
+   * Fin dove si arriva col serbatoio esteso. NON si sommano ai due di sopra:
+   * i contatti entro venti giorni sono gia' contati qui dentro.
+   */
+  estesoA: number | null;
+  estesoB: number | null;
+  presoAt: string;
+};
 
 export type StatoApp = {
   pool_a?: unknown;
@@ -144,8 +171,11 @@ export async function assegnabili(token: string, stato?: StatoApp): Promise<Asse
     preso_at: Date;
     assegnabili_a: number | null;
     assegnabili_b: number | null;
+    esteso_a: number | null;
+    esteso_b: number | null;
   }>(
-    `SELECT preso_at, assegnabili_a, assegnabili_b FROM assegnazione_pool
+    `SELECT preso_at, assegnabili_a, assegnabili_b, esteso_a, esteso_b
+       FROM assegnazione_pool
       ORDER BY preso_at DESC LIMIT 1`
   );
 
@@ -158,6 +188,8 @@ export async function assegnabili(token: string, stato?: StatoApp): Promise<Asse
     return {
       serieA: u.assegnabili_a ?? 0,
       serieB: u.assegnabili_b ?? 0,
+      estesoA: u.esteso_a,
+      estesoB: u.esteso_b,
       presoAt: new Date(u.preso_at).toISOString()
     };
   }
@@ -166,9 +198,19 @@ export async function assegnabili(token: string, stato?: StatoApp): Promise<Asse
   da.setHours(0, 0, 0, 0);
   da.setDate(da.getDate() - GIORNI_MAX);
 
-  const [a, b] = await Promise.all([
+  const daEsteso = new Date();
+  daEsteso.setHours(0, 0, 0, 0);
+  daEsteso.setDate(daEsteso.getDate() - GIORNI_ESTESO);
+
+  // QUATTRO RICERCHE E NON DUE, ma sempre una volta ogni cinque minuti: il
+  // riuso che reggeva due conteggi regge anche quattro, e misurare un tetto
+  // solo era il modo di dichiarare un serbatoio che non e' quello da cui
+  // l'app pesca davvero.
+  const [a, b, ea, eb] = await Promise.all([
     quanti(token, "serie_a", da.getTime()),
-    quanti(token, "serie_b", da.getTime())
+    quanti(token, "serie_b", da.getTime()),
+    quanti(token, "serie_a", daEsteso.getTime()),
+    quanti(token, "serie_b", daEsteso.getTime())
   ]);
   if (a === null && b === null) return null;
 
@@ -182,8 +224,9 @@ export async function assegnabili(token: string, stato?: StatoApp): Promise<Asse
     await db.query(
       `INSERT INTO assegnazione_pool
          (preso_at, pool_a, pool_b, riserva, riserva_max, assegnati_oggi,
-          persone_oggi, sistema_acceso, modalita_live, assegnabili_a, assegnabili_b)
-       VALUES (now(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          persone_oggi, sistema_acceso, modalita_live, assegnabili_a, assegnabili_b,
+          esteso_a, esteso_b)
+       VALUES (now(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        ON CONFLICT (preso_at) DO NOTHING`,
       [
         intero(stato?.pool_a),
@@ -195,10 +238,18 @@ export async function assegnabili(token: string, stato?: StatoApp): Promise<Asse
         typeof stato?.sistema_acceso === "boolean" ? stato.sistema_acceso : null,
         typeof stato?.modalita_live === "boolean" ? stato.modalita_live : null,
         a,
-        b
+        b,
+        ea,
+        eb
       ]
     );
   }
 
-  return { serieA: a ?? 0, serieB: b ?? 0, presoAt: new Date().toISOString() };
+  return {
+    serieA: a ?? 0,
+    serieB: b ?? 0,
+    estesoA: ea,
+    estesoB: eb,
+    presoAt: new Date().toISOString()
+  };
 }
