@@ -41,17 +41,6 @@ type Categoria = { etichetta: string; frammenti: string[]; assegnabili: number }
 const formatoNumero = new Intl.NumberFormat("it-IT");
 
 /**
- * Quante categorie si possono scegliere, per la riga chiusa.
- *
- * E' una COPIA di MAX_CATEGORIE del server, e serve solo a scrivere la frase
- * sulla riga prima che il pannello si apra. Chi fa rispettare il tetto davvero
- * sono il pannello - col valore che gli manda il server - e il ponte, che
- * rifiuta il salvataggio. Se i due numeri divergessero, qui si leggerebbe una
- * frase sbagliata; non si potrebbe scegliere piu' del dovuto.
- */
-const MASSIMO_ATTESO = 3;
-
-/**
  * La riga dentro il riquadro dei comandi.
  *
  * SEPARATA DAL PANNELLO perche' i due pezzi stanno in due posti diversi: la
@@ -77,7 +66,7 @@ export default function CampagnePersonaRiga({
         className="w-44 shrink-0 cursor-help text-sm font-medium text-slate-800"
         title="Le categorie di campagna che ciascuna persona riceve per prime, le stesse della tabella Campagne. Chi non ne ha scelta nessuna riceve tutte le campagne, come sempre. Non e' un'esclusione: se le categorie scelte non bastano, il resto arriva dalle altre."
       >
-        Campagne per Persona
+        Personalizzazione
       </span>
       {/* IL TETTO E NON LO STATO. Qui prima si leggeva quante persone hanno
           una preferenza: un'informazione che il pannello dice gia' da solo,
@@ -87,7 +76,7 @@ export default function CampagnePersonaRiga({
         className="min-w-0 flex-1 cursor-help text-xs text-slate-500"
         title="Oltre tre categorie la ricerca di HubSpot supera i 18 filtri totali e risponde 400, che dentro l'app si legge come 'nessun lead disponibile'. Misurato."
       >
-        Limite di {MASSIMO_ATTESO} campagne
+        Per Persona
       </span>
       <svg
         aria-hidden="true"

@@ -148,9 +148,9 @@ function ora(iso: string | null): string {
  */
 const GIORNI_ETICHETTA: Record<string, string> = {
   nessuno: "Nessuna",
-  feriali: "da LUN a VEN dalle 7:00 alle 20:00",
-  weekend: "da SAB a DOM dalle 7:00 alle 20:00",
-  entrambi: "da LUN a DOM dalle 7:00 alle 20:00"
+  feriali: "LUN - VEN  |  7:00 - 20:00",
+  weekend: "SAB - DOM  |  7:00 - 20:00",
+  entrambi: "LUN - DOM  |  7:00 - 20:00"
 };
 
 /**
@@ -456,6 +456,7 @@ export default function AssegnazioneContatti() {
 
   const feriali = stato?.giorni === "feriali" || stato?.giorni === "entrambi";
   const weekend = stato?.giorni === "weekend" || stato?.giorni === "entrambi";
+  const tuttiIGiorni = feriali && weekend;
   const bloccato = inCorso || !stato;
 
   return (
@@ -541,7 +542,7 @@ export default function AssegnazioneContatti() {
             quando serve e non deve mettersi in mezzo. */}
         <div className="divide-y divide-slate-100 border-b border-slate-100">
           <Riga
-            nome="Stato del Sistema"
+            nome="Sistema"
             aiuto="Se spento, le richieste su Slack vengono ignorate e non si recuperano alla riaccensione."
             stato={
               stato ? (
@@ -580,25 +581,33 @@ export default function AssegnazioneContatti() {
           </Riga>
 
           <Riga
-            nome="Finestra di Operatività"
+            nome="Operatività"
             aiuto="Nei giorni scelti il Sistema si accende da solo alle 07:00 e si spegne alle 20:00. Senza nessun giorno non si muove da solo: resta dove lo metti tu."
             stato={stato ? GIORNI_ETICHETTA[stato.giorni] ?? stato.giorni : null}
           >
+            {/* QUANDO "TUTTI I GIORNI" E' ACCESO GLI ALTRI DUE SONO SPENTI E
+                FERMI. Non perche' il sistema non lavori nei feriali - ci
+                lavora, e' proprio quello che "tutti i giorni" vuol dire - ma
+                perche' quella scelta li ha gia' inghiottiti: tenerli accesi
+                faceva sembrare che fossero tre decisioni da prendere invece
+                di una. Per tornare a scegliere giorno per giorno si spegne
+                "Tutti i giorni", ed e' la stessa mossa che il sistema fa gia'
+                da solo - spegnerlo significa nessun giorno. */}
             <Interruttore
-              acceso={feriali}
+              acceso={feriali && !tuttiIGiorni}
               etichetta="Feriali"
-              disabilitato={bloccato}
+              disabilitato={bloccato || tuttiIGiorni}
               onChange={(v) => comanda({ feriali: v, weekend })}
             />
             <Interruttore
-              acceso={weekend}
+              acceso={weekend && !tuttiIGiorni}
               etichetta="Week End"
-              disabilitato={bloccato}
+              disabilitato={bloccato || tuttiIGiorni}
               onChange={(v) => comanda({ feriali, weekend: v })}
             />
             <Interruttore
-              acceso={feriali && weekend}
-              etichetta="Tutti"
+              acceso={tuttiIGiorni}
+              etichetta="Tutti i Giorni"
               disabilitato={bloccato}
               onChange={(v) => comanda({ feriali: v, weekend: v })}
             />
@@ -606,9 +615,9 @@ export default function AssegnazioneContatti() {
 
           <div>
             <Riga
-              nome="Campagne da Escludere"
+              nome="Filtro"
               aiuto="I contatti di queste campagne non vengono assegnati, finche' il filtro resta attivo. Si scelgono fra le campagne Live: una campagna e le sue varianti si aggiungono insieme e restano salvate con i nomi interi."
-              stato="Workshop"
+              stato="campagne da escludere"
             >
               <select
                 value=""
