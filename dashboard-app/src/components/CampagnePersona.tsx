@@ -66,7 +66,7 @@ export default function CampagnePersonaRiga({
         className="w-44 shrink-0 cursor-help text-sm font-medium text-slate-800"
         title="Le categorie di campagna che ciascuna persona riceve per prime, le stesse della tabella Campagne. Chi non ne ha scelta nessuna riceve tutte le campagne, come sempre. Non e' un'esclusione: se le categorie scelte non bastano, il resto arriva dalle altre."
       >
-        Personalizzazione
+        Categorie
       </span>
       {/* IL TETTO E NON LO STATO. Qui prima si leggeva quante persone hanno
           una preferenza: un'informazione che il pannello dice gia' da solo,
@@ -76,7 +76,7 @@ export default function CampagnePersonaRiga({
         className="min-w-0 flex-1 cursor-help text-xs text-slate-500"
         title="Oltre tre categorie la ricerca di HubSpot supera i 18 filtri totali e risponde 400, che dentro l'app si legge come 'nessun lead disponibile'. Misurato."
       >
-        Per Persona
+        Combinazione personalizzata (max 3)
       </span>
       <svg
         aria-hidden="true"

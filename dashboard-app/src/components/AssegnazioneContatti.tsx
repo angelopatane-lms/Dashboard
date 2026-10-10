@@ -148,9 +148,9 @@ function ora(iso: string | null): string {
  */
 const GIORNI_ETICHETTA: Record<string, string> = {
   nessuno: "Nessuna",
-  feriali: "LUN - VEN  |  7:00 - 20:00",
-  weekend: "SAB - DOM  |  7:00 - 20:00",
-  entrambi: "LUN - DOM  |  7:00 - 20:00"
+  feriali: "LUN - VEN ore 7:00 - 20:00",
+  weekend: "SAB - DOM ore 7:00 - 20:00",
+  entrambi: "LUN - DOM ore 7:00 - 20:00"
 };
 
 /**
@@ -618,9 +618,9 @@ export default function AssegnazioneContatti() {
 
           <div>
             <Riga
-              nome="Filtro"
+              nome="Campagne"
               aiuto="I contatti di queste campagne non vengono assegnati, finche' il filtro resta attivo. Si scelgono fra le campagne Live: una campagna e le sue varianti si aggiungono insieme e restano salvate con i nomi interi."
-              stato="campagne da escludere"
+              stato="Escluse dall'Assegnazione"
             >
               <select
                 value=""
@@ -698,6 +698,43 @@ export default function AssegnazioneContatti() {
             aperto={campagneAperte}
             onToggle={() => setCampagneAperte((v) => !v)}
           />
+
+          {/* L'ELENCO DI CHI HA RICEVUTO, COME GLI ALTRI COMANDI.
+              Prima era una scritta piccola centrata sotto il riquadro, in
+              maiuscoletto: sembrava un piede di pagina invece di una delle
+              cose che si vengono a fare qui. Adesso e' una riga come le altre,
+              e si apre dallo stesso gesto.
+
+              CHIUSO DI PARTENZA, e non per ordine: ricostruire il dettaglio
+              costa una trentina di chiamate a HubSpot su un token condiviso
+              con decine di flussi Zapier. Chi apre la sezione quasi sempre
+              viene per gli interruttori. */}
+          <button
+            type="button"
+            onClick={() => setAperto((v) => !v)}
+            aria-expanded={aperto}
+            className="flex w-full items-center gap-x-4 px-4 py-3 text-left transition hover:bg-slate-50"
+          >
+            <span
+              className="w-44 shrink-0 cursor-help text-sm font-medium text-slate-800"
+              title="Chi ha ricevuto lead oggi e chi li ha chiesti senza riceverli. L'elenco si ricostruisce da HubSpot, quindi si apre solo quando serve."
+            >
+              Assegnazioni
+            </span>
+            <span className="min-w-0 flex-1 text-xs text-slate-500">
+              Chi ha ricevuto e chi no
+            </span>
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className={`h-3 w-3 shrink-0 text-slate-400 transition-transform ${aperto ? "rotate-180" : ""}`}
+            >
+              <path d="M5 7.5 10 12.5 15 7.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -708,8 +745,9 @@ export default function AssegnazioneContatti() {
           bianco. */}
       {campagneAperte ? <CampagnePersonaPannello bloccato={bloccato} /> : null}
 
-      {/* IL DETTAGLIO IN UN RIQUADRO SUO, perche' adesso quello dei comandi si
-          chiude prima. */}
+      {/* IL DETTAGLIO IN UN RIQUADRO SUO, che compare solo da aperto: a elenco
+          chiuso sarebbe stata una carta vuota sotto i comandi. */}
+      {!aperto ? null : (
       <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white">
 
         {/* CHI HA RICEVUTO, che e' l'unica cosa che i due numeri qui sopra non
@@ -749,30 +787,7 @@ export default function AssegnazioneContatti() {
               </button>
             </div>
 
-            {/* IL COMANDO CHE APRE L'ELENCO.
-                Chiuso di partenza, e non per ordine: ricostruire il dettaglio
-                costa una trentina di chiamate a HubSpot su un token condiviso
-                con decine di flussi Zapier. Chi apre la sezione quasi sempre
-                viene per gli interruttori; cosi' quelle chiamate si spendono
-                solo quando qualcuno vuole davvero vedere l'elenco. */}
-            <button
-              type="button"
-              onClick={() => setAperto((v) => !v)}
-              aria-expanded={aperto}
-              className="flex items-center gap-1.5 justify-self-center text-[11px] uppercase tracking-wide text-slate-500 transition hover:text-slate-900"
-            >
-              Dettaglio assegnazioni
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 20 20"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                className={`h-3 w-3 transition-transform ${aperto ? "rotate-180" : ""}`}
-              >
-                <path d="M5 7.5 10 12.5 15 7.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
+            <span />
 
             {/* AGGIORNA SOLO SU OGGI. Una giornata passata non si ricalcola -
                 HubSpot non la sa piu' - quindi un bottone che promette di
@@ -1011,13 +1026,17 @@ export default function AssegnazioneContatti() {
             </>
           ) : null}
         </div>
-
-        {errore ? (
-          <div className="border-t border-slate-100 bg-amber-50 px-4 py-2 text-xs font-medium text-amber-800">
-            {errore}
-          </div>
-        ) : null}
       </div>
+      )}
+
+      {/* L'ERRORE FUORI DAL RIQUADRO DEL DETTAGLIO: riguarda i comandi, non
+          l'elenco, e dentro quel riquadro sarebbe sparito ogni volta che
+          l'elenco si chiude - cioe' quasi sempre. */}
+      {errore ? (
+        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-medium text-amber-800">
+          {errore}
+        </div>
+      ) : null}
     </section>
   );
 }
