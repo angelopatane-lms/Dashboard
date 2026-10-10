@@ -182,25 +182,24 @@ function Numero({
 }) {
   const vuoto = valore === "0" || valore === "–";
   return (
-    // ETICHETTA SOPRA, NUMERO SOTTO: e' la forma dei riquadri di Stato
-    // Contatti di Marketing, subito piu' in basso nella stessa pagina. Due
-    // strisce di numeri impaginate al contrario nella stessa schermata
-    // costringono a riorientarsi ogni volta che l'occhio passa dall'una
-    // all'altra, per nessun motivo.
-    <div className="px-4 py-2.5">
-      <div className="text-[11px] uppercase leading-tight tracking-wide text-slate-500">
+    // LA STESSA CARTA DI STATO CONTATTI DI MARKETING, misura per misura:
+    // stesso bordo, stesso fondo, stesse tre righe. Prima questi numeri erano
+    // una striscia dentro il riquadro dei comandi, separati solo da un filo:
+    // dato e comando sullo stesso bianco, senza gerarchia. Staccati si legge
+    // al volo cosa si guarda e cosa si usa - ed e' la forma che la pagina usa
+    // gia' poco piu' in basso.
+    <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
         {etichetta}
       </div>
       <div
-        className={`text-xl font-semibold leading-tight tabular-nums ${
+        className={`mt-1 text-2xl font-semibold tabular-nums ${
           vuoto ? "text-slate-300" : "text-slate-900"
         }`}
       >
         {valore}
       </div>
-      {nota ? (
-        <div className="text-[10px] leading-tight text-slate-400">{nota}</div>
-      ) : null}
+      {nota ? <div className="mt-0.5 text-xs text-slate-500">{nota}</div> : null}
     </div>
   );
 }
@@ -476,11 +475,12 @@ export default function AssegnazioneContatti() {
         </a>
       </div>
 
-      {/* UN RIQUADRO SOLO, diviso da righe sottili. Prima erano cinque riquadri
-          dentro un sesto: il bordo ripetuto faceva sembrare ammassato un
-          contenuto che ammassato non e'. */}
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <div className="grid grid-cols-2 divide-x divide-y divide-slate-100 border-b border-slate-100 sm:grid-cols-5 sm:divide-y-0">
+      {/* I NUMERI FUORI DAL RIQUADRO DEI COMANDI. Sono due cose diverse - i
+          numeri si leggono di sfuggita, i comandi si usano - e stando sullo
+          stesso bianco separati da un filo non lo sembravano. Staccati sono
+          la stessa forma di Stato Contatti di Marketing, poco piu' in basso
+          nella stessa pagina. */}
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {/* L'ASSEGNABILE DAVANTI, IL GREZZO SOTTO. Il numero grande e' quello
               su cui si decide: il serbatoio grezzo diceva decine di migliaia
               mentre le richieste tornavano con quattro lead. Quando il
@@ -517,10 +517,12 @@ export default function AssegnazioneContatti() {
                 : undefined
             }
           />
-          <Numero valore={stato ? `${stato.riserva}/${stato.riserva_max}` : "–"} etichetta="Riserva A oggi" />
           <Numero valore={stato ? formatInt(stato.assegnati_oggi) : "–"} etichetta="Assegnati oggi" />
           <Numero valore={stato ? formatInt(stato.persone_oggi) : "–"} etichetta="Persone oggi" />
-        </div>
+      </div>
+
+      {/* UN RIQUADRO SOLO PER I COMANDI, diviso da righe sottili. */}
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
 
         {/* L'ORDINE DICE A COSA SERVE LA SEZIONE: prima i numeri, che si
             leggono di sfuggita per sapere se c'e' materiale e se oggi e'
