@@ -2,6 +2,7 @@
 
 import type * as React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import CampagnePersona from "@/components/CampagnePersona";
 import SectionTitle from "@/components/ui/SectionTitle";
 import { formatInt } from "@/lib/format";
 
@@ -654,6 +655,12 @@ export default function AssegnazioneContatti() {
               </div>
             ) : null}
           </div>
+
+          {/* CHI RICEVE COSA, sotto CHE COSA NON SI ASSEGNA. Le due righe
+              parlano della stessa materia - le campagne - e l'ordine conta:
+              prima quello che non esce per nessuno, poi a chi esce per primo
+              quello che resta. */}
+          <CampagnePersona bloccato={bloccato} />
         </div>
 
         {/* CHI HA RICEVUTO, che e' l'unica cosa che i due numeri qui sopra non
