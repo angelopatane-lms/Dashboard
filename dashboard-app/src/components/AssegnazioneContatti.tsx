@@ -722,7 +722,7 @@ export default function AssegnazioneContatti() {
               Assegnazioni
             </span>
             <span className="min-w-0 flex-1 text-xs text-slate-500">
-              Chi ha ricevuto e chi no
+              Dettaglio Richieste
             </span>
             <svg
               aria-hidden="true"
