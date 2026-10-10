@@ -1061,7 +1061,12 @@ export default function AssegnazioneContatti() {
                         type="button"
                         onClick={() => setPersonaAperta(r.nome ?? "")}
                         disabled={!r.nome}
-                        className="min-w-0 flex-1 truncate text-left text-sm text-slate-900 transition hover:text-indigo-700 disabled:cursor-default disabled:hover:text-slate-900"
+                        /* LO STESSO GESTO DELLA TABELLA ADVISOR: al
+                           passaggio del mouse si scurisce lo sfondo e il
+                           testo resta com'e'. Colorare il nome lo faceva
+                           sembrare un collegamento a un'altra pagina, mentre
+                           apre una finestra qui. */
+                        className="-my-1.5 min-w-0 flex-1 cursor-pointer truncate rounded px-1.5 py-1.5 text-left text-sm text-slate-900 transition-colors hover:bg-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-400 disabled:cursor-default disabled:hover:bg-transparent"
                         title={r.nome ? `Tutte le richieste di ${r.nome}` : undefined}
                       >
                         {r.nome ?? "—"}
