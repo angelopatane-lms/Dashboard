@@ -26,12 +26,45 @@
  * da dove sono arrivati.
  */
 
+/**
+ * Il sotto-team su HubSpot, che dal 12 ottobre 2026 e' la fonte vera.
+ *
+ * Il commento qui sopra diceva che la lista viveva nel codice perche' "oggi
+ * quella colonna non distingue i chatter". Adesso li distingue: il sotto-team
+ * Chatter esiste su HubSpot e ci sono dentro cinque persone. Quindi chi e'
+ * chatter lo dice HubSpot, come per Telefonici, Eventi e Programmi - e tre
+ * account creati il 12 ottobre lo sono diventati senza che nessuno toccasse
+ * questo file.
+ */
+export const SOTTO_TEAM_CHATTER = "Chatter";
+
+/**
+ * I due nomi di prima, rimasti SOLO come rete di salvataggio.
+ *
+ * Servono quando la fotografia dei sotto-team non c'e' - non e' ancora stata
+ * presa, o la lettura e' fallita - e senza di loro la tabella tornerebbe a non
+ * distinguere nessuno. Non vanno piu' aggiornati a mano: una persona nuova si
+ * aggiunge mettendola nel sotto-team Chatter su HubSpot, non qui.
+ */
 export const CHATTER = ["Bartolo Giordanengo", "Chiara Fiorese"] as const;
 
 /** Confronto sui nomi con la stessa normalizzazione usata in tabella. */
 export function eChatter(nome: string): boolean {
   const k = nome.trim().toLowerCase().replace(/\s+/g, " ");
   return CHATTER.some((n) => n.toLowerCase() === k);
+}
+
+/**
+ * Chi e' chatter: prima HubSpot, poi la lista.
+ *
+ * `sottoTeam` e' quello che la fotografia dice per quella persona. Quando c'e'
+ * decide lui, anche se dice "Telefonici" per uno dei due nomi scritti sopra:
+ * una lista scritta a mano che vince su un dato vero e' il modo in cui le due
+ * cose divergono e nessuno se ne accorge.
+ */
+export function eChatterCon(sottoTeam: string | undefined, nome: string): boolean {
+  if (sottoTeam) return sottoTeam === SOTTO_TEAM_CHATTER;
+  return eChatter(nome);
 }
 
 /**

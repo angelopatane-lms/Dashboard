@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { CHATTER_DATI_ATTESI, eChatter, INTESTAZIONI_CHATTER } from "@/lib/chatter";
+import { CHATTER_DATI_ATTESI, eChatterCon, INTESTAZIONI_CHATTER } from "@/lib/chatter";
 import { eAdvisorTelefonico } from "@/lib/statiLead";
 import type { OperatorSummary } from "@/lib/analytics";
 import { formatInt, formatPct, formatEur } from "@/lib/format";
@@ -345,9 +345,20 @@ export default function OperatorStatsTable({
    * evita che una tabella vuota passi per una tabella di chatter: `every` su
    * zero elementi e' vero.
    */
-  const soloChatter = isSetterView && data.length > 0 && data.every((r) => eChatter(r.operatore));
-  const titolo = (nome: string) => (soloChatter ? INTESTAZIONI_CHATTER[nome] ?? nome : nome);
   const normKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+  /**
+   * Il sotto-team di una persona secondo HubSpot, vuoto se non si sa.
+   *
+   * CHI E' CHATTER LO DICE HUBSPOT, non piu' una lista di nomi nel codice: il
+   * 12 ottobre 2026 sono nati tre account nel sotto-team Chatter, e con la
+   * lista scritta a mano la tabella non li avrebbe riconosciuti - titoli delle
+   * colonne sbagliati, righe nel gruppo sbagliato - finche' qualcuno non
+   * avesse modificato il codice.
+   */
+  const sottoDiNome = (nome: string) => sottoTeamPerPersona?.[normKey(nome)];
+  const soloChatter =
+    isSetterView && data.length > 0 && data.every((r) => eChatterCon(sottoDiNome(r.operatore), r.operatore));
+  const titolo = (nome: string) => (soloChatter ? INTESTAZIONI_CHATTER[nome] ?? nome : nome);
   // Il foglio resta il ripiego: se il database non risponde la colonna mostra
   // il vecchio numero invece di azzerarsi, e per i mesi in cui il foglio era
   // ancora buono i due valori sono confrontabili.
@@ -552,7 +563,9 @@ export default function OperatorStatsTable({
   // lavora il low ticket al telefono; sulla Setter i chatter, che fissano dalla
   // chat invece che chiamando. In entrambi i casi e' un mestiere diverso dagli
   // altri della stessa tabella, non una prestazione diversa.
-  const inFondo = isSetterView ? eChatter : eAdvisorTelefonico;
+  const inFondo = isSetterView
+    ? (nome: string) => eChatterCon(sottoDiNome(nome), nome)
+    : eAdvisorTelefonico;
 
   /**
    * Il sotto-team che va per ultimo: fa un MESTIERE diverso dagli altri della
@@ -573,7 +586,7 @@ export default function OperatorStatsTable({
    *
    * SENZA SOTTO-TEAM VENGONO PRIMI, perche' sono il grosso e il caso normale.
    */
-  const sottoDi = (nome: string) => sottoTeamPerPersona?.[normKey(nome)] ?? "";
+  const sottoDi = (nome: string) => sottoDiNome(nome) ?? "";
   const gruppi: Array<{ etichetta: string | null; righe: typeof righe }> = (() => {
     if (!sottoTeamPerPersona) {
       return [

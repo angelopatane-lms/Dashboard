@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { eChatter } from "@/lib/chatter";
+import { eChatterCon } from "@/lib/chatter";
 import { eAdvisorTelefonico } from "@/lib/statiLead";
 import type { CsvRow } from "@/lib/csv";
 import { applyFilters, computeKpis, type Filters } from "@/lib/metrics";
@@ -373,8 +373,15 @@ export default function DashboardEnterprise({
    */
   const vistaSetter = operatorLabel === "Setter";
 
-  /** Chi finisce nel secondo gruppo, in fondo: dipende dalla pagina. */
-  const secondoGruppo = vistaSetter ? eChatter : eAdvisorTelefonico;
+  /**
+   * Chi finisce nel secondo gruppo, in fondo: dipende dalla pagina.
+   *
+   * Sui Setter sono i chatter, e chi lo e' lo dice HubSpot: la lista di nomi
+   * nel codice resta solo per quando la fotografia dei sotto-team non c'e'.
+   */
+  const secondoGruppo = vistaSetter
+    ? (nome: string) => eChatterCon(sottoTeamPerPersona?.[chiaveNome(nome)], nome)
+    : eAdvisorTelefonico;
 
   /**
    * Il menu Team filtra sul sotto-team vero, non su un elenco di nomi.
