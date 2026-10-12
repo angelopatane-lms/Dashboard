@@ -367,9 +367,113 @@ function Interruttore({
   );
 }
 
+/**
+ * La conferma prima di toccare l'interruttore del Sistema.
+ *
+ * PERCHE' UNA FINESTRA E NON confirm(). Prima qui c'era un confirm() del
+ * browser, e solo in accensione: una riga di testo di sistema, che si chiude
+ * con Invio senza leggerla. Questo interruttore comanda la distribuzione dei
+ * contatti su un'altra applicazione - spento resta spento, e le richieste
+ * arrivate nel frattempo non si recuperano: il 27 settembre 2026 e' rimasto
+ * giu' per nove giorni senza che nessuno se ne accorgesse.
+ *
+ * IN TUTTE E DUE LE DIREZIONI, non solo in accensione. Spegnere e' il verso
+ * che fa piu' danno, ed era quello senza conferma.
+ *
+ * IL FUOCO PARTE SU "Annulla", di proposito: chi preme Invio per riflesso
+ * annulla invece di procedere. Vale anche Esc e il clic fuori, che sono i due
+ * modi in cui si esce da una finestra senza volerla.
+ */
+function ConfermaAdmin({
+  verso,
+  onConferma,
+  onAnnulla
+}: {
+  verso: boolean;
+  onConferma: () => void;
+  onAnnulla: () => void;
+}) {
+  const annulla = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    annulla.current?.focus();
+    const tasto = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onAnnulla();
+    };
+    window.addEventListener("keydown", tasto);
+    return () => window.removeEventListener("keydown", tasto);
+  }, [onAnnulla]);
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-slate-900/40" onClick={onAnnulla} aria-hidden="true" />
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="conferma-admin-titolo"
+        className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-slate-200 bg-white shadow-2xl"
+      >
+        <div className="flex gap-4 px-6 pt-6">
+          {/* Triangolo rosso pieno con il punto esclamativo in bianco:
+              ritagliato nel triangolo con evenodd, cosi' resta bianco su
+              qualunque sfondo invece di dipendere da un secondo colore. */}
+          <svg
+            viewBox="0 0 24 24"
+            className="h-10 w-10 shrink-0 text-red-600"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              fillRule="evenodd"
+              clipRule="evenodd"
+              d="M10.9 2.6a1.3 1.3 0 0 1 2.2 0l9.7 17a1.3 1.3 0 0 1-1.1 1.9H2.3a1.3 1.3 0 0 1-1.1-1.9l9.7-17ZM12 7.6a1 1 0 0 0-1 1v5a1 1 0 1 0 2 0v-5a1 1 0 0 0-1-1Zm0 8.2a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4Z"
+            />
+          </svg>
+          <div className="min-w-0">
+            <h2 id="conferma-admin-titolo" className="text-base font-semibold text-slate-900">
+              Attenzione!
+            </h2>
+            {/* IL VERSO E' NELLA FRASE, non solo nell'interruttore: chi apre
+                questa finestra per sbaglio deve leggere cosa sta per fare,
+                non dedurlo da dov'era il cursore. */}
+            <p className="mt-1 text-sm leading-relaxed text-slate-600">
+              Stai per {verso ? "accendere" : "spegnere"} la Riassegnazione Automatica!
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">
+              Solo un Admin dispone delle autorizzazioni necessarie per questa operazione, se non
+              lo sei premi annulla.
+            </p>
+          </div>
+        </div>
+        <div className="mt-6 flex justify-end gap-2 border-t border-slate-200 px-6 py-3">
+          <button
+            type="button"
+            ref={annulla}
+            onClick={onAnnulla}
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          >
+            Annulla
+          </button>
+          <button
+            type="button"
+            onClick={onConferma}
+            className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-700"
+          >
+            Procedi, sono Admin
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function AssegnazioneContatti() {
   const [stato, setStato] = useState<Stato | null>(null);
   const [errore, setErrore] = useState<string | null>(null);
+  /** Il verso che l'interruttore prenderebbe, in attesa di conferma. null =
+   *  finestra chiusa. Si tiene il verso e non un semplice "aperta" perche' il
+   *  testo cambia fra accensione e spegnimento. */
+  const [confermaSistema, setConfermaSistema] = useState<boolean | null>(null);
   const [inCorso, setInCorso] = useState(false);
   // Evita che una risposta lenta arrivata dopo una piu' recente la sovrascriva:
   // succede toccando un interruttore mentre parte il giro automatico.
@@ -666,19 +770,12 @@ export default function AssegnazioneContatti() {
               acceso={Boolean(stato?.sistema_acceso)}
               etichetta={stato?.sistema_acceso ? "On" : "Off"}
               disabilitato={bloccato}
-              onChange={(v) => {
-                // La conferma c'e' solo in accensione, e solo quando assegna
-                // davvero: da qui si fa partire la distribuzione dei contatti
-                // su un'altra applicazione, e un clic di troppo non deve farlo.
-                if (
-                  v &&
-                  stato?.modalita_live &&
-                  !confirm("Le assegnazioni ripartono subito, su HubSpot. Procedo?")
-                ) {
-                  return;
-                }
-                comanda({ sistema: v });
-              }}
+              // LA CONFERMA VALE IN TUTTE E DUE LE DIREZIONI, e anche in Dry
+              // Run. Prima era solo in accensione e solo in LIVE: ma spegnere
+              // e' il verso che fa piu' danno - resta spento, e le richieste
+              // arrivate nel frattempo non si recuperano - ed era proprio
+              // quello senza nessun avviso.
+              onChange={(v) => setConfermaSistema(v)}
             />
           </Riga>
 
@@ -1216,6 +1313,17 @@ export default function AssegnazioneContatti() {
             null
           }
           onChiudi={() => setPersonaAperta(null)}
+        />
+      ) : null}
+
+      {confermaSistema !== null ? (
+        <ConfermaAdmin
+          verso={confermaSistema}
+          onAnnulla={() => setConfermaSistema(null)}
+          onConferma={() => {
+            comanda({ sistema: confermaSistema });
+            setConfermaSistema(null);
+          }}
         />
       ) : null}
 
