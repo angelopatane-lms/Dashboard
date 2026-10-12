@@ -103,6 +103,15 @@ export const SUFFISSI_TECNICI = [
   "presenti",
   "in_db",
   "consulenza",
+  // La variante del workshop REM delle aste, 12 persone tutte del 30
+  // settembre 2026. Si scrive per esteso invece di allargare "consulenza" a
+  // "consulenza(_.+)?" perche' quella forma larga mangerebbe anche le sei
+  // campagne "_ew_consulenza_gratuita" - 1.342 persone fra MBE Mktg, DIV
+  // Coach, MEP, REM, MBE Mngt e ADE, che sono campagne vere e non varianti
+  // di niente - e soprattutto unirebbe "lres2_consulenza_gratuita_domenica"
+  // a "lres2", che invece esiste. Misurato il 12 ottobre 2026:
+  // "consulenza_priorita_massima" non compare su nessun altro nome.
+  "consulenza_priorita_massima",
   "colloquio",
   "survey",
   "candidature_postevento",
