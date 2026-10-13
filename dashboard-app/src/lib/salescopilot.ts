@@ -93,6 +93,12 @@ export function agganciaPersone(
   }
 
   return copilot.map((p) => {
+    // AUTOPILOT HA UN'EMAIL MA NON E' UNA PERSONA: scrive da un utente Revio,
+    // e se quell'indirizzo combaciasse con uno dei nostri gli attribuiremmo il
+    // lavoro della macchina. Si agganciano solo le righe `human`; quelle senza
+    // `kind` si agganciano come prima, per non perdere nessuno se un giorno il
+    // campo mancasse.
+    if (p.kind && p.kind !== "human") return { copilot: p, nostro: null, via: null };
     for (const e of p.emails ?? []) {
       const trovato = perEmail.get(e.trim().toLowerCase());
       if (trovato) return { copilot: p, nostro: trovato, via: "email" as const };
@@ -116,28 +122,107 @@ export function senzaAggancio(agganci: Aggancio[]): Aggancio[] {
   return agganci.filter((a) => !a.nostro);
 }
 
+/**
+ * Una nota di Copilot: perche' un numero e' quello che e'.
+ *
+ * ARRIVANO IN DUE POSTI: dentro ogni giorno (`days[].notes`, quelle che
+ * riguardano quel giorno) e in cima alla risposta (`notes`, l'unione per
+ * codice con l'elenco dei giorni a cui si applicano). Si guardano entrambe:
+ * quelle in cima si mostrano, quelle del giorno decidono quali numeri di quel
+ * giorno non sono misure.
+ */
+export type NotaCopilot = { code?: string; message?: string; dates?: string[] };
+
 /** I numeri di una persona in una giornata, come li manda Copilot. */
 export type KpiPersona = {
   id: string;
   name?: string;
   emails?: string[];
+  /** "human" per le persone, "autopilot" per il setter automatico. */
   kind?: string;
+  active?: boolean;
   /** null quando il dato per quel giorno non e' ricostruibile: non e' zero. */
-  assigned: number | null;
-  qualified: number | null;
-  messagesSent: number | null;
-  appointmentsSet: number | null;
-  hoursWorked: number | null;
+  assegnati: number | null;
+  qualificati: number | null;
+  messaggi: number | null;
+  /** Di quei messaggi, quanti scritti dentro Revio. Gia' compresi in `messaggi`. */
+  messaggiInRevio: number | null;
+  appuntamenti: number | null;
+  /** Di quelli, quanti hanno gia' giorno e ora. Gia' compresi in `appuntamenti`. */
+  appuntamentiConData: number | null;
+  ore: number | null;
+  oreMetodo: string | null;
 };
 
-export type KpiGiorno = { date: string; people: KpiPersona[] };
+export type KpiGiorno = {
+  date: string;
+  /**
+   * false quando il giorno puo' ancora crescere: oggi, e ieri prima delle
+   * 03:00 di Roma. E' LORO E NON NOSTRO, ed e' il motivo per cui si conserva:
+   * la regola delle 03:00 la decidono loro e puo' cambiare.
+   */
+  final: boolean | null;
+  /** "complete", "provisional" o "incomplete". */
+  status: string | null;
+  computedAt: string | null;
+  persone: KpiPersona[];
+  /** Le note di questo giorno: dicono quali numeri non sono misure. */
+  note: NotaCopilot[];
+};
 
 export type KpiRisposta = {
   days: KpiGiorno[];
-  /** Quello che Copilot ha da dire su questa risposta: va guardato. */
+  /** Le note in cima, pronte da mostrare. */
   notes: string[];
   timezone?: string;
+  /**
+   * Non null quando la risposta ha una forma che non ci aspettavamo.
+   *
+   * SERVE PERCHE' UN CAMPO RINOMINATO NON FA RUMORE: diventa `undefined`, che
+   * diventa null, che diventa un trattino - e una tabella di trattini si
+   * confonde con "nessuno ha lavorato". E' esattamente quello che e' successo
+   * il 13 ottobre 2026: leggevamo `people` e `assigned` dalla loro bozza del
+   * 12, mentre la versione pubblicata manda `setters`, `leadsAssigned` e
+   * `leadsQualified`. Abbiamo passato mezza giornata a chiedere quando
+   * sarebbero arrivati i numeri, e i numeri c'erano da subito.
+   */
+  formaSospetta: string | null;
 };
+
+const numero = (v: unknown): number | null => (typeof v === "number" ? v : null);
+
+/**
+ * I nomi vecchi si leggono ancora, ma solo come ripiego.
+ *
+ * Loro garantiscono che dentro `v1` un campo non si rinomina piu'. Questo
+ * ripiego costa una riga e copre il caso in cui la garanzia non tenga; se
+ * dovesse servire, `formaSospetta` lo dice invece di lasciarci con dei
+ * trattini da interpretare.
+ */
+function personaDa(p: Record<string, unknown>): KpiPersona {
+  return {
+    id: String(p.id ?? ""),
+    name: typeof p.name === "string" ? p.name : undefined,
+    emails: Array.isArray(p.emails) ? (p.emails as string[]) : [],
+    kind: typeof p.kind === "string" ? p.kind : undefined,
+    active: typeof p.active === "boolean" ? p.active : undefined,
+    assegnati: numero(p.leadsAssigned ?? p.assigned),
+    qualificati: numero(p.leadsQualified ?? p.qualified),
+    messaggi: numero(p.messagesSent),
+    messaggiInRevio: numero(p.messagesSentInRevio),
+    appuntamenti: numero(p.appointmentsSet),
+    appuntamentiConData: numero(p.appointmentsWithDate),
+    ore: numero(p.hoursWorked),
+    oreMetodo: typeof p.hoursWorkedMethod === "string" ? p.hoursWorkedMethod : null
+  };
+}
+
+const note = (v: unknown): NotaCopilot[] =>
+  Array.isArray(v) ? (v.filter((n) => n && typeof n === "object") as NotaCopilot[]) : [];
+
+/** Quante volte ritentare un 503 "warming", e quanto aspettare. */
+const TENTATIVI = 3;
+const RESPIRO_MS = 1500;
 
 /**
  * I numeri di uno o piu' giorni.
@@ -145,34 +230,96 @@ export type KpiRisposta = {
  * NULL E ZERO NON SI CONFONDONO. Copilot dichiara che un campo non
  * ricostruibile torna `null` con una nota; qui si lascia null fino in fondo, e
  * chi disegna mostrera' un trattino. Trasformarlo in zero vorrebbe dire
- * scrivere "nessun messaggio" dove la verita' e' "non lo sappiamo" - lo stesso
- * errore che il 10 ottobre faceva apparire "POOL SERIE B 0" su un serbatoio da
- * trentamila contatti.
+ * scrivere "nessun messaggio" dove la verita' e' "non lo sappiamo".
  *
- * UNA GIORNATA SENZA PERSONE NON E' UNA GIORNATA VUOTA. Al 13 ottobre 2026
- * questa chiamata risponde 200 con zero persone per ogni giorno provato: non
- * significa che nessuno abbia lavorato, significa che l'endpoint non e' ancora
- * collegato agli eventi. Chi usa questi dati deve distinguere i due casi, ed e'
- * il motivo per cui `notes` arriva fino in cima invece di essere scartato.
+ * 503 "WARMING" NON E' UN ERRORE, e' un "richiama": succede alla prima lettura
+ * di molti giorni vecchi, perche' li stanno calcolando. Si ritenta la stessa
+ * richiesta.
  */
 export async function kpiGiorni(chiave: string, da: string, a: string): Promise<KpiRisposta> {
   const u = new URL(`${BASE}/setters/daily`);
   u.searchParams.set("from", da);
   u.searchParams.set("to", a);
-  const r = await fetch(u, { headers: { Authorization: `Bearer ${chiave}` }, cache: "no-store" });
-  if (!r.ok) throw new Error(`Sales Copilot /setters/daily: HTTP ${r.status}`);
-  const d = (await r.json()) as { days?: KpiGiorno[]; notes?: unknown[]; timezone?: string };
+
+  let d: Record<string, unknown> | null = null;
+  for (let tentativo = 1; tentativo <= TENTATIVI; tentativo++) {
+    const r = await fetch(u, { headers: { Authorization: `Bearer ${chiave}` }, cache: "no-store" });
+    if (r.status === 503 && tentativo < TENTATIVI) {
+      await new Promise((ok) => setTimeout(ok, RESPIRO_MS));
+      continue;
+    }
+    if (!r.ok) throw new Error(`Sales Copilot /setters/daily: HTTP ${r.status}`);
+    d = (await r.json()) as Record<string, unknown>;
+    break;
+  }
+  if (!d) throw new Error("Sales Copilot /setters/daily: 503 warming anche dopo i tentativi");
+
+  const giorniGrezzi = Array.isArray(d.days) ? (d.days as Record<string, unknown>[]) : [];
+  const days: KpiGiorno[] = giorniGrezzi.map((g) => {
+    const righe = (g.setters ?? g.people) as unknown;
+    return {
+      date: String(g.date ?? ""),
+      final: typeof g.final === "boolean" ? g.final : null,
+      status: typeof g.status === "string" ? g.status : null,
+      computedAt: typeof g.computedAt === "string" ? g.computedAt : null,
+      persone: Array.isArray(righe) ? (righe as Record<string, unknown>[]).map(personaDa) : [],
+      note: note(g.notes)
+    };
+  });
+
+  // LA FORMA SI CONTROLLA, non si spera. Se ci sono giorni ma nessuna riga, o
+  // righe in cui nessuno dei due nomi del campo esiste, e' cambiato qualcosa:
+  // lo si dice adesso, invece di mostrare trattini e aspettare che qualcuno
+  // chieda.
+  let formaSospetta: string | null = null;
+  if (giorniGrezzi.length && days.every((g) => !g.persone.length)) {
+    const chiavi = Object.keys(giorniGrezzi[0] ?? {}).join(", ");
+    formaSospetta = `nessuna riga persona nei giorni: cerco "setters" (o "people"), il giorno contiene ${chiavi}`;
+  } else {
+    const tutte = days.flatMap((g) => g.persone);
+    if (tutte.length && tutte.every((p) => p.assegnati === null && p.messaggi === null)) {
+      formaSospetta = 'righe presenti ma vuote: cerco "leadsAssigned" e "messagesSent"';
+    }
+  }
+
   return {
-    days: d.days ?? [],
-    // LE NOTE SONO OGGETTI, non stringhe: dal 13 ottobre 2026 arrivano come
-    // {code, message, dates}. Si tiene il `message`, che e' scritto per essere
-    // letto da una persona; il JSON intero serve solo se un giorno cambiassero
-    // forma, per non perdere l'avviso invece di mostrarlo male.
-    notes: (d.notes ?? []).map((n) => {
-      if (typeof n === "string") return n;
-      const m = (n as { message?: unknown })?.message;
-      return typeof m === "string" ? m : JSON.stringify(n);
-    }),
-    timezone: d.timezone
+    days,
+    notes: note(d.notes)
+      .map((n) => n.message ?? n.code ?? "")
+      .filter(Boolean),
+    timezone: typeof d.timezone === "string" ? d.timezone : undefined,
+    formaSospetta
   };
+}
+
+/**
+ * Quali numeri di un giorno NON sono misure, per via delle sue note.
+ *
+ * LA REGOLA E' LORO: con `status: "incomplete"` i campi nominati dalle note di
+ * quel giorno non sono misure complete "anche se valgono 0". Qui si traducono
+ * i codici nei nostri campi e si riportano a null, cosi' la tabella mostra un
+ * trattino invece di uno zero che sembra una misura.
+ *
+ * `autopilot_hours` NON entra in questa tabella: non dice che un numero manca,
+ * spiega un null che c'e' gia' - e azzerare le ore di tutti per una nota che
+ * parla del setter automatico sarebbe il contrario di quello che serve.
+ */
+const CAMPI_NON_MISURATI: Record<string, Array<keyof KpiPersona>> = {
+  no_dm_log: ["messaggi", "messaggiInRevio"],
+  dm_revio_missing: ["messaggi", "messaggiInRevio"],
+  no_appointment_log: ["appuntamenti", "appuntamentiConData"],
+  no_event_log: ["assegnati", "qualificati"],
+  hours_unavailable: ["ore"]
+};
+
+export function senzaMisura(giorno: KpiGiorno, p: KpiPersona): KpiPersona {
+  if (giorno.status !== "incomplete") return p;
+  const fuori = new Set<keyof KpiPersona>();
+  for (const n of giorno.note) {
+    for (const campo of CAMPI_NON_MISURATI[n.code ?? ""] ?? []) fuori.add(campo);
+  }
+  if (!fuori.size) return p;
+  const copia = { ...p };
+  for (const campo of fuori) (copia as Record<string, unknown>)[campo] = null;
+  return copia;
 }

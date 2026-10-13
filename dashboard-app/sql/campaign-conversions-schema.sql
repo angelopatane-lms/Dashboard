@@ -915,8 +915,15 @@ CREATE INDEX IF NOT EXISTS copilot_setter_kpi_giorno
 -- vorrebbe dire una Dashboard a trattini anche il giorno in cui l'API si
 -- accende.
 CREATE TABLE IF NOT EXISTS copilot_setter_letture (
-  giorno    DATE PRIMARY KEY,
-  persone   INT NOT NULL DEFAULT 0,
-  note      TEXT,
-  preso_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  giorno      DATE PRIMARY KEY,
+  persone     INT NOT NULL DEFAULT 0,
+  note        TEXT,
+  -- `final` COME LO DICE COPILOT: false finche' il giorno puo' crescere (oggi,
+  -- e ieri prima delle 03:00 di Roma). La regola delle 03:00 e' loro e possono
+  -- cambiarla, quindi si conserva la loro risposta invece di ricalcolarla.
+  -- NULL per le letture fatte prima che questa colonna esistesse.
+  definitivo  BOOLEAN,
+  preso_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE copilot_setter_letture ADD COLUMN IF NOT EXISTS definitivo BOOLEAN;

@@ -1,6 +1,12 @@
 import { getDb } from "@/lib/db";
 import { chiaveNome } from "@/lib/nomi";
-import { agganciaPersone, kpiGiorni, personeCopilot, type Candidato } from "@/lib/salescopilot";
+import {
+  agganciaPersone,
+  kpiGiorni,
+  personeCopilot,
+  senzaMisura,
+  type Candidato
+} from "@/lib/salescopilot";
 
 /**
  * I KPI dei setter di Sales Copilot, conservati da noi e rinfrescati a scadenza.
@@ -201,8 +207,15 @@ export async function kpiIntervallo(
         ORDER BY giorno, nome`,
       [primo, ultimo]
     ),
-    db.query<{ giorno: Date | string; persone: number; note: string | null; preso_at: Date }>(
-      `SELECT giorno::text AS giorno, persone, note, preso_at FROM copilot_setter_letture
+    db.query<{
+      giorno: Date | string;
+      persone: number;
+      note: string | null;
+      definitivo: boolean | null;
+      preso_at: Date;
+    }>(
+      `SELECT giorno::text AS giorno, persone, note, definitivo, preso_at
+         FROM copilot_setter_letture
         WHERE giorno BETWEEN $1::date AND $2::date`,
       [primo, ultimo]
     )
@@ -213,9 +226,14 @@ export async function kpiIntervallo(
     const l = perGiorno.get(g);
     if (!l) return true;
     // Un giorno definitivo che ha dato numeri non si richiede piu'. Uno
-    // tornato vuoto si', e uno di ieri prima delle 03:00 nemmeno e' definitivo:
-    // vedi ORA_CHIUSURA e l'intestazione del file.
-    if (definitivo(g) && l.persone > 0) return false;
+    // tornato vuoto si'.
+    //
+    // CHI DECIDE SE E' DEFINITIVO SONO LORO, con `final`: la regola delle 03:00
+    // e' loro e possono cambiarla, quindi se ce l'hanno detto si usa quello e
+    // l'orologio nostro resta solo per i giorni letti prima che `final`
+    // esistesse.
+    const fine = l.definitivo === null || l.definitivo === undefined ? definitivo(g) : l.definitivo;
+    if (fine && l.persone > 0) return false;
     return Date.now() - new Date(l.preso_at).getTime() >= FRESCHEZZA_MINUTI * 60_000;
   };
   // NON SI CHIEDE IL FUTURO. Un filtro che arriva a fine mese ha giorni che non
@@ -265,37 +283,62 @@ export async function kpiIntervallo(
 
   const nuove: RigaKpi[] = [];
   const quante = new Map<string, number>();
+  const definitivi = new Map<string, boolean>();
   for (const giorno of daLeggere) quante.set(giorno, 0);
   for (const g of risposta.days) {
     if (!dentro.has(g.date)) continue;
-    quante.set(g.date, (g.people ?? []).length);
-    for (const p of g.people ?? []) {
+    quante.set(g.date, g.persone.length);
+    definitivi.set(g.date, g.final === null ? definitivo(g.date) : g.final);
+    for (const grezza of g.persone) {
+      // I NUMERI CHE LE NOTE DEL GIORNO DICHIARANO INCOMPLETI TORNANO A NULL
+      // prima di essere scritti: nell'archivio ci va "non misurato", non uno
+      // zero da reinterpretare ogni volta che lo si rilegge.
+      const p = senzaMisura(g, grezza);
       const x =
         agganci.get(p.id) ??
-        agganciaPersone([{ id: p.id, name: p.name ?? "", emails: p.emails ?? [] }], candidati)[0];
+        agganciaPersone(
+          [{ ...p, name: p.name ?? "", emails: p.emails ?? [] }],
+          candidati
+        )[0];
       nuove.push({
         giorno: g.date,
         personaId: p.id,
         nome: p.name ?? null,
         nostro: x?.nostro ?? null,
         via: x?.via ?? null,
-        assegnati: p.assigned,
-        qualificati: p.qualified,
-        messaggi: p.messagesSent,
-        appuntamenti: p.appointmentsSet,
-        ore: p.hoursWorked
+        assegnati: p.assegnati,
+        qualificati: p.qualificati,
+        messaggi: p.messaggi,
+        appuntamenti: p.appuntamenti,
+        ore: p.ore
       });
     }
   }
 
-  const nota = risposta.notes.join(" · ") || null;
+  // LA FORMA SOSPETTA VA IN CIMA ALLE NOTE, non nei registri: se un giorno
+  // cambiano un nome di campo, chi guarda la pagina deve vedere perche' e'
+  // diventata vuota.
+  const avvisi = risposta.formaSospetta
+    ? [`Forma della risposta inattesa: ${risposta.formaSospetta}`, ...risposta.notes]
+    : risposta.notes;
+  const nota = avvisi.join(" · ") || null;
   await db.query(
-    `INSERT INTO copilot_setter_letture (giorno, persone, note, preso_at)
-     SELECT x.giorno::date, x.persone, $2, now()
-       FROM jsonb_to_recordset($1::jsonb) AS x(giorno text, persone int)
+    `INSERT INTO copilot_setter_letture (giorno, persone, note, definitivo, preso_at)
+     SELECT x.giorno::date, x.persone, $2, x.definitivo, now()
+       FROM jsonb_to_recordset($1::jsonb) AS x(giorno text, persone int, definitivo boolean)
      ON CONFLICT (giorno) DO UPDATE SET
-       persone = EXCLUDED.persone, note = EXCLUDED.note, preso_at = now()`,
-    [JSON.stringify([...quante].map(([giorno, persone]) => ({ giorno, persone }))), nota]
+       persone = EXCLUDED.persone, note = EXCLUDED.note,
+       definitivo = EXCLUDED.definitivo, preso_at = now()`,
+    [
+      JSON.stringify(
+        [...quante].map(([giorno, persone]) => ({
+          giorno,
+          persone,
+          definitivo: definitivi.get(giorno) ?? false
+        }))
+      ),
+      nota
+    ]
   );
 
   if (nuove.length) {
@@ -343,7 +386,7 @@ export async function kpiIntervallo(
     righe,
     presoAt: new Date().toISOString(),
     appenaLetto: true,
-    note: [...new Set([...risposta.notes, ...noteVecchie])],
+    note: [...new Set([...avvisi, ...noteVecchie])],
     vuotoPerche: righe.length ? null : perche(giorni, oggi)
   };
 }
