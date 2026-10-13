@@ -134,20 +134,23 @@ export const CHATTER_DATI_ATTESI =
 export const CHATTER_DA_COPILOT = "Da Sales Copilot";
 
 /**
- * Perche' un chatter ha un trattino quando la tabella mostra tutti.
+ * Cosa c'e' nelle tre colonne dei chatter quando la tabella mostra tutti.
  *
- * I SUOI NUMERI ESISTONO, ma non sotto questi titoli. "Assegnati" nella vista
- * mista conta i passaggi di proprieta' su HubSpot; per un chatter la misura
- * giusta sono i lead presi in chat, che arrivano da Sales Copilot e si vedono
- * con il filtro Chatter - dove la colonna si chiama come la cosa che misura.
+ * NON I NUMERI DI HUBSPOT: quelli per un chatter esistono ma misurano
+ * un'altra cosa. Misurato il 13 ottobre 2026: Bartolo risultava 4 sotto
+ * "Assegnati" - i passaggi di proprieta' sul CRM - mentre i lead che aveva
+ * davvero preso in chat erano 462. Il 4 non era sbagliato, era la risposta a
+ * un'altra domanda, ma stava sotto lo stesso titolo dei 1386 di Mariarosaria,
+ * e due numeri incolonnati si confrontano invece di essere interrogati.
  *
- * MISURATO IL 13 OTTOBRE 2026: Bartolo risultava 4 nella vista mista e 462 con
- * il filtro. Il 4 non era sbagliato, era un'altra domanda - ma stava sotto lo
- * stesso titolo dei 1386 di Mariarosaria, e due numeri incolonnati si
- * confrontano, non si interrogano.
+ * LA SOLUZIONE NON E' NASCONDERLI MA INTITOLARLI: la sezione CHATTER ripete i
+ * suoi titoli sopra le sue righe - Assegnati, Messaggi, Qualificati - e sotto
+ * ci vanno i numeri di Copilot. Un titolo ripetuto a meta' tabella e' un
+ * prezzo piccolo per non dover cambiare filtro per vedere il lavoro di due
+ * persone su dodici.
  */
-export const CHATTER_ALTRO_FILTRO =
-  "I numeri dei chatter si vedono con il filtro Chatter: sotto questo titolo sarebbero un'altra misura.";
+export const CHATTER_SOTTO_TABELLA =
+  "Numero di Sales Copilot: la sezione Chatter ha i suoi titoli, sopra le sue righe.";
 
 /**
  * Cosa c'e' sotto la colonna che ha cambiato nome.

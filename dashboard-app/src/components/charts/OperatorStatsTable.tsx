@@ -2,13 +2,14 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
-  CHATTER_ALTRO_FILTRO,
   CHATTER_COPILOT_MUTO,
   CHATTER_DA_COPILOT,
   CHATTER_DATI_ATTESI,
   CHATTER_QUALIFICATI,
+  CHATTER_SOTTO_TABELLA,
   eChatterCon,
-  INTESTAZIONI_CHATTER
+  INTESTAZIONI_CHATTER,
+  SOTTO_TEAM_CHATTER
 } from "@/lib/chatter";
 import { eAdvisorTelefonico } from "@/lib/statiLead";
 import type { OperatorSummary } from "@/lib/analytics";
@@ -384,6 +385,8 @@ export default function OperatorStatsTable({
   const soloChatter =
     isSetterView && data.length > 0 && data.every((r) => eChatterCon(sottoDiNome(r.operatore), r.operatore));
   const titolo = (nome: string) => (soloChatter ? INTESTAZIONI_CHATTER[nome] ?? nome : nome);
+  /** Come si chiama quella colonna per un chatter, filtro o non filtro. */
+  const titoloChatter = (nome: string) => INTESTAZIONI_CHATTER[nome] ?? nome;
   /**
    * I numeri di Copilot di una persona, quando la tabella e' quella dei chatter.
    *
@@ -407,7 +410,18 @@ export default function OperatorStatsTable({
   const chatterRiga = (r: OperatorSummary) =>
     isSetterView && eChatterCon(sottoDiNome(r.operatore), r.operatore);
 
-  const kpiDi = (nome: string) => (soloChatter ? kpiChatter?.[normKey(nome)] : undefined);
+  /**
+   * I numeri di Copilot di una persona, ovunque sia la sua riga.
+   *
+   * ANCHE NELLA VISTA MISTA, da quando la sezione CHATTER ripete le sue
+   * intestazioni sopra le proprie righe: li' sotto "Messaggi" ci va il numero
+   * dei messaggi, non un trattino. Fuori da quella sezione non si usano - le
+   * colonne sono quelle del telefono e un messaggio non e' una chiamata.
+   */
+  const kpiDi = (nome: string) =>
+    soloChatter || eChatterCon(sottoDiNome(nome), nome)
+      ? kpiChatter?.[normKey(nome)]
+      : undefined;
   const chatterAssegnati = (r: OperatorSummary) => kpiDi(r.operatore)?.assegnati ?? null;
   const chatterMessaggi = (r: OperatorSummary) => kpiDi(r.operatore)?.messaggi ?? null;
   const chatterQualificati = (r: OperatorSummary) => kpiDi(r.operatore)?.qualificati ?? null;
@@ -544,6 +558,19 @@ export default function OperatorStatsTable({
    * NULL QUANDO NESSUNA RIGA HA UN NUMERO: sommare zero valori da' zero, e uno
    * zero sotto "Assegnati" direbbe che i chatter non hanno lead in mano.
    */
+  /**
+   * Cosa dice il totale quando in tabella ci sono anche i chatter.
+   *
+   * IL TOTALE SOMMA SOLO QUELLO CHE MISURA LA STESSA COSA. Le righe della
+   * sezione Chatter portano messaggi e lead qualificati: sommarli alle
+   * chiamate e alle connessioni darebbe un numero che non risponde a nessuna
+   * domanda. Si dice qui invece di lasciare che qualcuno faccia la somma a
+   * mano e trovi una differenza di 2087.
+   */
+  const totaleSenzaChatter = data.some((r) => chatterRiga(r))
+    ? "Non comprende la sezione Chatter: li' queste colonne misurano un'altra cosa"
+    : undefined;
+
   const totaliChatter = useMemo(() => {
     const a = data.map(chatterAssegnati).filter((v): v is number => v !== null);
     const m = data.map(chatterMessaggi).filter((v): v is number => v !== null);
@@ -583,16 +610,16 @@ export default function OperatorStatsTable({
     // numero nascosto sotto.
     {
       label: titolo("Assegnati"),
-      valore: (r) => (soloChatter ? chatterAssegnati(r) : chatterRiga(r) ? null : r.assegnati)
+      valore: (r) => (soloChatter || chatterRiga(r) ? chatterAssegnati(r) : r.assegnati)
     },
     {
       label: titolo("Chiamate"),
-      valore: (r) => (soloChatter ? chatterMessaggi(r) : chatterRiga(r) ? null : r.chiamate)
+      valore: (r) => (soloChatter || chatterRiga(r) ? chatterMessaggi(r) : r.chiamate)
     },
     {
       label: titolo("Connessioni"),
       valore: (r) =>
-        soloChatter ? chatterQualificati(r) : chatterRiga(r) ? null : r.connessioni
+        soloChatter || chatterRiga(r) ? chatterQualificati(r) : r.connessioni
     },
     { label: "Appuntamenti", valore: (r) => effAppuntamenti(r) },
     { label: "% Appuntamento", valore: (r) => taglia(tassoPresa(effAppuntamenti(r), r.connessioni)) },
@@ -834,6 +861,10 @@ export default function OperatorStatsTable({
           {ordinate.map((r) => {
             const sezione = apre.get(r.operatore);
             const etichettaSezione = sezione?.etichetta ?? null;
+            // Solo nella vista mista: quando ci sono soltanto chatter i titoli
+            // veri in cima dicono gia' Messaggi e Qualificati, e ripeterli qui
+            // sarebbe rumore.
+            const sezioneChatter = !soloChatter && etichettaSezione === SOTTO_TEAM_CHATTER;
             const tp = tassoPresa(effAppuntamenti(r), r.connessioni);
             const tc = tassoChiusura(effChiusure(r), effConsulenzeChiusura(r));
             // Quanti dei suoi appuntamenti si sono tenuti. Il denominatore sono
@@ -861,10 +892,36 @@ export default function OperatorStatsTable({
                   >
                     {etichettaSezione}
                   </td>
-                  <td
-                    colSpan={29}
-                    className={`p-0${sezione.linea ? " border-t-2 border-slate-300" : ""}`}
-                  />
+                  {/* LA SEZIONE CHATTER PORTA I SUOI TITOLI, e sotto i suoi
+                      numeri: quelle tre colonne per loro misurano un'altra cosa
+                      - messaggi invece di chiamate, lead qualificati invece di
+                      connessioni - e con il titolo ripetuto qui il numero si
+                      legge senza cambiare filtro. E' l'unica riga della tabella
+                      in cui un titolo compare due volte, ed e' il punto: senza,
+                      i 2087 messaggi di Bartolo starebbero sotto "Chiamate". */}
+                  {sezioneChatter ? (
+                    <>
+                      {[titoloChatter("Assegnati"), titoloChatter("Chiamate"), titoloChatter("Connessioni")].map(
+                        (t) => (
+                          <td
+                            key={t}
+                            className={`px-2 pb-0.5 text-right text-[10px] font-semibold tracking-wide text-slate-400 uppercase${sezione.linea ? " border-t-2 border-slate-300 pt-2" : " pt-1"}`}
+                          >
+                            {t}
+                          </td>
+                        )
+                      )}
+                      <td
+                        colSpan={26}
+                        className={`p-0${sezione.linea ? " border-t-2 border-slate-300" : ""}`}
+                      />
+                    </>
+                  ) : (
+                    <td
+                      colSpan={29}
+                      className={`p-0${sezione.linea ? " border-t-2 border-slate-300" : ""}`}
+                    />
+                  )}
                 </tr>
               ) : null}
               <tr className="group hover:bg-slate-50/70 transition-colors">
@@ -922,7 +979,7 @@ export default function OperatorStatsTable({
                         ? CHATTER_COPILOT_MUTO
                         : CHATTER_DA_COPILOT
                       : chatterRiga(r)
-                        ? CHATTER_ALTRO_FILTRO
+                        ? CHATTER_SOTTO_TABELLA
                         : undefined
                   }
                 >
@@ -933,7 +990,11 @@ export default function OperatorStatsTable({
                       formatInt(chatterAssegnati(r) as number)
                     )
                   ) : chatterRiga(r) ? (
-                    <span className="text-slate-400">–</span>
+                    chatterAssegnati(r) === null ? (
+                      <span className="text-slate-400">–</span>
+                    ) : (
+                      formatInt(chatterAssegnati(r) as number)
+                    )
                   ) : (
                     formatInt(r.assegnati)
                   )}
@@ -953,7 +1014,7 @@ export default function OperatorStatsTable({
                         ? CHATTER_COPILOT_MUTO
                         : CHATTER_DA_COPILOT
                       : chatterRiga(r)
-                        ? CHATTER_ALTRO_FILTRO
+                        ? CHATTER_SOTTO_TABELLA
                         : undefined
                   }
                 >
@@ -964,7 +1025,11 @@ export default function OperatorStatsTable({
                       formatInt(chatterMessaggi(r) as number)
                     )
                   ) : chatterRiga(r) ? (
-                    <span className="text-slate-400">–</span>
+                    chatterMessaggi(r) === null ? (
+                      <span className="text-slate-400">–</span>
+                    ) : (
+                      formatInt(chatterMessaggi(r) as number)
+                    )
                   ) : (
                     formatInt(r.chiamate)
                   )}
@@ -987,7 +1052,7 @@ export default function OperatorStatsTable({
                         ? CHATTER_COPILOT_MUTO
                         : CHATTER_QUALIFICATI
                       : chatterRiga(r)
-                        ? CHATTER_ALTRO_FILTRO
+                        ? CHATTER_SOTTO_TABELLA
                         : undefined
                   }
                 >
@@ -998,7 +1063,11 @@ export default function OperatorStatsTable({
                       formatInt(chatterQualificati(r) as number)
                     )
                   ) : chatterRiga(r) ? (
-                    <span className="text-slate-400">–</span>
+                    chatterQualificati(r) === null ? (
+                      <span className="text-slate-400">–</span>
+                    ) : (
+                      formatInt(chatterQualificati(r) as number)
+                    )
                   ) : (
                     formatInt(r.connessioni)
                   )}
@@ -1131,7 +1200,7 @@ export default function OperatorStatsTable({
                 un totale completo. Vedi totaliChatter. */}
             <td
               className="border-r border-white px-2 py-2 text-right tabular-nums"
-              title={soloChatter ? totaliChatter.quanti : undefined}
+              title={soloChatter ? totaliChatter.quanti : totaleSenzaChatter}
             >
               {soloChatter ? (
                 totaliChatter.assegnati === null ? (
@@ -1145,7 +1214,7 @@ export default function OperatorStatsTable({
             </td>
             <td
               className="border-r border-white px-2 py-2 text-right tabular-nums"
-              title={soloChatter ? totaliChatter.quanti : undefined}
+              title={soloChatter ? totaliChatter.quanti : totaleSenzaChatter}
             >
               {soloChatter ? (
                 totaliChatter.messaggi === null ? (
@@ -1159,7 +1228,9 @@ export default function OperatorStatsTable({
             </td>
             <td
               className="border-r border-white px-2 py-2 text-right tabular-nums"
-              title={soloChatter ? `${CHATTER_QUALIFICATI} ${totaliChatter.quanti}` : undefined}
+              title={
+                soloChatter ? `${CHATTER_QUALIFICATI} ${totaliChatter.quanti}` : totaleSenzaChatter
+              }
             >
               {soloChatter ? (
                 totaliChatter.qualificati === null ? (
