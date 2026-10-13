@@ -134,6 +134,22 @@ export const CHATTER_DATI_ATTESI =
 export const CHATTER_DA_COPILOT = "Da Sales Copilot";
 
 /**
+ * Perche' un chatter ha un trattino quando la tabella mostra tutti.
+ *
+ * I SUOI NUMERI ESISTONO, ma non sotto questi titoli. "Assegnati" nella vista
+ * mista conta i passaggi di proprieta' su HubSpot; per un chatter la misura
+ * giusta sono i lead presi in chat, che arrivano da Sales Copilot e si vedono
+ * con il filtro Chatter - dove la colonna si chiama come la cosa che misura.
+ *
+ * MISURATO IL 13 OTTOBRE 2026: Bartolo risultava 4 nella vista mista e 462 con
+ * il filtro. Il 4 non era sbagliato, era un'altra domanda - ma stava sotto lo
+ * stesso titolo dei 1386 di Mariarosaria, e due numeri incolonnati si
+ * confrontano, non si interrogano.
+ */
+export const CHATTER_ALTRO_FILTRO =
+  "I numeri dei chatter si vedono con il filtro Chatter: sotto questo titolo sarebbero un'altra misura.";
+
+/**
  * Cosa c'e' sotto la colonna che ha cambiato nome.
  *
  * Le connessioni, per i chatter, nessuno le misura: Copilot non le manda e

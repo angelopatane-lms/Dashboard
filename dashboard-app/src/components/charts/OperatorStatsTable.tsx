@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
+  CHATTER_ALTRO_FILTRO,
   CHATTER_COPILOT_MUTO,
   CHATTER_DA_COPILOT,
   CHATTER_DATI_ATTESI,
@@ -390,6 +391,22 @@ export default function OperatorStatsTable({
    * titoli sono quelli del telefono, e mettere i messaggi sotto "Chiamate"
    * direbbe una cosa falsa a chi legge la colonna dall'alto.
    */
+  /**
+   * Questa riga e' di un chatter, anche quando la tabella mostra tutti.
+   *
+   * SERVE A NON MOSTRARE UN NUMERO SBAGLIATO SOTTO UN TITOLO GIUSTO. Nella
+   * vista mista le prime tre colonne dicono Assegnati / Chiamate / Connessioni
+   * e portano i numeri di HubSpot. Per un chatter quei numeri esistono ma non
+   * misurano il suo lavoro: il 13 ottobre 2026 Bartolo risultava con 4
+   * assegnati nella vista mista e 462 con il filtro Chatter - il primo conta i
+   * passaggi di proprieta' su HubSpot, il secondo i lead presi in chat. Lo
+   * stesso mese, la stessa persona, due misure diverse sotto lo stesso titolo:
+   * chi legge la colonna dall'alto confronta i 4 di Bartolo con i 1386 di
+   * Mariarosaria e conclude che Bartolo non lavora.
+   */
+  const chatterRiga = (r: OperatorSummary) =>
+    isSetterView && eChatterCon(sottoDiNome(r.operatore), r.operatore);
+
   const kpiDi = (nome: string) => (soloChatter ? kpiChatter?.[normKey(nome)] : undefined);
   const chatterAssegnati = (r: OperatorSummary) => kpiDi(r.operatore)?.assegnati ?? null;
   const chatterMessaggi = (r: OperatorSummary) => kpiDi(r.operatore)?.messaggi ?? null;
@@ -458,12 +475,23 @@ export default function OperatorStatsTable({
   const effObiettivo = (r: OperatorSummary): number | null =>
     obiettivi?.[normKey(r.operatore)] ?? null;
 
+  /**
+   * Il totale delle tre colonne di HubSpot, senza le righe dei chatter.
+   *
+   * SI SOMMA QUELLO CHE SI MOSTRA. Nella vista mista le celle dei chatter sono
+   * trattini: lasciarli dentro al totale vorrebbe dire un totale che non
+   * corrisponde alla colonna sopra, e nessuno saprebbe da dove viene la
+   * differenza.
+   */
   const totals = useMemo(() => {
     const base = data.reduce(
       (acc, r) => ({
-        assegnati: acc.assegnati + r.assegnati,
-        chiamate: acc.chiamate + r.chiamate,
-        connessioni: acc.connessioni + r.connessioni,
+        // Le righe dei chatter non entrano in queste tre: nella vista mista
+        // mostrano un trattino, e nel filtro Chatter il totale lo fa
+        // totaliChatter sui numeri di Copilot.
+        assegnati: acc.assegnati + (chatterRiga(r) ? 0 : r.assegnati),
+        chiamate: acc.chiamate + (chatterRiga(r) ? 0 : r.chiamate),
+        connessioni: acc.connessioni + (chatterRiga(r) ? 0 : r.connessioni),
         appuntamenti: acc.appuntamenti + effAppuntamenti(r),
         consulenze: acc.consulenze + (isSetterView ? effNoShow(r) : effConsulenze(r)),
         svolte: acc.svolte + effConsulenzeChiusura(r),
@@ -481,14 +509,22 @@ export default function OperatorStatsTable({
       chiusure: precomputedTotals?.chiusure ?? base.chiusure,
       boom: precomputedTotals?.boom ?? base.boom
     };
-  }, [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, consulenzeFuoriCrm, telefonici, precomputedTotals, obiettivi]);
+  }, [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, consulenzeFuoriCrm, telefonici, precomputedTotals, obiettivi, sottoTeamPerPersona]);
 
   const maxValues = useMemo(
     () => ({
-      assegnati: Math.max(...data.map((r) => (soloChatter ? chatterAssegnati(r) ?? 0 : r.assegnati)), 1),
-      chiamate: Math.max(...data.map((r) => (soloChatter ? chatterMessaggi(r) ?? 0 : r.chiamate)), 1),
+      assegnati: Math.max(
+        ...data.map((r) => (soloChatter ? chatterAssegnati(r) ?? 0 : chatterRiga(r) ? 0 : r.assegnati)),
+        1
+      ),
+      chiamate: Math.max(
+        ...data.map((r) => (soloChatter ? chatterMessaggi(r) ?? 0 : chatterRiga(r) ? 0 : r.chiamate)),
+        1
+      ),
       connessioni: Math.max(
-        ...data.map((r) => (soloChatter ? chatterQualificati(r) ?? 0 : r.connessioni)),
+        ...data.map((r) =>
+          soloChatter ? chatterQualificati(r) ?? 0 : chatterRiga(r) ? 0 : r.connessioni
+        ),
         1
       ),
       appuntamenti: Math.max(...data.map((r) => effAppuntamenti(r)), 1),
@@ -498,7 +534,7 @@ export default function OperatorStatsTable({
       boom: Math.max(...data.map((r) => effBoom(r)), 1),
       resa: Math.max(...data.map((r) => resaOraria(effIncassoChiusure(r), effConsulenze(r)) ?? 0), 1)
     }),
-    [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, telefonici, soloChatter, kpiChatter]
+    [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, telefonici, soloChatter, kpiChatter, sottoTeamPerPersona]
   );
 
 
@@ -543,9 +579,21 @@ export default function OperatorStatsTable({
     // Nel gruppo chat ordinano sui numeri di Copilot, cioe' su quello che la
     // cella mostra davvero: ordinare per un valore invisibile e' il modo piu'
     // rapido di far sembrare rotto un ordinamento che funziona.
-    { label: titolo("Assegnati"), valore: (r) => (soloChatter ? chatterAssegnati(r) : r.assegnati) },
-    { label: titolo("Chiamate"), valore: (r) => (soloChatter ? chatterMessaggi(r) : r.chiamate) },
-    { label: titolo("Connessioni"), valore: (r) => (soloChatter ? chatterQualificati(r) : r.connessioni) },
+    // Una cella che mostra un trattino ordina come un trattino: null, non il
+    // numero nascosto sotto.
+    {
+      label: titolo("Assegnati"),
+      valore: (r) => (soloChatter ? chatterAssegnati(r) : chatterRiga(r) ? null : r.assegnati)
+    },
+    {
+      label: titolo("Chiamate"),
+      valore: (r) => (soloChatter ? chatterMessaggi(r) : chatterRiga(r) ? null : r.chiamate)
+    },
+    {
+      label: titolo("Connessioni"),
+      valore: (r) =>
+        soloChatter ? chatterQualificati(r) : chatterRiga(r) ? null : r.connessioni
+    },
     { label: "Appuntamenti", valore: (r) => effAppuntamenti(r) },
     { label: "% Appuntamento", valore: (r) => taglia(tassoPresa(effAppuntamenti(r), r.connessioni)) },
     {
@@ -864,14 +912,18 @@ export default function OperatorStatsTable({
                   style={{
                     background: soloChatter
                       ? heatBg(chatterAssegnati(r) ?? 0, maxValues.assegnati)
-                      : heatBg(r.assegnati, maxValues.assegnati)
+                      : chatterRiga(r)
+                        ? undefined
+                        : heatBg(r.assegnati, maxValues.assegnati)
                   }}
                   title={
                     soloChatter
                       ? chatterAssegnati(r) === null
                         ? CHATTER_COPILOT_MUTO
                         : CHATTER_DA_COPILOT
-                      : undefined
+                      : chatterRiga(r)
+                        ? CHATTER_ALTRO_FILTRO
+                        : undefined
                   }
                 >
                   {soloChatter ? (
@@ -880,6 +932,8 @@ export default function OperatorStatsTable({
                     ) : (
                       formatInt(chatterAssegnati(r) as number)
                     )
+                  ) : chatterRiga(r) ? (
+                    <span className="text-slate-400">–</span>
                   ) : (
                     formatInt(r.assegnati)
                   )}
@@ -889,14 +943,18 @@ export default function OperatorStatsTable({
                   style={{
                     background: soloChatter
                       ? heatBg(chatterMessaggi(r) ?? 0, maxValues.chiamate)
-                      : heatBg(r.chiamate, maxValues.chiamate)
+                      : chatterRiga(r)
+                        ? undefined
+                        : heatBg(r.chiamate, maxValues.chiamate)
                   }}
                   title={
                     soloChatter
                       ? chatterMessaggi(r) === null
                         ? CHATTER_COPILOT_MUTO
                         : CHATTER_DA_COPILOT
-                      : undefined
+                      : chatterRiga(r)
+                        ? CHATTER_ALTRO_FILTRO
+                        : undefined
                   }
                 >
                   {soloChatter ? (
@@ -905,6 +963,8 @@ export default function OperatorStatsTable({
                     ) : (
                       formatInt(chatterMessaggi(r) as number)
                     )
+                  ) : chatterRiga(r) ? (
+                    <span className="text-slate-400">–</span>
                   ) : (
                     formatInt(r.chiamate)
                   )}
@@ -917,14 +977,18 @@ export default function OperatorStatsTable({
                   style={{
                     background: soloChatter
                       ? heatBg(chatterQualificati(r) ?? 0, maxValues.connessioni)
-                      : heatBg(r.connessioni, maxValues.connessioni)
+                      : chatterRiga(r)
+                        ? undefined
+                        : heatBg(r.connessioni, maxValues.connessioni)
                   }}
                   title={
                     soloChatter
                       ? chatterQualificati(r) === null
                         ? CHATTER_COPILOT_MUTO
                         : CHATTER_QUALIFICATI
-                      : undefined
+                      : chatterRiga(r)
+                        ? CHATTER_ALTRO_FILTRO
+                        : undefined
                   }
                 >
                   {soloChatter ? (
@@ -933,6 +997,8 @@ export default function OperatorStatsTable({
                     ) : (
                       formatInt(chatterQualificati(r) as number)
                     )
+                  ) : chatterRiga(r) ? (
+                    <span className="text-slate-400">–</span>
                   ) : (
                     formatInt(r.connessioni)
                   )}
