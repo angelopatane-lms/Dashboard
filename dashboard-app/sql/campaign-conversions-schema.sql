@@ -927,3 +927,17 @@ CREATE TABLE IF NOT EXISTS copilot_setter_letture (
 );
 
 ALTER TABLE copilot_setter_letture ADD COLUMN IF NOT EXISTS definitivo BOOLEAN;
+
+
+-- Quanti lead ha ricevuto ciascuno OGGI, contati su HubSpot.
+--
+-- E' SOLO UNA SCADENZA, non un archivio: la riga di oggi si riscrive quando ha
+-- piu' di cinque minuti, e di giorni ne resta uno solo che conti. Lo storico
+-- non sta qui - sta nel foglio Operatori, che e' una fotografia e non cambia
+-- quando un lead passa di mano.
+CREATE TABLE IF NOT EXISTS assegnati_oggi_cache (
+  giorno    DATE PRIMARY KEY,
+  dati      JSONB NOT NULL,
+  totale    INT NOT NULL DEFAULT 0,
+  preso_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);

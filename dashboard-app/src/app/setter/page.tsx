@@ -4,6 +4,7 @@ import AdvisorSetterDashboardClient from "@/components/client/AdvisorSetterDashb
 import Container from "@/components/ui/Container";
 import { chiaveNome } from "@/lib/nomi";
 import { operatoriDelTeam } from "@/lib/operatoriTeam";
+import { assegnatiOggiInArchivio, conAssegnatiDiOggi } from "@/lib/assegnatiOggi";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,16 @@ export default async function Page() {
     fetchCsv(sheetCsvUrl(GID_OPERATORI_OGGI))
   ]);
 
+  // GLI ASSEGNATI DI OGGI VENGONO DA HUBSPOT, non dal foglio: vedi
+  // src/lib/assegnatiOggi.ts. Lo storico resta del foglio, che e' una
+  // fotografia e non cambia quando un lead passa di mano; il giorno in corso
+  // una fotografia non ce l'ha ancora.
+  //
+  // QUI SI LEGGE SOLO L'ARCHIVIO, mai HubSpot: il conto vero costa venti
+  // secondi e lo rifa' /api/assegnati-oggi, che il browser chiama da solo.
+  const contiOggi = await assegnatiOggiInArchivio();
+  const righeOggi = conAssegnatiDiOggi(operatoriRowsOggi, contiOggi?.conteggi ?? null);
+
   // L'elenco dei Setter sta in una funzione sola, condivisa con la pagina
   // pubblica: vedi src/lib/operatoriTeam.ts.
   const team = await operatoriDelTeam("Setter");
@@ -39,8 +50,8 @@ export default async function Page() {
     ? operatoriRows.filter((r) => allowedOperatorSet!.has(chiaveNome((r["Operatore"] ?? "").toString())))
     : operatoriRows;
   const operatoriRowsOggiFiltered = allowedOperatorSet
-    ? operatoriRowsOggi.filter((r) => allowedOperatorSet!.has(chiaveNome((r["Operatore"] ?? "").toString())))
-    : operatoriRowsOggi;
+    ? righeOggi.filter((r) => allowedOperatorSet!.has(chiaveNome((r["Operatore"] ?? "").toString())))
+    : righeOggi;
 
   // I menu si costruiscono su storico E oggi: una campagna partita stamattina
   // sta solo nel foglio di oggi, e prendendo lo storico soltanto non compariva

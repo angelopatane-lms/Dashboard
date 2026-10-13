@@ -4,6 +4,7 @@ import DashboardEnterprise from "@/components/client/DashboardEnterprise";
 import Container from "@/components/ui/Container";
 import { chiaveNome } from "@/lib/nomi";
 import { operatoriDelTeam } from "@/lib/operatoriTeam";
+import { assegnatiOggiInArchivio, conAssegnatiDiOggi } from "@/lib/assegnatiOggi";
 
 /**
  * La tabella KPI Advisor senza password.
@@ -39,6 +40,16 @@ export default async function Page() {
     fetchCsv(sheetCsvUrl(GID_OPERATORI_OGGI))
   ]);
 
+  // GLI ASSEGNATI DI OGGI VENGONO DA HUBSPOT, non dal foglio: vedi
+  // src/lib/assegnatiOggi.ts. Lo storico resta del foglio, che e' una
+  // fotografia e non cambia quando un lead passa di mano; il giorno in corso
+  // una fotografia non ce l'ha ancora.
+  //
+  // QUI SI LEGGE SOLO L'ARCHIVIO, mai HubSpot: il conto vero costa venti
+  // secondi e lo rifa' /api/assegnati-oggi, che il browser chiama da solo.
+  const contiOggi = await assegnatiOggiInArchivio();
+  const righeOggi = conAssegnatiDiOggi(operatoriRowsOggi, contiOggi?.conteggi ?? null);
+
   // GLI STESSI ADVISOR DELLA PAGINA INTERNA, dalla stessa funzione: se le due
   // pagine leggessero l'elenco ognuna per conto suo, basterebbe una svista per
   // far comparire qui righe che di la' non ci sono.
@@ -48,7 +59,7 @@ export default async function Page() {
     team ? righe.filter((r) => team.chiavi.has(chiaveNome((r["Operatore"] ?? "").toString()))) : righe;
 
   const storico = filtra(operatoriRows);
-  const oggi = filtra(operatoriRowsOggi);
+  const oggi = filtra(righeOggi);
   const righeMenu = [...storico, ...oggi];
 
   return (

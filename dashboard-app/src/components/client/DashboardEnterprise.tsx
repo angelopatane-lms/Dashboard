@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { eChatterCon } from "@/lib/chatter";
 import { eAdvisorTelefonico } from "@/lib/statiLead";
 import type { CsvRow } from "@/lib/csv";
@@ -165,6 +166,7 @@ export default function DashboardEnterprise({
   // colonne della tabella Setter che fino al 13 ottobre 2026 mostravano un
   // trattino perche' quei numeri non stanno su HubSpot. Null finche' non si e'
   // letto, e null e' il trattino: non zero.
+  const router = useRouter();
   const [kpiChatter, setKpiChatter] = useState<Record<
     string,
     { assegnati: number | null; messaggi: number | null; qualificati: number | null }
@@ -343,6 +345,36 @@ export default function DashboardEnterprise({
     if (to && to < todayIsoRome) return false;
     return true;
   }, [filters.from, filters.to, todayIsoRome]);
+
+  /**
+   * Tiene fresco il conto degli assegnati di oggi, e ricarica quando cambia.
+   *
+   * LA PAGINA NON LO CALCOLA MAI - sono venti secondi di chiamate a HubSpot -
+   * quindi lo fa questa rotta mentre la tabella e' gia' a schermo. Quando
+   * risponde di averlo rifatto si chiede a Next di rigenerare la pagina, cosi'
+   * i numeri nuovi compaiono da soli invece che al prossimo giro.
+   *
+   * SOLO SE IL PERIODO COMPRENDE OGGI: su un mese chiuso non c'e' nessun
+   * parziale da rinfrescare, e quella rotta non va svegliata per niente.
+   */
+  useEffect(() => {
+    if (!includeToday) return;
+    let vivo = true;
+    const tocca = () =>
+      fetch("/api/assegnati-oggi")
+        .then((r) => r.json())
+        .then((d: { rifatto?: boolean; totale?: number | null }) => {
+          if (vivo && d?.rifatto) router.refresh();
+        })
+        .catch((e) => console.error("[assegnati-oggi]", e));
+    tocca();
+    const battito = setInterval(tocca, 5 * 60 * 1000);
+    return () => {
+      vivo = false;
+      clearInterval(battito);
+    };
+  }, [includeToday, router]);
+
 
   const operatoriRowsWithToday = useMemo(
     () => (includeToday ? [...operatoriRows, ...operatoriRowsOggi] : operatoriRows),
