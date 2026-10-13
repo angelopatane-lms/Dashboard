@@ -419,15 +419,20 @@ export default function DashboardEnterprise({
   }, [operatorSummaryAll, filters.team, secondoGruppo, sottoTeamPerPersona]);
 
   /**
-   * I numeri dei chatter da Sales Copilot, solo quando si guardano loro.
+   * I numeri dei chatter da Sales Copilot: servono se in tabella c'e' almeno
+   * un chatter.
    *
-   * LA STESSA CONDIZIONE DELLA TABELLA: le colonne cambiano nome e contenuto
-   * quando in vista ci sono solo chatter, e fuori da quel caso questi numeri
-   * non si mostrano - quindi non si chiedono nemmeno. Una pagina Advisor non
-   * deve chiamare un fornitore che non c'entra niente.
+   * ERA "SOLO SE CI SONO SOLTANTO LORO", e per mezz'ora la sezione CHATTER
+   * della vista mista ha mostrato le sue intestazioni nuove sopra tre colonne
+   * di trattini: la tabella era pronta a disegnare i numeri, la pagina non li
+   * aveva chiesti. Le due condizioni devono essere la stessa, e la piu' larga
+   * e' questa.
+   *
+   * UNA PAGINA ADVISOR NON CHIAMA NIENTE, perche' i chatter stanno fra i
+   * setter: fuori da quella vista non c'e' nessuna riga che li riguardi.
    */
-  const soloChatterInVista =
-    vistaSetter && righeTeam.length > 0 && righeTeam.every((r) => secondoGruppo(r.operatore));
+  const servonoKpiChatter =
+    vistaSetter && righeTeam.some((r) => secondoGruppo(r.operatore));
 
   /**
    * OGNI CINQUE MINUTI, ed e' la pagina a battere il tempo.
@@ -441,7 +446,7 @@ export default function DashboardEnterprise({
    * una tabella vecchia di cinque minuti.
    */
   useEffect(() => {
-    if (!soloChatterInVista) return;
+    if (!servonoKpiChatter) return;
     const da = filters.from ?? defaultFrom;
     const a = filters.to ?? defaultTo;
     let vivo = true;
@@ -474,7 +479,7 @@ export default function DashboardEnterprise({
       vivo = false;
       clearInterval(battito);
     };
-  }, [soloChatterInVista, filters.from, filters.to, defaultFrom, defaultTo]);
+  }, [servonoKpiChatter, filters.from, filters.to, defaultFrom, defaultTo]);
 
 
   // L'AGENDA DEL GIORNO.

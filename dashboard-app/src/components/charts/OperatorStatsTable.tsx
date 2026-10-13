@@ -425,6 +425,19 @@ export default function OperatorStatsTable({
   const chatterAssegnati = (r: OperatorSummary) => kpiDi(r.operatore)?.assegnati ?? null;
   const chatterMessaggi = (r: OperatorSummary) => kpiDi(r.operatore)?.messaggi ?? null;
   const chatterQualificati = (r: OperatorSummary) => kpiDi(r.operatore)?.qualificati ?? null;
+  /**
+   * Il denominatore di "% Appuntamento": per un chatter non sono le connessioni.
+   *
+   * UNA PERCENTUALE SI LEGGE SENZA GUARDARE DA DOVE VIENE, ed e' il motivo per
+   * cui questa va cambiata insieme alle colonne. Per chi lavora al telefono e'
+   * appuntamenti su connessioni - quante delle persone che hanno risposto si
+   * sono prenotate. Per un chatter le connessioni non esistono: la stessa
+   * domanda sono gli appuntamenti sui lead qualificati. Lasciando il
+   * denominatore vecchio la cella mostrava un trattino, perche' quel numero
+   * per loro e' zero.
+   */
+  const denominatoreTasso = (r: OperatorSummary) =>
+    soloChatter || chatterRiga(r) ? chatterQualificati(r) : r.connessioni;
   // Il foglio resta il ripiego: se il database non risponde la colonna mostra
   // il vecchio numero invece di azzerarsi, e per i mesi in cui il foglio era
   // ancora buono i due valori sono confrontabili.
@@ -622,7 +635,10 @@ export default function OperatorStatsTable({
         soloChatter || chatterRiga(r) ? chatterQualificati(r) : r.connessioni
     },
     { label: "Appuntamenti", valore: (r) => effAppuntamenti(r) },
-    { label: "% Appuntamento", valore: (r) => taglia(tassoPresa(effAppuntamenti(r), r.connessioni)) },
+    {
+      label: "% Appuntamento",
+      valore: (r) => taglia(tassoPresa(effAppuntamenti(r), denominatoreTasso(r) ?? 0))
+    },
     {
       label: isSetterView ? "No Show" : "Consulenze",
       valore: (r) => (isSetterView ? effNoShow(r) : effConsulenze(r))
@@ -763,7 +779,23 @@ export default function OperatorStatsTable({
     apre.set(g.righe[0].operatore, { etichetta: g.etichetta, linea: i > 0 });
   });
 
-  const totalTp = tassoPresa(totals.appuntamenti, totals.connessioni);
+  /**
+   * Il totale di "% Appuntamento": solo le righe che misurano la stessa cosa.
+   *
+   * NUMERATORE E DENOMINATORE DEVONO VENIRE DALLE STESSE RIGHE. La colonna
+   * Appuntamenti in fondo somma tutti, chatter compresi; le connessioni no,
+   * perche' per loro quel numero e' un'altra cosa. Dividere l'uno per l'altro
+   * darebbe una percentuale piu' alta del vero, e sarebbe impossibile
+   * accorgersene guardandola.
+   */
+  const appuntamentiConfrontabili = data.reduce(
+    (somma, r) => somma + (chatterRiga(r) ? 0 : effAppuntamenti(r)),
+    0
+  );
+  const totalTp = tassoPresa(
+    soloChatter ? totals.appuntamenti : appuntamentiConfrontabili,
+    soloChatter ? totaliChatter.qualificati ?? 0 : totals.connessioni
+  );
   // Sulla vista Setter il totale era soppresso perche' il denominatore era
   // zero. Ora c'e': sono le consulenze svolte, la stessa somma che la colonna
   // Consulenze mostra in fondo.
@@ -865,7 +897,7 @@ export default function OperatorStatsTable({
             // veri in cima dicono gia' Messaggi e Qualificati, e ripeterli qui
             // sarebbe rumore.
             const sezioneChatter = !soloChatter && etichettaSezione === SOTTO_TEAM_CHATTER;
-            const tp = tassoPresa(effAppuntamenti(r), r.connessioni);
+            const tp = tassoPresa(effAppuntamenti(r), denominatoreTasso(r) ?? 0);
             const tc = tassoChiusura(effChiusure(r), effConsulenzeChiusura(r));
             // Quanti dei suoi appuntamenti si sono tenuti. Il denominatore sono
             // gli appuntamenti, quindi dipende dal caricamento delle trattative
@@ -1083,8 +1115,12 @@ export default function OperatorStatsTable({
                   style={{ background: rateBg(taglia(tp)) }}
                   title={
                     tp !== null && tp > 1
-                      ? `${formatInt(effAppuntamenti(r))} appuntamenti su ${formatInt(r.connessioni)} connessioni: le chiamate non risultano registrate sul foglio. Valore reale ${formatPct(tp, 2)}.`
-                      : undefined
+                      ? `${formatInt(effAppuntamenti(r))} appuntamenti su ${formatInt(denominatoreTasso(r) ?? 0)} ${
+                          soloChatter || chatterRiga(r) ? "qualificati" : "connessioni"
+                        }: le chiamate non risultano registrate sul foglio. Valore reale ${formatPct(tp, 2)}.`
+                      : soloChatter || chatterRiga(r)
+                        ? `Appuntamenti sui lead qualificati, non sulle connessioni: per chi lavora in chat le connessioni non esistono.`
+                        : undefined
                   }
                 >
                   {tp !== null ? formatPct(taglia(tp) as number, 2) : <span className="text-slate-400">–</span>}
@@ -1243,7 +1279,16 @@ export default function OperatorStatsTable({
               )}
             </td>
             <td className="border-r border-white px-2 py-2 text-right tabular-nums">{trattativeLoading ? <span className="font-normal text-slate-400">–</span> : formatInt(totals.appuntamenti)}</td>
-            <td className="border-r border-white px-2 py-2 text-right tabular-nums">
+            <td
+              className="border-r border-white px-2 py-2 text-right tabular-nums"
+              title={
+                soloChatter
+                  ? "Appuntamenti sui lead qualificati"
+                  : totaleSenzaChatter
+                    ? "Senza la sezione Chatter, sopra e sotto la riga: per loro il denominatore sono i qualificati, non le connessioni"
+                    : undefined
+              }
+            >
               {trattativeLoading ? <span className="font-normal text-slate-400">–</span> : totalTp !== null ? formatPct(taglia(totalTp) as number, 2) : <span className="font-normal text-slate-400">–</span>}
             </td>
             <td className="border-r border-white px-2 py-2 text-right tabular-nums">{formatInt(totals.consulenze)}</td>  {/* consulenze or noShow */}
