@@ -21,6 +21,17 @@ export type Appartenenze = {
   /** nome normalizzato -> nome del sotto-team, uno solo per persona. */
   sotto: Record<string, string>;
   /**
+   * Lo stesso, ma per id HubSpot: l'unica chiave che un cambio di nome non
+   * sposta.
+   *
+   * SERVE PERCHE' IL NOME E' UNA CHIAVE FRAGILE, misurato due volte il 13
+   * ottobre 2026 sulla stessa persona: rinominata su HubSpot da "Vale Rubino"
+   * a "Valentina Scardozzi", spariva dalla sua sezione nella tabella - la
+   * fotografia la conosceva con il nome vecchio e nessuno dei due sistemi
+   * sbagliava. Chi ha un id a disposizione usa questo.
+   */
+  sottoPerId: Record<string, string>;
+  /**
    * Chi HubSpot conosce, anche se non sta in nessun team.
    *
    * SERVE A DISTINGUERE DUE SILENZI. Senza, "HubSpot dice che non ha team" e
@@ -36,16 +47,23 @@ export type Appartenenze = {
  * caso torna a fare come prima, invece di presentare pagine senza nessuno.
  */
 export async function appartenenze(): Promise<Appartenenze> {
-  const vuote: Appartenenze = { principale: new Map(), sotto: {}, noti: new Set() };
+  const vuote: Appartenenze = {
+    principale: new Map(),
+    sotto: {},
+    sottoPerId: {},
+    noti: new Set()
+  };
   try {
     const { rows } = await getDb().query<{
+      user_id: string | null;
       nome: string | null;
       genere: string;
       team_nome: string | null;
-    }>(`SELECT nome, genere, team_nome FROM utente_team_adesso`);
+    }>(`SELECT user_id, nome, genere, team_nome FROM utente_team_adesso`);
 
     const principale = new Map<string, string>();
     const sotto: Record<string, string> = {};
+    const sottoPerId: Record<string, string> = {};
     const noti = new Set<string>();
     for (const r of rows) {
       if (!r.nome) continue;
@@ -53,9 +71,12 @@ export async function appartenenze(): Promise<Appartenenze> {
       noti.add(k);
       if (!r.team_nome) continue;
       if (r.genere === "principale") principale.set(k, r.team_nome);
-      else if (r.genere === "secondario") sotto[k] = r.team_nome;
+      else if (r.genere === "secondario") {
+        sotto[k] = r.team_nome;
+        if (r.user_id) sottoPerId[String(r.user_id)] = r.team_nome;
+      }
     }
-    return { principale, sotto, noti };
+    return { principale, sotto, sottoPerId, noti };
   } catch (e) {
     console.error("[appartenenze]", e instanceof Error ? e.message : e);
     return vuote;

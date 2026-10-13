@@ -90,7 +90,29 @@ export async function operatoriDelTeam(team: string): Promise<OperatoriTeam | nu
       nomi: Array.from(new Set(soloLoro.map((r) => (r["User"] ?? "").toString().trim()).filter(Boolean))).sort(
         (a, b) => a.localeCompare(b, "it")
       ),
-      sottoTeam: app.sotto
+      /**
+       * Il sotto-team per nome, ma risolto per ID dove il foglio ce l'ha.
+       *
+       * IL NOME E' L'ULTIMA RISORSA, non la prima: il 13 ottobre 2026 una
+       * collega rinominata su HubSpot e' sparita dalla sua sezione della
+       * tabella finche' qualcuno non ha rifatto la fotografia. Il foglio ha la
+       * colonna "Hubspot ID" ed e' la stessa chiave di `user_id` nella
+       * fotografia: con quella, il nome puo' cambiare da una parte e l'altra
+       * senza che si perda niente.
+       */
+      sottoTeam: {
+        ...app.sotto,
+        ...Object.fromEntries(
+          righe
+            .map((r) => {
+              const chiave = chiaveNome((r["User"] ?? "").toString());
+              const id = (r["Hubspot ID"] ?? "").toString().trim();
+              const team = id ? app.sottoPerId[id] : undefined;
+              return [chiave, team] as const;
+            })
+            .filter((coppia): coppia is readonly [string, string] => Boolean(coppia[0] && coppia[1]))
+        )
+      }
     };
   } catch {
     return null;
