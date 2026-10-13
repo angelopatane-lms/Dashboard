@@ -164,7 +164,15 @@ export async function kpiGiorni(chiave: string, da: string, a: string): Promise<
   const d = (await r.json()) as { days?: KpiGiorno[]; notes?: unknown[]; timezone?: string };
   return {
     days: d.days ?? [],
-    notes: (d.notes ?? []).map((n) => (typeof n === "string" ? n : JSON.stringify(n))),
+    // LE NOTE SONO OGGETTI, non stringhe: dal 13 ottobre 2026 arrivano come
+    // {code, message, dates}. Si tiene il `message`, che e' scritto per essere
+    // letto da una persona; il JSON intero serve solo se un giorno cambiassero
+    // forma, per non perdere l'avviso invece di mostrarlo male.
+    notes: (d.notes ?? []).map((n) => {
+      if (typeof n === "string") return n;
+      const m = (n as { message?: unknown })?.message;
+      return typeof m === "string" ? m : JSON.stringify(n);
+    }),
     timezone: d.timezone
   };
 }

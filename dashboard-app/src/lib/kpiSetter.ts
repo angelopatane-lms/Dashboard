@@ -40,6 +40,17 @@ const FRESCHEZZA_MINUTI = 5;
 /** Il limite dichiarato da Copilot: tre mesi per chiamata. */
 const GIORNI_MASSIMI = 92;
 
+/**
+ * A che ora di Roma un giorno diventa definitivo - il giorno DOPO.
+ *
+ * NON E' MEZZANOTTE, LO DICONO LORO: la nota `provisional` del 13 ottobre 2026
+ * recita "Giorno non ancora chiuso: i numeri possono crescere fino alle 03:00
+ * (ora di Roma) del giorno dopo". Congelare ieri a mezzanotte vorrebbe dire
+ * perdere tre ore di aggiornamenti e non riprenderle mai piu', perche' un
+ * giorno congelato non si richiede.
+ */
+const ORA_CHIUSURA = 3;
+
 export type RigaKpi = {
   giorno: string;
   personaId: string;
@@ -76,6 +87,32 @@ export type EsitoKpi = {
 
 const oggiRoma = () =>
   new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Rome" }).format(new Date());
+
+/** Adesso a Roma, come "2026-10-13 15:56": si confronta come testo. */
+const adessoRoma = () =>
+  new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Europe/Rome",
+    dateStyle: "short",
+    timeStyle: "short"
+  })
+    .format(new Date())
+    .replace("T", " ");
+
+/** Il giorno dopo, come "2026-10-14". */
+function domaniDi(giorno: string): string {
+  const d = new Date(`${giorno}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Se quel giorno non puo' piu' cambiare da loro.
+ *
+ * SOLO DA QUESTO DIPENDE IL CONGELAMENTO, e un errore qui non si vede: i
+ * numeri restano quelli, solo piu' bassi del vero, per sempre.
+ */
+const definitivo = (giorno: string): boolean =>
+  adessoRoma() >= `${domaniDi(giorno)} ${String(ORA_CHIUSURA).padStart(2, "0")}:00`;
 
 /** I giorni da `da` ad `a` compresi, al massimo GIORNI_MASSIMI partendo dalla fine. */
 function elencoGiorni(da: string, a: string): string[] {
@@ -175,9 +212,10 @@ export async function kpiIntervallo(
   const scaduto = (g: string) => {
     const l = perGiorno.get(g);
     if (!l) return true;
-    // Un giorno chiuso che ha dato numeri e' definitivo. Uno tornato vuoto no:
-    // vedi l'intestazione del file.
-    if (g < oggi && l.persone > 0) return false;
+    // Un giorno definitivo che ha dato numeri non si richiede piu'. Uno
+    // tornato vuoto si', e uno di ieri prima delle 03:00 nemmeno e' definitivo:
+    // vedi ORA_CHIUSURA e l'intestazione del file.
+    if (definitivo(g) && l.persone > 0) return false;
     return Date.now() - new Date(l.preso_at).getTime() >= FRESCHEZZA_MINUTI * 60_000;
   };
   // NON SI CHIEDE IL FUTURO. Un filtro che arriva a fine mese ha giorni che non
