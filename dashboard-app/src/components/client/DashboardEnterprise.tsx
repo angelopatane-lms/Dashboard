@@ -165,7 +165,10 @@ export default function DashboardEnterprise({
   // colonne della tabella Setter che fino al 13 ottobre 2026 mostravano un
   // trattino perche' quei numeri non stanno su HubSpot. Null finche' non si e'
   // letto, e null e' il trattino: non zero.
-  const [kpiChatter, setKpiChatter] = useState<Record<string, { assegnati: number | null; messaggi: number | null }> | null>(null);
+  const [kpiChatter, setKpiChatter] = useState<Record<
+    string,
+    { assegnati: number | null; messaggi: number | null; qualificati: number | null }
+  > | null>(null);
   // Gli obiettivi di Boom del mese. `meseObiettivo` vale null quando il periodo
   // scelto copre piu' mesi: in quel caso la colonna mostra la somma e non si
   // lascia scrivere, perche' non si saprebbe a quale mese attribuire la cifra.
@@ -445,15 +448,25 @@ export default function DashboardEnterprise({
     const leggi = () =>
       fetch(`/api/copilot/setter-kpi?from=${da}&to=${a}`)
         .then((r) => r.json())
-        .then((d: { perTabella?: Record<string, { assegnati: number | null; messaggi: number | null }>; vuotoPerche?: string | null; senzaAggancio?: string[] }) => {
-          if (!vivo) return;
-          if (d.vuotoPerche) console.info("[copilot]", d.vuotoPerche);
-          // CHI NON SI E' AGGANCIATO SI DICE, anche solo nei registri: i suoi
-          // numeri non finiscono in nessuna riga, e un'assenza muta e' il modo
-          // in cui si perde l'attivita' di una persona per settimane.
-          if (d.senzaAggancio?.length) console.warn("[copilot] senza aggancio:", d.senzaAggancio.join(", "));
-          setKpiChatter(d.perTabella ?? {});
-        })
+        .then(
+          (d: {
+            perTabella?: Record<
+              string,
+              { assegnati: number | null; messaggi: number | null; qualificati: number | null }
+            >;
+            vuotoPerche?: string | null;
+            senzaAggancio?: string[];
+          }) => {
+            if (!vivo) return;
+            if (d.vuotoPerche) console.info("[copilot]", d.vuotoPerche);
+            // CHI NON SI E' AGGANCIATO SI DICE, anche solo nei registri: i
+            // suoi numeri non finiscono in nessuna riga, e un'assenza muta e'
+            // il modo in cui si perde l'attivita' di una persona per settimane.
+            if (d.senzaAggancio?.length)
+              console.warn("[copilot] senza aggancio:", d.senzaAggancio.join(", "));
+            setKpiChatter(d.perTabella ?? {});
+          }
+        )
         .catch((e) => console.error("[copilot]", e));
     leggi();
     const battito = setInterval(leggi, 5 * 60 * 1000);

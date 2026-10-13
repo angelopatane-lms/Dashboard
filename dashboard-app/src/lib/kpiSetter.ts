@@ -332,15 +332,25 @@ function perche(giorni: string[], oggi: string): string {
  * per una persona non ce n'e' nemmeno uno il totale resta null e la cella
  * mostra un trattino. Un mese con tre giorni misurati su trenta da' la somma di
  * quei tre - che e' meno della verita', ma e' un numero vero e non un invento.
+ *
+ * TRE COLONNE, NON DUE: `qualificati` finisce sotto "Connessioni", che e' una
+ * sistemazione provvisoria e non una corrispondenza - vedi CHATTER_QUALIFICATI.
+ * Gli altri due campi che Copilot manda, `appuntamenti` e `ore`, restano
+ * nell'archivio senza una colonna dove andare: appuntamenti li contiamo da
+ * HubSpot e sono i nostri, le ore non le abbiamo mai chieste.
  */
 export function perTabella(righe: RigaKpi[]) {
-  const mappa: Record<string, { assegnati: number | null; messaggi: number | null }> = {};
+  const mappa: Record<
+    string,
+    { assegnati: number | null; messaggi: number | null; qualificati: number | null }
+  > = {};
   for (const r of righe) {
     if (!r.nostro) continue;
     const k = chiaveNome(r.nostro);
-    const g = (mappa[k] ??= { assegnati: null, messaggi: null });
+    const g = (mappa[k] ??= { assegnati: null, messaggi: null, qualificati: null });
     if (r.assegnati !== null) g.assegnati = (g.assegnati ?? 0) + r.assegnati;
     if (r.messaggi !== null) g.messaggi = (g.messaggi ?? 0) + r.messaggi;
+    if (r.qualificati !== null) g.qualificati = (g.qualificati ?? 0) + r.qualificati;
   }
   return mappa;
 }

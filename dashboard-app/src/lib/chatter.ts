@@ -90,7 +90,18 @@ export function eChatterCon(sottoTeam: string | undefined, nome: string): boolea
  * il gruppo da vicino.
  */
 export const INTESTAZIONI_CHATTER: Record<string, string> = {
-  Chiamate: "Messaggi"
+  Chiamate: "Messaggi",
+  /**
+   * "Connessioni" diventa "Qualificati" dal 13 ottobre 2026.
+   *
+   * IL TITOLO SEGUE IL NUMERO, non il contrario. Sotto quella colonna ora c'e'
+   * `qualified` di Sales Copilot - il campo piu' vicino fra quelli che mandano,
+   * ma non la stessa misura: una connessione e' un contatto che ha risposto, un
+   * lead qualificato e' un contatto giudicato buono. Chiamarla ancora
+   * "Connessioni" avrebbe fatto leggere a tutti un numero piu' basso del vero
+   * come se fosse quello giusto.
+   */
+  Connessioni: "Qualificati"
 };
 
 /**
@@ -121,6 +132,16 @@ export const CHATTER_DATI_ATTESI =
  * assegnati, e riempirla con un numero vicino sarebbe peggio del trattino.
  */
 export const CHATTER_DA_COPILOT = "Da Sales Copilot";
+
+/**
+ * Cosa c'e' sotto la colonna che ha cambiato nome.
+ *
+ * Le connessioni, per i chatter, nessuno le misura: Copilot non le manda e
+ * REvio non lo leggiamo. Questa colonna mostra i suoi lead qualificati - il
+ * campo piu' vicino - e dal 13 ottobre 2026 si chiama con il suo nome, cosi'
+ * la riga non ha piu' bisogno di una nota per non essere letta male.
+ */
+export const CHATTER_QUALIFICATI = "Lead qualificati, da Sales Copilot";
 
 /**
  * Perche' il trattino resta anche ora che la fonte esiste.
