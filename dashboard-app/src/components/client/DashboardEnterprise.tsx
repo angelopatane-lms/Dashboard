@@ -161,6 +161,11 @@ export default function DashboardEnterprise({
   // Stati Lead: i quattro advisor del low ticket non fissano videochiamate,
   // quindi non nasce nessuna trattativa e le due colonne restavano a zero.
   const [telefonici, setTelefonici] = useState<Record<string, { appuntamenti: number; consulenze: number }> | null>(null);
+  // Lead assegnati e messaggi mandati dai chatter, da Sales Copilot: le due
+  // colonne della tabella Setter che fino al 13 ottobre 2026 mostravano un
+  // trattino perche' quei numeri non stanno su HubSpot. Null finche' non si e'
+  // letto, e null e' il trattino: non zero.
+  const [kpiChatter, setKpiChatter] = useState<Record<string, { assegnati: number | null; messaggi: number | null }> | null>(null);
   // Gli obiettivi di Boom del mese. `meseObiettivo` vale null quando il periodo
   // scelto copre piu' mesi: in quel caso la colonna mostra la somma e non si
   // lascia scrivere, perche' non si saprebbe a quale mese attribuire la cifra.
@@ -409,6 +414,54 @@ export default function DashboardEnterprise({
     const sotto = filters.team === "eventi" || filters.team === "chatter";
     return operatorSummaryAll.filter((r) => secondoGruppo(r.operatore) === sotto);
   }, [operatorSummaryAll, filters.team, secondoGruppo, sottoTeamPerPersona]);
+
+  /**
+   * I numeri dei chatter da Sales Copilot, solo quando si guardano loro.
+   *
+   * LA STESSA CONDIZIONE DELLA TABELLA: le colonne cambiano nome e contenuto
+   * quando in vista ci sono solo chatter, e fuori da quel caso questi numeri
+   * non si mostrano - quindi non si chiedono nemmeno. Una pagina Advisor non
+   * deve chiamare un fornitore che non c'entra niente.
+   */
+  const soloChatterInVista =
+    vistaSetter && righeTeam.length > 0 && righeTeam.every((r) => secondoGruppo(r.operatore));
+
+  /**
+   * OGNI CINQUE MINUTI, ed e' la pagina a battere il tempo.
+   *
+   * Dentro, la rotta chiama Copilot solo per i giorni scaduti: dieci colleghi
+   * con la pagina aperta non fanno dieci chiamate, e un giorno chiuso che ha
+   * gia' dato numeri non si richiede mai piu'. Vedi src/lib/kpiSetter.ts.
+   *
+   * SE LA LETTURA FALLISCE NON SI SVUOTA NIENTE: si tengono i numeri di prima,
+   * perche' una tabella che si azzera a ogni singhiozzo di rete e' peggio di
+   * una tabella vecchia di cinque minuti.
+   */
+  useEffect(() => {
+    if (!soloChatterInVista) return;
+    const da = filters.from ?? defaultFrom;
+    const a = filters.to ?? defaultTo;
+    let vivo = true;
+    const leggi = () =>
+      fetch(`/api/copilot/setter-kpi?from=${da}&to=${a}`)
+        .then((r) => r.json())
+        .then((d: { perTabella?: Record<string, { assegnati: number | null; messaggi: number | null }>; vuotoPerche?: string | null; senzaAggancio?: string[] }) => {
+          if (!vivo) return;
+          if (d.vuotoPerche) console.info("[copilot]", d.vuotoPerche);
+          // CHI NON SI E' AGGANCIATO SI DICE, anche solo nei registri: i suoi
+          // numeri non finiscono in nessuna riga, e un'assenza muta e' il modo
+          // in cui si perde l'attivita' di una persona per settimane.
+          if (d.senzaAggancio?.length) console.warn("[copilot] senza aggancio:", d.senzaAggancio.join(", "));
+          setKpiChatter(d.perTabella ?? {});
+        })
+        .catch((e) => console.error("[copilot]", e));
+    leggi();
+    const battito = setInterval(leggi, 5 * 60 * 1000);
+    return () => {
+      vivo = false;
+      clearInterval(battito);
+    };
+  }, [soloChatterInVista, filters.from, filters.to, defaultFrom, defaultTo]);
 
 
   // L'AGENDA DEL GIORNO.
@@ -989,7 +1042,7 @@ export default function DashboardEnterprise({
                   Caricamento dei dati in corso...
                 </div>
               ) : (
-              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} sottoTeamPerPersona={sottoTeamPerPersona} />
+              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} sottoTeamPerPersona={sottoTeamPerPersona} kpiChatter={kpiChatter ?? undefined} />
               )}
             </Card>
           </div>

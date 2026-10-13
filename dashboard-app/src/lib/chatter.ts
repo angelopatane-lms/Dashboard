@@ -111,3 +111,24 @@ export const INTESTAZIONI_CHATTER: Record<string, string> = {
  */
 export const CHATTER_DATI_ATTESI =
   "I dati dei chatter arrivano da REvio e dall'applicazione interna: la dashboard non li legge ancora.";
+
+/**
+ * Cosa dire quando il numero c'e' davvero.
+ *
+ * DUE DELLE TRE COLONNE HANNO TROVATO UNA FONTE: Sales Copilot sa quanti lead
+ * ha in mano una persona e quanti messaggi ha mandato. "Connessioni" no, e
+ * resta un trattino: non e' una colonna che si possa stimare da messaggi e
+ * assegnati, e riempirla con un numero vicino sarebbe peggio del trattino.
+ */
+export const CHATTER_DA_COPILOT = "Da Sales Copilot";
+
+/**
+ * Perche' il trattino resta anche ora che la fonte esiste.
+ *
+ * NESSUN NUMERO NON E' ZERO. Copilot risponde senza persone per i giorni che
+ * non ha ancora ricostruito, e una persona che non si aggancia a nessuno dei
+ * nostri non ha un numero da mostrare: in entrambi i casi la verita' e' "non
+ * lo sappiamo", e uno zero la direbbe al contrario.
+ */
+export const CHATTER_COPILOT_MUTO =
+  "Sales Copilot non ha ancora numeri per questa persona in questo periodo: non e' zero.";

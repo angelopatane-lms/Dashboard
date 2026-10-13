@@ -1,7 +1,13 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { CHATTER_DATI_ATTESI, eChatterCon, INTESTAZIONI_CHATTER } from "@/lib/chatter";
+import {
+  CHATTER_COPILOT_MUTO,
+  CHATTER_DA_COPILOT,
+  CHATTER_DATI_ATTESI,
+  eChatterCon,
+  INTESTAZIONI_CHATTER
+} from "@/lib/chatter";
 import { eAdvisorTelefonico } from "@/lib/statiLead";
 import type { OperatorSummary } from "@/lib/analytics";
 import { formatInt, formatPct, formatEur } from "@/lib/format";
@@ -249,6 +255,7 @@ export default function OperatorStatsTable({
   onSalvaObiettivo,
   onApriTeam,
   sottoTeamPerPersona,
+  kpiChatter,
   telefonici,
   trattativeOverrides,
   precomputedTotals,
@@ -334,6 +341,18 @@ export default function OperatorStatsTable({
    * l'appartenenza vera su HubSpot.
    */
   sottoTeamPerPersona?: Record<string, string>;
+  /**
+   * I numeri dei chatter da Sales Copilot, per nome nostro normalizzato.
+   *
+   * SOLO DUE DELLE TRE COLONNE: assegnati e messaggi. "Connessioni" non ha un
+   * equivalente da loro e resta un trattino - vedi CHATTER_DA_COPILOT.
+   *
+   * `null` DENTRO AL NUMERO VUOL DIRE "NON MISURATO", non zero: Copilot lo usa
+   * per i campi che per quel giorno non riesce a ricostruire, e la cella deve
+   * mostrare un trattino. Chi manca del tutto da questa mappa e' chi non si e'
+   * agganciato: stesso trattino, motivo diverso, e il titolo lo dice.
+   */
+  kpiChatter?: Record<string, { assegnati: number | null; messaggi: number | null }>;
 }) {
   const isSetterView = operatorLabel === "Setter";
   /**
@@ -359,6 +378,16 @@ export default function OperatorStatsTable({
   const soloChatter =
     isSetterView && data.length > 0 && data.every((r) => eChatterCon(sottoDiNome(r.operatore), r.operatore));
   const titolo = (nome: string) => (soloChatter ? INTESTAZIONI_CHATTER[nome] ?? nome : nome);
+  /**
+   * I numeri di Copilot di una persona, quando la tabella e' quella dei chatter.
+   *
+   * FUORI DAL GRUPPO CHAT NON SI USANO, nemmeno se ci sono: nella vista mista i
+   * titoli sono quelli del telefono, e mettere i messaggi sotto "Chiamate"
+   * direbbe una cosa falsa a chi legge la colonna dall'alto.
+   */
+  const kpiDi = (nome: string) => (soloChatter ? kpiChatter?.[normKey(nome)] : undefined);
+  const chatterAssegnati = (r: OperatorSummary) => kpiDi(r.operatore)?.assegnati ?? null;
+  const chatterMessaggi = (r: OperatorSummary) => kpiDi(r.operatore)?.messaggi ?? null;
   // Il foglio resta il ripiego: se il database non risponde la colonna mostra
   // il vecchio numero invece di azzerarsi, e per i mesi in cui il foglio era
   // ancora buono i due valori sono confrontabili.
@@ -450,8 +479,8 @@ export default function OperatorStatsTable({
 
   const maxValues = useMemo(
     () => ({
-      assegnati: Math.max(...data.map((r) => r.assegnati), 1),
-      chiamate: Math.max(...data.map((r) => r.chiamate), 1),
+      assegnati: Math.max(...data.map((r) => (soloChatter ? chatterAssegnati(r) ?? 0 : r.assegnati)), 1),
+      chiamate: Math.max(...data.map((r) => (soloChatter ? chatterMessaggi(r) ?? 0 : r.chiamate)), 1),
       connessioni: Math.max(...data.map((r) => r.connessioni), 1),
       appuntamenti: Math.max(...data.map((r) => effAppuntamenti(r)), 1),
       consulenze: Math.max(...data.map((r) => (isSetterView ? effNoShow(r) : effConsulenze(r))), 1),
@@ -460,9 +489,29 @@ export default function OperatorStatsTable({
       boom: Math.max(...data.map((r) => effBoom(r)), 1),
       resa: Math.max(...data.map((r) => resaOraria(effIncassoChiusure(r), effConsulenze(r)) ?? 0), 1)
     }),
-    [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, telefonici]
+    [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, telefonici, soloChatter, kpiChatter]
   );
 
+
+  /**
+   * Il totale delle due colonne di Copilot, e su quante righe e' stato fatto.
+   *
+   * NULL QUANDO NESSUNA RIGA HA UN NUMERO: sommare zero valori da' zero, e uno
+   * zero sotto "Assegnati" direbbe che i chatter non hanno lead in mano.
+   */
+  const totaliChatter = useMemo(() => {
+    const a = data.map(chatterAssegnati).filter((v): v is number => v !== null);
+    const m = data.map(chatterMessaggi).filter((v): v is number => v !== null);
+    const conti = data.filter((r) => kpiDi(r.operatore)).length;
+    return {
+      assegnati: a.length ? a.reduce((x, y) => x + y, 0) : null,
+      messaggi: m.length ? m.reduce((x, y) => x + y, 0) : null,
+      quanti:
+        conti === data.length
+          ? `Da Sales Copilot, tutte le ${data.length} righe`
+          : `Da Sales Copilot, ${conti} righe su ${data.length}: le altre non hanno numeri`
+    };
+  }, [data, soloChatter, kpiChatter]);
 
   const sorted = useMemo(
     () => [...data].sort((a, b) => effBoom(b) - effBoom(a) || effAppuntamenti(b) - effAppuntamenti(a)),
@@ -480,8 +529,11 @@ export default function OperatorStatsTable({
     // I primi tre titoli cambiano quando si guarda il solo gruppo chat: il
     // perche' sta in INTESTAZIONI_CHATTER. L'etichetta e' anche la chiave
     // dell'ordinamento, quindi cambia da sola anche quella e non serve altro.
-    { label: titolo("Assegnati"), valore: (r) => r.assegnati },
-    { label: titolo("Chiamate"), valore: (r) => r.chiamate },
+    // Nel gruppo chat ordinano sui numeri di Copilot, cioe' su quello che la
+    // cella mostra davvero: ordinare per un valore invisibile e' il modo piu'
+    // rapido di far sembrare rotto un ordinamento che funziona.
+    { label: titolo("Assegnati"), valore: (r) => (soloChatter ? chatterAssegnati(r) : r.assegnati) },
+    { label: titolo("Chiamate"), valore: (r) => (soloChatter ? chatterMessaggi(r) : r.chiamate) },
     { label: titolo("Connessioni"), valore: (r) => r.connessioni },
     { label: "Appuntamenti", valore: (r) => effAppuntamenti(r) },
     { label: "% Appuntamento", valore: (r) => taglia(tassoPresa(effAppuntamenti(r), r.connessioni)) },
@@ -790,23 +842,61 @@ export default function OperatorStatsTable({
                     r.operatore
                   )}
                 </td>
-                {/* Sotto i titoli nuovi un trattino, non il numero di HubSpot:
-                    vedi CHATTER_DATI_ATTESI. Nella vista mista i titoli sono
-                    ancora quelli del telefono e il numero e' la risposta
-                    giusta alla domanda che pongono. */}
+                {/* Le prime due colonne hanno una fonte per i chatter - Sales
+                    Copilot - e la mostrano quando ce l'ha. Quando non ce l'ha
+                    resta il trattino, e il titolo dice quale dei due silenzi
+                    e': vedi CHATTER_COPILOT_MUTO. Nella vista mista i titoli
+                    sono ancora quelli del telefono e il numero di HubSpot e' la
+                    risposta giusta alla domanda che pongono. */}
                 <td
                   className="border-r border-white px-2 py-1.5 text-right tabular-nums"
-                  style={{ background: soloChatter ? undefined : heatBg(r.assegnati, maxValues.assegnati) }}
-                  title={soloChatter ? CHATTER_DATI_ATTESI : undefined}
+                  style={{
+                    background: soloChatter
+                      ? heatBg(chatterAssegnati(r) ?? 0, maxValues.assegnati)
+                      : heatBg(r.assegnati, maxValues.assegnati)
+                  }}
+                  title={
+                    soloChatter
+                      ? chatterAssegnati(r) === null
+                        ? CHATTER_COPILOT_MUTO
+                        : CHATTER_DA_COPILOT
+                      : undefined
+                  }
                 >
-                  {soloChatter ? <span className="text-slate-400">–</span> : formatInt(r.assegnati)}
+                  {soloChatter ? (
+                    chatterAssegnati(r) === null ? (
+                      <span className="text-slate-400">–</span>
+                    ) : (
+                      formatInt(chatterAssegnati(r) as number)
+                    )
+                  ) : (
+                    formatInt(r.assegnati)
+                  )}
                 </td>
                 <td
                   className="border-r border-white px-2 py-1.5 text-right tabular-nums"
-                  style={{ background: soloChatter ? undefined : heatBg(r.chiamate, maxValues.chiamate) }}
-                  title={soloChatter ? CHATTER_DATI_ATTESI : undefined}
+                  style={{
+                    background: soloChatter
+                      ? heatBg(chatterMessaggi(r) ?? 0, maxValues.chiamate)
+                      : heatBg(r.chiamate, maxValues.chiamate)
+                  }}
+                  title={
+                    soloChatter
+                      ? chatterMessaggi(r) === null
+                        ? CHATTER_COPILOT_MUTO
+                        : CHATTER_DA_COPILOT
+                      : undefined
+                  }
                 >
-                  {soloChatter ? <span className="text-slate-400">–</span> : formatInt(r.chiamate)}
+                  {soloChatter ? (
+                    chatterMessaggi(r) === null ? (
+                      <span className="text-slate-400">–</span>
+                    ) : (
+                      formatInt(chatterMessaggi(r) as number)
+                    )
+                  ) : (
+                    formatInt(r.chiamate)
+                  )}
                 </td>
                 <td
                   className="border-r border-white px-2 py-1.5 text-right tabular-nums"
@@ -938,11 +1028,36 @@ export default function OperatorStatsTable({
             >
               Totale complessivo
             </td>
-            <td className="border-r border-white px-2 py-2 text-right tabular-nums">
-              {soloChatter ? <span className="font-normal text-slate-400">–</span> : formatInt(totals.assegnati)}
+            {/* IL TOTALE SOMMA SOLO CHI HA UN NUMERO, e lo dice: con cinque
+                chatter su sette agganciati, un totale muto non si distingue da
+                un totale completo. Vedi totaliChatter. */}
+            <td
+              className="border-r border-white px-2 py-2 text-right tabular-nums"
+              title={soloChatter ? totaliChatter.quanti : undefined}
+            >
+              {soloChatter ? (
+                totaliChatter.assegnati === null ? (
+                  <span className="font-normal text-slate-400">–</span>
+                ) : (
+                  formatInt(totaliChatter.assegnati)
+                )
+              ) : (
+                formatInt(totals.assegnati)
+              )}
             </td>
-            <td className="border-r border-white px-2 py-2 text-right tabular-nums">
-              {soloChatter ? <span className="font-normal text-slate-400">–</span> : formatInt(totals.chiamate)}
+            <td
+              className="border-r border-white px-2 py-2 text-right tabular-nums"
+              title={soloChatter ? totaliChatter.quanti : undefined}
+            >
+              {soloChatter ? (
+                totaliChatter.messaggi === null ? (
+                  <span className="font-normal text-slate-400">–</span>
+                ) : (
+                  formatInt(totaliChatter.messaggi)
+                )
+              ) : (
+                formatInt(totals.chiamate)
+              )}
             </td>
             <td className="border-r border-white px-2 py-2 text-right tabular-nums">
               {soloChatter ? <span className="font-normal text-slate-400">–</span> : formatInt(totals.connessioni)}

@@ -856,3 +856,67 @@ UPDATE utente_team_storia SET fonte = 'modifica' WHERE fonte IS NULL;
 -- ha modo di distinguerli. Vuoto sulle righe osservate e su quelle scritte da
 -- noi, dove non c'e' niente da dedurre.
 ALTER TABLE utente_team_storia ADD COLUMN IF NOT EXISTS prove TEXT;
+
+-- ============================================================================
+-- I KPI DEI SETTER DI SALES COPILOT, giorno per giorno e persona per persona.
+--
+-- PERCHE' UNA COPIA DA NOI E NON UNA LETTURA OGNI VOLTA. La loro API da' i
+-- totali di un giorno; un giorno chiuso non cambia piu' - lo garantiscono -
+-- quindi richiederlo ogni volta che qualcuno apre la pagina e' spendere una
+-- chiamata per riavere lo stesso numero. Qui si congela una volta e si legge
+-- da casa.
+--
+-- OGGI E' DIVERSO DA IERI, ed e' il motivo della colonna `preso_at`. La loro
+-- garanzia di stabilita' vale per i giorni PASSATI: il totale di oggi cresce
+-- mentre la giornata va avanti, e `hoursWorked` puo' persino tornare indietro,
+-- perche' si calcola togliendo le pause lunghe e una pausa in corso non si sa
+-- ancora quanto durera'. Quindi la riga di oggi si riscrive quando ha piu' di
+-- cinque minuti, quelle dei giorni chiusi mai.
+--
+-- NULL E ZERO NON SONO LA STESSA COSA, qui come altrove: Copilot manda null
+-- quando un dato non e' ricostruibile, e quel null arriva fino alla colonna.
+-- Scriverci zero vorrebbe dire "non ha mandato messaggi" dove la verita' e'
+-- "non lo sappiamo".
+--
+-- `nostro` E `via` SONO L'AGGANCIO, risolto al momento della scrittura: chi e'
+-- questa persona da noi, e con quale regola lo abbiamo capito - email o nome e
+-- cognome. Si conserva anche la regola perche' un aggancio per nome e' piu'
+-- fragile di uno per email, e il giorno in cui un numero sembra strano la prima
+-- domanda e' da dove viene.
+CREATE TABLE IF NOT EXISTS copilot_setter_kpi (
+  giorno        DATE NOT NULL,
+  persona_id    TEXT NOT NULL,
+  nome          TEXT,
+  nostro        TEXT,
+  via           TEXT,
+  assegnati     INT,
+  qualificati   INT,
+  messaggi      INT,
+  appuntamenti  INT,
+  ore           NUMERIC(6,2),
+  preso_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (giorno, persona_id)
+);
+
+CREATE INDEX IF NOT EXISTS copilot_setter_kpi_giorno
+  ON copilot_setter_kpi (giorno DESC);
+
+-- Quando abbiamo chiesto a Copilot un certo giorno, e cosa ci ha risposto.
+--
+-- SENZA QUESTA TABELLA NON SI DISTINGUE "mai chiesto" da "chiesto, nessuno
+-- ha lavorato": in copilot_setter_kpi le due cose sono entrambe l'assenza di
+-- righe, e una giornata di festa farebbe ripartire la chiamata a ogni
+-- apertura della pagina per sempre.
+--
+-- `persone` = 0 NON SI CONGELA MAI. Un giorno passato con almeno una persona
+-- e' definitivo (Copilot garantisce che rileggerlo dia lo stesso risultato),
+-- ma un giorno tornato vuoto si richiede ancora: al 13 ottobre 2026
+-- /setters/daily risponde vuoto per ogni giorno, e congelare quei vuoti
+-- vorrebbe dire una Dashboard a trattini anche il giorno in cui l'API si
+-- accende.
+CREATE TABLE IF NOT EXISTS copilot_setter_letture (
+  giorno    DATE PRIMARY KEY,
+  persone   INT NOT NULL DEFAULT 0,
+  note      TEXT,
+  preso_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
