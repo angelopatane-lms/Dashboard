@@ -65,15 +65,63 @@ export async function rilanciaACopilot(dealId: string, tokenHubspot: string): Pr
   if (!t) return { mandata: false, riga: `${dealId}: non in tabella, niente da rilanciare` };
   if (!t.setter_id) return { mandata: false, riga: `${dealId}: senza setter` };
 
-  const chatter = await db.query(
-    `SELECT 1 FROM utente_team_adesso
-      WHERE user_id = $1 AND genere = 'secondario' AND team_nome = $2`,
-    [t.setter_id, TEAM_CHATTER]
-  );
-  if (!chatter.rows.length) return { mandata: false, riga: `${dealId}: il setter non e' un chatter` };
+  if (!(await eChatter(t.setter_id, tokenHubspot))) {
+    return { mandata: false, riga: `${dealId}: il setter non e' un chatter` };
+  }
 
   const corpo = await componi(dealId, t, tokenHubspot);
   return await manda(dealId, t, corpo);
+}
+
+/**
+ * Quel setter e' un chatter?
+ *
+ * DUE IDENTIFICATIVI DIVERSI, E NON COINCIDONO SEMPRE. Il campo `setter` della
+ * trattativa porta l'id del PROPRIETARIO, la fotografia dei team porta l'id
+ * dell'UTENTE: per quasi tutti sono lo stesso numero, per Bartolo Giordanengo
+ * no - proprietario 1722494666, utente 63034338. Confrontandoli direttamente,
+ * le sue trattative non sarebbero mai state rilanciate, e nessuno se ne sarebbe
+ * accorto: non c'e' errore, c'e' una condizione che non scatta.
+ *
+ * IL PONTE SONO GLI OWNER DI HUBSPOT, che portano tutti e due i numeri piu'
+ * l'email. Si prova prima l'id utente e poi l'email, perche' un id non si
+ * scrive male e un'email cambia di rado - ma qualcosa deve pur reggere il peso,
+ * e il nome non lo regge (lo abbiamo imparato il 13 ottobre con una collega
+ * rinominata a meta' giornata).
+ */
+let cacheOwner: { quando: number; per: Map<string, { userId: string; email: string }> } | null = null;
+
+async function eChatter(setterId: string, token: string): Promise<boolean> {
+  if (!cacheOwner || Date.now() - cacheOwner.quando > 30 * 60_000) {
+    const per = new Map<string, { userId: string; email: string }>();
+    let dopo: string | undefined;
+    for (let p = 0; p < 12; p++) {
+      const u = new URL(`${HUBSPOT}/crm/v3/owners`);
+      u.searchParams.set("limit", "100");
+      if (dopo) u.searchParams.set("after", dopo);
+      const r = await fetch(u, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+      if (!r.ok) break;
+      const d = (await r.json()) as {
+        results?: Array<{ id: string; userId?: number | string; email?: string }>;
+        paging?: { next?: { after?: string } };
+      };
+      for (const o of d.results ?? []) {
+        per.set(String(o.id), { userId: String(o.userId ?? ""), email: String(o.email ?? "") });
+      }
+      dopo = d.paging?.next?.after;
+      if (!dopo) break;
+    }
+    cacheOwner = { quando: Date.now(), per };
+  }
+
+  const chi = cacheOwner.per.get(String(setterId));
+  const { rows } = await getDb().query(
+    `SELECT 1 FROM utente_team_adesso
+      WHERE genere = 'secondario' AND team_nome = $1
+        AND (user_id = $2 OR (email <> '' AND lower(email) = lower($3)) OR user_id = $4)`,
+    [TEAM_CHATTER, chi?.userId ?? "", chi?.email ?? "", String(setterId)]
+  );
+  return rows.length > 0;
 }
 
 /**
