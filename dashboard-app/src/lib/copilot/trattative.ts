@@ -133,7 +133,7 @@ async function eChatter(setterId: string, token: string): Promise<boolean> {
  * ottobre 2026 su sessanta trattative di chatter: il contatto collegato aveva
  * l'email in 60 casi su 60 e il telefono in 60 su 60, l'Instagram in 3.
  */
-async function componi(
+export async function componi(
   dealId: string,
   t: { fase: string | null; fase_ts: Date | null; setter_id: string | null; contact_id: string | null },
   token: string
@@ -324,4 +324,95 @@ export async function rimandaInSospeso(tokenHubspot: string, quante = 5): Promis
     righe.push(`rinvio ${e.riga}`);
   }
   return righe;
+}
+
+
+/**
+ * Lo storico: le trattative dei chatter gia' passate, mandate in blocco.
+ *
+ * PERCHE' SERVE. Il rilancio parte quando una trattativa CAMBIA, quindi di
+ * tutto quello che e' successo prima Copilot non sa niente - al 14 ottobre 2026
+ * ne avevano ricevute tre. Senza lo storico, le circa 930 registrazioni che
+ * hanno in archivio restano senza un lead a cui attaccarsi.
+ *
+ * SI MANDA A LOTTI DI CENTO perche' e' il loro limite dichiarato, e con un
+ * respiro fra un lotto e l'altro: una notte abbiamo gia' fatto rifiutare
+ * diciotto richieste al loro server, e non e' il caso di rifarlo.
+ *
+ * NON SOSTITUISCE IL RILANCIO: questo e' il passato, quello e' il presente.
+ * Mandare due volte la stessa trattativa non crea problemi - lo dicono loro, e
+ * ogni invio porta `hs_lastmodifieddate`, che fa vincere il piu' recente.
+ */
+export async function storicoACopilot(
+  da: string,
+  tokenHubspot: string,
+  opzioni: { lotto?: number; massimo?: number; respiroMs?: number } = {}
+): Promise<{ trattative: number; lotti: number; agganciate: number; errori: number }> {
+  const chiave = process.env.SALESCOPILOT_WEBHOOK_KEY;
+  if (!chiave) throw new Error("SALESCOPILOT_WEBHOOK_KEY non impostata");
+  const lotto = opzioni.lotto ?? 100;
+  const respiro = opzioni.respiroMs ?? 1500;
+
+  const { rows } = await getDb().query<{
+    deal_id: string;
+    fase: string | null;
+    fase_ts: Date | null;
+    setter_id: string | null;
+    contact_id: string | null;
+  }>(
+    `SELECT deal_id::text, fase, fase_ts, setter_id::text, contact_id::text
+       FROM trattativa
+      WHERE creata_ts >= $1::date AND setter_id IS NOT NULL
+      ORDER BY creata_ts`,
+    [da]
+  );
+
+  // Chi e' chatter si chiede una volta per setter, non una per trattativa.
+  const sonoChatter = new Map<string, boolean>();
+  const nostre: typeof rows = [];
+  for (const t of rows) {
+    const id = String(t.setter_id);
+    if (!sonoChatter.has(id)) sonoChatter.set(id, await eChatter(id, tokenHubspot));
+    if (sonoChatter.get(id)) nostre.push(t);
+  }
+  if (opzioni.massimo) nostre.splice(opzioni.massimo);
+
+  let agganciate = 0;
+  let errori = 0;
+  let lotti = 0;
+  for (let i = 0; i < nostre.length; i += lotto) {
+    const pezzo = nostre.slice(i, i + lotto);
+    const corpi = [];
+    for (const t of pezzo) corpi.push(await componi(t.deal_id, t, tokenHubspot));
+    try {
+      const r = await fetch(COPILOT, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${chiave}`, "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify(corpi)
+      });
+      const testo = (await r.text()).slice(0, 500);
+      const esito = r.ok ? "ok" : "errore";
+      let n: number | null = null;
+      try {
+        n = (JSON.parse(testo) as { matched?: number }).matched ?? null;
+      } catch {
+        /* non JSON */
+      }
+      if (n) agganciate += n;
+      if (!r.ok) errori += pezzo.length;
+      for (const t of pezzo) {
+        await annota(t.deal_id, t, esito, n, `storico, lotto di ${pezzo.length}: HTTP ${r.status} ${testo.slice(0, 120)}`);
+      }
+      console.log(`[storico] lotto ${lotti + 1}: ${pezzo.length} trattative, HTTP ${r.status}, agganciate ${n ?? "?"}`);
+    } catch (e) {
+      errori += pezzo.length;
+      const m = e instanceof Error ? e.message : String(e);
+      for (const t of pezzo) await annota(t.deal_id, t, "errore", null, `storico: ${m}`);
+      console.error(`[storico] lotto ${lotti + 1} non riuscito: ${m}`);
+    }
+    lotti++;
+    if (i + lotto < nostre.length) await new Promise((ok) => setTimeout(ok, respiro));
+  }
+  return { trattative: nostre.length, lotti, agganciate, errori };
 }
