@@ -162,7 +162,8 @@ async function componi(
 
   if (t.contact_id) {
     const c = await leggi(
-      `${HUBSPOT}/crm/v3/objects/contacts/${t.contact_id}?properties=email,phone,mobilephone,profilo_instagram`,
+      `${HUBSPOT}/crm/v3/objects/contacts/${t.contact_id}?properties=email,phone,mobilephone,` +
+        `profilo_instagram,link_trascrizione_fireflies,link_audio_fireflies`,
       token
     );
     const p = c?.properties ?? {};
@@ -172,8 +173,40 @@ async function componi(
     const tel = p.phone || p.mobilephone;
     if (tel) corpo.telefono_contatto = String(tel);
     if (p.profilo_instagram) corpo.instagram_contatto = String(p.profilo_instagram);
+
+    // IL LINK FIREFLIES, CHE DA NOI NON E' UN LINK FIREFLIES.
+    //
+    // Su HubSpot quella proprieta' contiene un indirizzo della NOSTRA
+    // dashboard - /api/trascrizione/<id>.do - con dentro l'id della
+    // trascrizione. Copilot riconosce i link app.fireflies.ai, oppure l'id
+    // nudo purche' il campo si chiami fireflies_qualcosa: si manda l'id, che e'
+    // la parte che non dipende da come serviamo noi le trascrizioni.
+    //
+    // A COSA SERVE A LORO: hanno circa 930 registrazioni che non riescono ad
+    // attaccare a nessun lead. Questo e' il filo che le lega.
+    const id = idFireflies(p.link_trascrizione_fireflies ?? p.link_audio_fireflies ?? "");
+    if (id) {
+      corpo.fireflies_id = id;
+      corpo.fireflies_url = `https://app.fireflies.ai/view/${id}`;
+    }
   }
   return corpo;
+}
+
+/**
+ * L'id di una trascrizione dentro un indirizzo, qualunque forma abbia.
+ *
+ * Si accettano sia i nostri link (/api/trascrizione/<id>.do) sia quelli di
+ * Fireflies (app.fireflies.ai/view/<id>), perche' quella proprieta' su HubSpot
+ * la scrivono flussi diversi e non e' detto che domani abbia la stessa forma.
+ * Se non si riconosce niente si restituisce stringa vuota: meglio non mandare
+ * il campo che mandarne uno sbagliato, che loro proverebbero ad agganciare.
+ */
+function idFireflies(valore: string): string {
+  const t = String(valore).trim();
+  if (!t) return "";
+  const m = /([0-9A-Z]{20,32})/i.exec(t.replace(/\.do/i, ""));
+  return m ? m[1] : "";
 }
 
 async function leggi(url: string, token: string): Promise<{ properties?: Record<string, string> } | null> {

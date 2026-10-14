@@ -43,6 +43,19 @@ import {
 /** Quanto vale una lettura prima di rifarla. */
 const FRESCHEZZA_MINUTI = 5;
 
+/**
+ * Quanto si aspetta prima di richiedere un giorno passato tornato VUOTO.
+ *
+ * CINQUE MINUTI ERANO TROPPO POCHI, e l'abbiamo saputo da loro: la notte del 14
+ * ottobre 2026 la nostra pagina ha chiesto gennaio-settembre con diciotto
+ * richieste da novantadue giorni una dietro l'altra, e il loro server le ha
+ * rifiutate. Era questa regola: un giorno vuoto non si congela - giusto, perche'
+ * si riempira' - ma non c'e' nessun motivo per riprovarci ogni cinque minuti su
+ * mesi interi. Un'ora mantiene la promessa (il giorno si riempie da solo) e
+ * smette di bussare.
+ */
+const RIPROVA_VUOTI_MINUTI = 60;
+
 /** Il limite dichiarato da Copilot: tre mesi per chiamata. */
 const GIORNI_MASSIMI = 92;
 
@@ -234,7 +247,9 @@ export async function kpiIntervallo(
     // esistesse.
     const fine = l.definitivo === null || l.definitivo === undefined ? definitivo(g) : l.definitivo;
     if (fine && l.persone > 0) return false;
-    return Date.now() - new Date(l.preso_at).getTime() >= FRESCHEZZA_MINUTI * 60_000;
+    // Un giorno passato che e' tornato vuoto si riprova, ma con calma.
+    const attesa = fine && l.persone === 0 ? RIPROVA_VUOTI_MINUTI : FRESCHEZZA_MINUTI;
+    return Date.now() - new Date(l.preso_at).getTime() >= attesa * 60_000;
   };
   // NON SI CHIEDE IL FUTURO. Un filtro che arriva a fine mese ha giorni che non
   // sono ancora accaduti: chiederli e' rumore, e la risposta vuota li
