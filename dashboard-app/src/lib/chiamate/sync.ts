@@ -88,7 +88,26 @@ async function* cercaChiamate(
   daId: number
 ): AsyncGenerator<Chiamata[]> {
   const daMs = new Date(daIso).getTime();
-  const proprietaData = tipo === "incrementale" ? "hs_lastmodifieddate" : "hs_timestamp";
+  // SI SELEZIONA PER DATA DELLA CHIAMATA, NON PER DATA DI MODIFICA.
+  //
+  // Prima l'incrementale filtrava su hs_lastmodifieddate e ordinava per
+  // hs_object_id crescente: due criteri che insieme portano fuori strada.
+  // Qualcuno - un flusso, una modifica in blocco - ha toccato migliaia di
+  // chiamate del 2024; quelle rientravano nella finestra, hanno id bassi, e il
+  // giro era costretto ad attraversarle tutte prima di arrivare a oggi, 1200
+  // per volta. Misurato il 14 ottobre 2026: il segnalibro era fermo a una
+  // chiamata del 5 agosto 2024 mentre le chiamate di oggi hanno id quindici
+  // volte piu' alti, e i giorni dal 7 ottobre in poi non erano mai entrati.
+  // Non era indietro: camminava nella direzione sbagliata, e ogni giro
+  // segnava "errore" senza che nessuno se ne accorgesse.
+  //
+  // Con hs_timestamp la finestra contiene solo le chiamate di quei giorni -
+  // circa 1.300 al giorno - e l'ordine per id le attraversa in un giro o due.
+  //
+  // COSA SI PERDE: una chiamata registrata oggi ma datata un mese fa non entra
+  // piu' dall'incrementale. E' il prezzo, ed e' piccolo: il giro completo
+  // (bootstrap) le riprende tutte quando serve.
+  const proprietaData = "hs_timestamp";
   let ultimoId = daId;
 
   while (true) {
@@ -174,16 +193,29 @@ async function campagneAlMomento(
   return out;
 }
 
+/**
+ * Quanto indietro puo' arrivare la finestra dell'incrementale.
+ *
+ * SERVE UN TETTO, non solo un inizio. La finestra partiva dall'ultimo giro
+ * RIUSCITO: finche' i giri falliscono quel punto non si sposta, la finestra si
+ * allarga ogni giorno e il recupero diventa sempre piu' pesante - il contrario
+ * di quello che serve. Con il tetto, un giro che va male costa al massimo
+ * questi giorni; quello che resta fuori lo riprende il giro completo.
+ */
+const GIORNI_MASSIMI_FINESTRA = 7;
+
 async function inizioFinestraIncrementale(): Promise<string> {
   const db = getDb();
   const { rows } = await db.query(
     `SELECT iniziato_at FROM sync_log WHERE tipo = 'chiamate' AND esito = 'ok'
      ORDER BY iniziato_at DESC LIMIT 1`
   );
+  const limite = Date.now() - GIORNI_MASSIMI_FINESTRA * 24 * 3600_000;
   if (rows[0]?.iniziato_at) {
-    return new Date(new Date(rows[0].iniziato_at).getTime() - 30 * 60_000).toISOString();
+    const da = new Date(rows[0].iniziato_at).getTime() - 30 * 60_000;
+    return new Date(Math.max(da, limite)).toISOString();
   }
-  return new Date(Date.now() - 24 * 3600_000).toISOString();
+  return new Date(Math.max(Date.now() - 24 * 3600_000, limite)).toISOString();
 }
 
 export async function sincronizzaChiamate(
