@@ -3,6 +3,7 @@ import { timingSafeEqual } from "crypto";
 import { waitUntil } from "@vercel/functions";
 import { getDb } from "@/lib/db";
 import { aggiornaUnaTrattativa } from "@/lib/trattative/sync";
+import { rilanciaACopilot, rimandaInSospeso } from "@/lib/copilot/trattative";
 
 /**
  * NESSUNA RISPOSTA MEMORIZZATA.
@@ -105,6 +106,25 @@ async function lavora(dealId: string): Promise<void> {
       : `trattativa ${dealId}: non leggibile o senza data di creazione, ${Date.now() - t0} ms`;
     console.log(`[webhook/hubspot] ${riga}`);
     await annota(r ? "ok" : "ignorato", riga);
+
+    // RILANCIO A SALES COPILOT, solo se la trattativa e' di un chatter: lo
+    // decide la fotografia dei team, non un elenco di nomi. Vedi
+    // src/lib/copilot/trattative.ts. Non deve mai far fallire questo webhook -
+    // il nostro aggiornamento e' gia' andato a buon fine - quindi ogni errore
+    // finisce nei registri e basta.
+    if (r) {
+      try {
+        const esito = await rilanciaACopilot(dealId, token);
+        if (esito.riga.includes("non e' un chatter") === false) {
+          await annota(esito.mandata ? "ok" : "errore", `copilot ${esito.riga}`);
+        }
+        for (const rinvio of await rimandaInSospeso(token)) {
+          await annota("ok", `copilot ${rinvio}`);
+        }
+      } catch (e) {
+        await annota("errore", `copilot ${dealId}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
   } catch (e) {
     const m = e instanceof Error ? e.message : String(e);
     console.error("[webhook/hubspot]", e);

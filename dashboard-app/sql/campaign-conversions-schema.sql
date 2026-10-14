@@ -941,3 +941,26 @@ CREATE TABLE IF NOT EXISTS assegnati_oggi_cache (
   totale    INT NOT NULL DEFAULT 0,
   preso_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+
+-- Ogni rilancio di una trattativa di chatter verso Sales Copilot.
+--
+-- SERVE A RIMANDARE E A FARSI DOMANDE. Un invio fallito senza traccia e' un
+-- movimento che Copilot non vedra' mai: qui resta, e il webhook successivo lo
+-- recupera. `agganciate` e' il `matched` della loro risposta: zero vuol dire
+-- che hanno salvato la trattativa senza riuscire a collegarla a un lead, cioe'
+-- che i recapiti del contatto non sono arrivati - il modo in cui tutto questo
+-- giro diventerebbe inutile in silenzio.
+CREATE TABLE IF NOT EXISTS copilot_trattativa_invio (
+  id          BIGSERIAL PRIMARY KEY,
+  deal_id     BIGINT NOT NULL,
+  fase        TEXT,
+  fase_ts     TIMESTAMPTZ,
+  esito       TEXT NOT NULL,
+  agganciate  INT,
+  messaggio   TEXT,
+  inviato_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS copilot_trattativa_invio_deal
+  ON copilot_trattativa_invio (deal_id, inviato_at DESC);
