@@ -340,9 +340,14 @@ export async function sincronizzaChiamate(
         log.id,
         esito.chiamate,
         esito.connesse,
-        // Un giro troncato non e' un successo: marcarlo 'ok' sposterebbe la
-        // finestra del giro successivo, lasciando un buco permanente.
-        esito.troncato ? "errore" : "ok",
+        // UN GIRO TRONCATO NON E' UN SUCCESSO MA NEMMENO UN ERRORE: e' un
+        // pezzo fatto, e il prossimo riprende dal segnalibro. Non puo' essere
+        // "ok", perche' quello sposterebbe la finestra del giro successivo
+        // lasciando un buco permanente; non deve essere "errore", perche' chi
+        // legge i registri - e da oggi il controllo quotidiano - lo conta come
+        // guasto e dopo tre giorni smette di guardare. Lo stesso nome che usa
+        // gia' il giro delle trattative.
+        esito.troncato ? "parziale" : "ok",
         esito.troncato
           ? `Troncato al tetto di ${MAX_INCREMENTALE}: riprende dall'id ${raggiunto} al prossimo giro.`
           : null
