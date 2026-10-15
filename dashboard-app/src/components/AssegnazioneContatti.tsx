@@ -340,6 +340,17 @@ function QuantitaPerRuolo({ bloccato }: { bloccato: boolean }) {
   }, []);
 
   const salva = async (role: string, serie_a: number, serie_b: number) => {
+    // SI MOSTRA SUBITO QUELLO CHE HAI SCRITTO, poi si corregge con quello che
+    // il server ha scritto davvero. Il giro completo - browser, Dashboard, app
+    // sul server, database - dura abbastanza da far sembrare il campo lento, e
+    // un numero che resta fermo mentre aspetti sembra un comando che non ha
+    // funzionato. Se i due valori differiscono, la correzione si vede: e' il
+    // motivo per cui non ci si ferma all'ottimismo.
+    setRighe((p) =>
+      (p ?? []).map((x) =>
+        x.role === role ? { ...x, serie_a, serie_b, totale: serie_a + serie_b } : x
+      )
+    );
     setInCorso(role);
     setErrore(null);
     try {
@@ -351,6 +362,10 @@ function QuantitaPerRuolo({ bloccato }: { bloccato: boolean }) {
       const d = (await r.json()) as Quantita & { error?: string };
       if (d.error) {
         setErrore(d.error);
+        // IL RIFIUTO RIMETTE I VALORI VERI: se il server non ha scritto, la
+        // pagina non deve restare con il numero ottimista addosso.
+        const r2 = await fetch("/api/assegnazione-lead/quantita").then((x) => x.json());
+        if (r2?.ruoli) setRighe(r2.ruoli);
         return;
       }
       // SI RIMETTE QUELLO CHE IL SERVER HA SCRITTO, non quello che si e'
