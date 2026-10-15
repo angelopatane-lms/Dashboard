@@ -305,6 +305,146 @@ function Numero({
 
 /** Una riga di comando: nome a sinistra, stato in mezzo, interruttori a destra.
  *  La colonna del nome ha larghezza fissa, cosi' le tre righe si incolonnano. */
+type Quantita = { role: string; serie_a: number; serie_b: number; totale: number };
+
+/**
+ * Quanti lead per richiesta, e come si dividono fra i due serbatoi.
+ *
+ * DUE NUMERI E NON UNA PERCENTUALE. L'assegnatore ragiona in totale piu'
+ * percentuale di serie A; chi guarda questa pagina ragiona in "quanti ne do di
+ * qua e quanti di la'". La traduzione la fa il server, una volta sola: qui si
+ * scrivono due quantita' e si legge quello che e' stato scritto davvero,
+ * perche' la percentuale e' un arrotondamento e puo' spostare un lead.
+ *
+ * SETTER E ADVISOR SEPARATI, perche' sono due mestieri con due serbatoi
+ * diversi: cambiare i Setter non deve toccare gli Advisor.
+ *
+ * E' UN TETTO, NON UNA PROMESSA: chi ha molti lead arretrati ma oggi ha gia'
+ * fissato appuntamenti ne riceve la meta'. La regola esisteva prima di questa
+ * manopola e non la contraddice - dice solo che il numero scritto qui e' il
+ * massimo, non il minimo.
+ */
+function QuantitaPerRuolo({ bloccato }: { bloccato: boolean }) {
+  const [righe, setRighe] = useState<Quantita[] | null>(null);
+  const [inCorso, setInCorso] = useState<string | null>(null);
+  const [errore, setErrore] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/assegnazione-lead/quantita")
+      .then((r) => r.json())
+      .then((d: { ruoli?: Quantita[]; error?: string }) => {
+        if (d.error) setErrore(d.error);
+        setRighe(d.ruoli ?? []);
+      })
+      .catch(() => setErrore("l'app di assegnazione non risponde"));
+  }, []);
+
+  const salva = async (role: string, serie_a: number, serie_b: number) => {
+    setInCorso(role);
+    setErrore(null);
+    try {
+      const r = await fetch("/api/assegnazione-lead/quantita", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role, serie_a, serie_b })
+      });
+      const d = (await r.json()) as Quantita & { error?: string };
+      if (d.error) {
+        setErrore(d.error);
+        return;
+      }
+      // SI RIMETTE QUELLO CHE IL SERVER HA SCRITTO, non quello che si e'
+      // digitato: se l'arrotondamento ha spostato un lead si vede subito.
+      setRighe((p) => (p ?? []).map((x) => (x.role === role ? { ...x, ...d } : x)));
+    } catch {
+      setErrore("salvataggio non riuscito");
+    } finally {
+      setInCorso(null);
+    }
+  };
+
+  if (!righe) return <span className="text-xs text-slate-400">caricamento…</span>;
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+      {righe.map((r) => (
+        <div key={r.role} className="flex items-center gap-1.5">
+          <span className="w-14 text-xs font-medium text-slate-600">{r.role}</span>
+          <CampoQuantita
+            etichetta="A"
+            valore={r.serie_a}
+            disabilitato={bloccato || inCorso === r.role}
+            onConferma={(v) => salva(r.role, v, r.serie_b)}
+          />
+          <span className="text-xs text-slate-400">+</span>
+          <CampoQuantita
+            etichetta="B"
+            valore={r.serie_b}
+            disabilitato={bloccato || inCorso === r.role}
+            onConferma={(v) => salva(r.role, r.serie_a, v)}
+          />
+          <span className="text-xs text-slate-400">=</span>
+          <span className="text-xs font-semibold tabular-nums text-slate-700">{r.totale}</span>
+        </div>
+      ))}
+      {errore ? <span className="text-xs text-rose-600">{errore}</span> : null}
+    </div>
+  );
+}
+
+/**
+ * Un numero che si salva quando lo lasci, non a ogni tasto.
+ *
+ * SALVARE A OGNI CIFRA avrebbe scritto 5 mentre si digita 50, e per un istante
+ * l'app avrebbe distribuito cinque lead a richiesta. Si conferma uscendo dal
+ * campo o con Invio; con Esc si torna al valore di prima.
+ */
+function CampoQuantita({
+  etichetta,
+  valore,
+  disabilitato,
+  onConferma
+}: {
+  etichetta: string;
+  valore: number;
+  disabilitato: boolean;
+  onConferma: (v: number) => void;
+}) {
+  const [testo, setTesto] = useState(String(valore));
+  useEffect(() => setTesto(String(valore)), [valore]);
+
+  const conferma = () => {
+    const n = Number(testo);
+    if (!Number.isFinite(n) || n < 0) {
+      setTesto(String(valore));
+      return;
+    }
+    if (n !== valore) onConferma(Math.round(n));
+  };
+
+  return (
+    <label className="flex items-center gap-1">
+      <span className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase">
+        {etichetta}
+      </span>
+      <input
+        type="number"
+        min={0}
+        max={200}
+        value={testo}
+        disabled={disabilitato}
+        onChange={(e) => setTesto(e.target.value)}
+        onBlur={conferma}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          if (e.key === "Escape") setTesto(String(valore));
+        }}
+        className="w-14 rounded-md border border-slate-300 bg-white px-1.5 py-1 text-right text-xs tabular-nums outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
+      />
+    </label>
+  );
+}
+
 function Riga({
   nome,
   stato,
@@ -813,6 +953,14 @@ export default function AssegnazioneContatti() {
               disabilitato={bloccato}
               onChange={(v) => comanda({ feriali: v, weekend: v })}
             />
+          </Riga>
+
+          <Riga
+            nome="Quantità"
+            aiuto="Quanti lead arrivano a ogni richiesta, e come si dividono fra serie A e serie B. Setter e Advisor si impostano separatamente. E' un tetto: chi ha molti lead arretrati ma oggi ha gia' fissato appuntamenti ne riceve la meta'."
+            stato="Lead per richiesta"
+          >
+            <QuantitaPerRuolo bloccato={bloccato} />
           </Riga>
 
           <div>
