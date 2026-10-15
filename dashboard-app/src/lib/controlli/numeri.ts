@@ -257,3 +257,52 @@ export function messaggio(anomalie: Anomalia[]): string {
   );
   return [titolo, ...righe].join("\n\n");
 }
+
+
+/**
+ * Il controllo completo: guarda, avvisa una volta sola, e lo scrive.
+ *
+ * DUE SCHEDULER, UN SOLO MESSAGGIO. Lo lanciano sia la pianificazione del
+ * computer (alle 7:30 esatte, ma solo se il computer e' acceso) sia GitHub
+ * Actions (sempre, ma quando capita: misurato sui sette giorni precedenti, dei
+ * ventiquattro giri orari dichiarati ne partono fra tre e sei). Nessuno dei due
+ * da solo e' abbastanza, e insieme manderebbero due avvisi uguali: chi arriva
+ * primo scrive la riga del giorno, chi arriva dopo la trova e si ferma.
+ *
+ * SI PUO' FORZARE con `comunque`, che serve alle prove: in quel caso non
+ * guarda e non scrive il segnaposto.
+ */
+export async function controlloDelGiorno(opzioni: {
+  tokenHubspot?: string;
+  manda: (testo: string) => Promise<boolean>;
+  da: string;
+  comunque?: boolean;
+}): Promise<{ saltato: boolean; anomalie: Anomalia[]; mandato: boolean }> {
+  const db = getDb();
+  const oggi = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Rome" }).format(new Date());
+
+  if (!opzioni.comunque) {
+    const { rows } = await db.query(`SELECT da FROM controllo_numeri WHERE giorno = $1::date`, [oggi]);
+    if (rows.length) return { saltato: true, anomalie: [], mandato: false };
+  }
+
+  const anomalie = await controllaNumeri(opzioni.tokenHubspot);
+  let mandato = false;
+  if (anomalie.length) mandato = await opzioni.manda(messaggio(anomalie));
+
+  if (!opzioni.comunque) {
+    await db.query(
+      `INSERT INTO controllo_numeri (giorno, anomalie, mandato, dettaglio, da)
+       VALUES ($1::date, $2, $3, $4, $5)
+       ON CONFLICT (giorno) DO NOTHING`,
+      [
+        oggi,
+        anomalie.length,
+        mandato,
+        anomalie.map((a) => `${a.codice}: ${a.testo}`).join(" | ") || null,
+        opzioni.da
+      ]
+    );
+  }
+  return { saltato: false, anomalie, mandato };
+}

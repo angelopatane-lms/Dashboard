@@ -964,3 +964,21 @@ CREATE TABLE IF NOT EXISTS copilot_trattativa_invio (
 
 CREATE INDEX IF NOT EXISTS copilot_trattativa_invio_deal
   ON copilot_trattativa_invio (deal_id, inviato_at DESC);
+
+
+-- Il controllo quotidiano dei numeri: una riga al giorno, quando e' stato fatto.
+--
+-- SERVE A NON MANDARE DUE VOLTE LO STESSO AVVISO. Il controllo lo lanciano due
+-- scheduler diversi - l'Utilita' di pianificazione sul computer alle 7:30 e
+-- GitHub Actions piu' volte in mattinata - perche' nessuno dei due da solo e'
+-- affidabile: il primo dipende dal computer acceso, il secondo dall'umore dei
+-- runner, che nelle ore di punta saltano i tre quarti delle esecuzioni. Chi
+-- arriva primo scrive qui; gli altri leggono e tacciono.
+CREATE TABLE IF NOT EXISTS controllo_numeri (
+  giorno      DATE PRIMARY KEY,
+  anomalie    INT NOT NULL DEFAULT 0,
+  mandato     BOOLEAN NOT NULL DEFAULT false,
+  dettaglio   TEXT,
+  da          TEXT,
+  fatto_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
