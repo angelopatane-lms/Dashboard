@@ -144,6 +144,31 @@ function perOra<T extends { chiestoAt: string }>(righe: T[]): T[] {
  * cioe' il controllo incrociato si spegneva in silenzio, che e' il modo
  * peggiore in cui puo' spegnersi.
  */
+/**
+ * I suffissi che fanno di un nome la variante di un'altra campagna.
+ *
+ * NON SONO UN'INVENZIONE DI QUESTA PAGINA: sono gli stessi che il resto della
+ * Dashboard tratta come varianti quando unifica le campagne. Qui servono a
+ * raggrupparle nel menu - una voce invece di tre - senza accorciare mai i nomi
+ * salvati, che devono restare interi perche' l'assegnatore li confronta esatti.
+ */
+const SUFFISSI_VARIANTE = ["_test_instant", "_richiesta_informazioni"];
+
+function baseCampagna(nome: string): string {
+  let base = nome;
+  let cambiato = true;
+  while (cambiato) {
+    cambiato = false;
+    for (const s of SUFFISSI_VARIANTE) {
+      if (base.toLowerCase().endsWith(s)) {
+        base = base.slice(0, -s.length);
+        cambiato = true;
+      }
+    }
+  }
+  return base;
+}
+
 function chiaveNome(n: string): string {
   return n.trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -380,28 +405,60 @@ function QuantitaPerRuolo({ bloccato }: { bloccato: boolean }) {
 
   if (!righe) return <span className="text-xs text-slate-400">caricamento…</span>;
 
+  // LE INTESTAZIONI UNA VOLTA SOLA, I RUOLI UNO SOTTO L'ALTRO.
+  //
+  // Prima "A" e "B" comparivano accanto a ogni campo - otto volte in due righe
+  // - e i due ruoli stavano affiancati, cosi' per sapere se avevano la stessa
+  // divisione bisognava leggerli e confrontarli a mente. Incolonnati si vede
+  // da soli. E' lo stesso modo in cui la Dashboard scrive tutte le sue
+  // tabelle: titoli piccoli in alto, numeri allineati a destra.
   return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-      {righe.map((r) => (
-        <div key={r.role} className="flex items-center gap-1.5">
-          <span className="w-14 text-xs font-medium text-slate-600">{r.role}</span>
-          <CampoQuantita
-            etichetta="A"
-            valore={r.serie_a}
-            disabilitato={bloccato || inCorso === r.role}
-            onConferma={(v) => salva(r.role, v, r.serie_b)}
-          />
-          <span className="text-xs text-slate-400">+</span>
-          <CampoQuantita
-            etichetta="B"
-            valore={r.serie_b}
-            disabilitato={bloccato || inCorso === r.role}
-            onConferma={(v) => salva(r.role, r.serie_a, v)}
-          />
-          <span className="text-xs text-slate-400">=</span>
-          <span className="text-xs font-semibold tabular-nums text-slate-700">{r.totale}</span>
-        </div>
-      ))}
+    <div className="flex flex-col items-end gap-1">
+      <table className="text-xs">
+        <thead>
+          <tr className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase">
+            <th className="w-16" />
+            <th className="px-1.5 pb-1 text-center font-semibold">Serie A</th>
+            <th className="w-4" />
+            <th className="px-1.5 pb-1 text-center font-semibold">Serie B</th>
+            <th className="px-2 pb-1 text-right font-semibold">Totale</th>
+          </tr>
+        </thead>
+        <tbody>
+          {righe.map((r) => (
+            <tr key={r.role}>
+              <td className="py-0.5 pr-2 text-right font-medium whitespace-nowrap text-slate-600">
+                {r.role}
+              </td>
+              <td className="px-1.5 py-0.5">
+                <CampoQuantita
+                  valore={r.serie_a}
+                  disabilitato={bloccato || inCorso === r.role}
+                  onConferma={(v) => salva(r.role, v, r.serie_b)}
+                />
+              </td>
+              <td className="text-center text-slate-300">+</td>
+              <td className="px-1.5 py-0.5">
+                <CampoQuantita
+                  valore={r.serie_b}
+                  disabilitato={bloccato || inCorso === r.role}
+                  onConferma={(v) => salva(r.role, r.serie_a, v)}
+                />
+              </td>
+              <td className="py-0.5 pl-2 text-right whitespace-nowrap">
+                <span className="font-semibold tabular-nums text-slate-700">{r.totale}</span>
+                {/* LA PERCENTUALE E' LA STESSA COSA DETTA IN UN ALTRO MODO, ed
+                    e' il modo in cui la chiede chi decide ("quanto diamo di
+                    serie A?"). Scritta accanto al totale, le due letture non
+                    si possono piu' contraddire. */}
+                <span className="ml-2 text-[10px] tabular-nums text-slate-400">
+                  {r.totale > 0 ? `${Math.round((r.serie_a / r.totale) * 100)}% A` : ""}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       {errore ? <span className="text-xs text-rose-600">{errore}</span> : null}
     </div>
   );
@@ -415,12 +472,10 @@ function QuantitaPerRuolo({ bloccato }: { bloccato: boolean }) {
  * campo o con Invio; con Esc si torna al valore di prima.
  */
 function CampoQuantita({
-  etichetta,
   valore,
   disabilitato,
   onConferma
 }: {
-  etichetta: string;
   valore: number;
   disabilitato: boolean;
   onConferma: (v: number) => void;
@@ -438,10 +493,7 @@ function CampoQuantita({
   };
 
   return (
-    <label className="flex items-center gap-1">
-      <span className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase">
-        {etichetta}
-      </span>
+    <label className="block">
       <input
         type="number"
         min={0}
@@ -454,9 +506,111 @@ function CampoQuantita({
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
           if (e.key === "Escape") setTesto(String(valore));
         }}
-        className="w-14 rounded-md border border-slate-300 bg-white px-1.5 py-1 text-right text-xs tabular-nums outline-none transition focus:border-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
+        /* NIENTE FRECCINE DEL BROWSER: su un campo largo tre caratteri
+           occupano un terzo dello spazio, cambiano aspetto da un browser
+           all'altro e invitano a cliccare uno alla volta per arrivare da 20 a
+           50. Le frecce della tastiera continuano a funzionare, che e' il modo
+           in cui si fanno le correzioni piccole. */
+        className="w-16 appearance-none rounded-md border border-slate-300 bg-white px-2 py-1 text-center text-sm font-semibold tabular-nums text-slate-800 shadow-sm outline-none transition hover:border-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
       />
     </label>
+  );
+}
+
+type FamigliaCampagna = { base: string; nomi: string[]; assegnabili: number };
+
+/**
+ * Si scrive e compaiono le corrispondenze, invece di scorrere un menu.
+ *
+ * PERCHE' NON UN MENU. Le campagne del serbatoio sono una trentina e i nomi
+ * si somigliano tutti - `lms_div_coach_ew_...` per otto voci di fila - quindi
+ * trovarne una vuol dire leggerle quasi tutte. Scrivendo tre lettere ne
+ * restano due o tre.
+ *
+ * SI CERCA DENTRO IL NOME, non solo all'inizio: nessuno ricorda il prefisso,
+ * tutti ricordano "mamma" o "aste".
+ */
+function CercaCampagna({
+  famiglie,
+  escluse,
+  disabilitato,
+  onScegli
+}: {
+  famiglie: FamigliaCampagna[];
+  escluse: string[];
+  disabilitato: boolean;
+  onScegli: (f: FamigliaCampagna) => void;
+}) {
+  const [testo, setTesto] = useState("");
+  const [aperto, setAperto] = useState(false);
+
+  const parole = testo.toLowerCase().split(/\s+/).filter(Boolean);
+  const trovate = famiglie
+    .filter((f) => f.nomi.some((n) => !escluse.includes(n)))
+    .filter((f) => parole.every((p) => f.base.toLowerCase().includes(p)));
+  // NIENTE TAGLIO: l'elenco parte completo e si restringe mentre si scrive.
+  // Mostrarne solo le prime otto farebbe sparire campagne senza dirlo, e chi
+  // non trova la sua penserebbe che non c'e'. Scorrono dentro il riquadro.
+
+  const scegli = (f: FamigliaCampagna) => {
+    onScegli(f);
+    setTesto("");
+    setAperto(false);
+  };
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={testo}
+        disabled={disabilitato}
+        placeholder={famiglie.length ? `cerca fra ${famiglie.length} campagne` : "lettura del serbatoio…"}
+        onChange={(e) => {
+          setTesto(e.target.value);
+          setAperto(true);
+        }}
+        onFocus={() => setAperto(true)}
+        // SI CHIUDE DOPO IL CLIC, non prima: senza il ritardo il menu sparisce
+        // mentre il dito e' ancora a mezz'aria e la scelta non arriva mai.
+        onBlur={() => setTimeout(() => setAperto(false), 150)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && trovate.length) scegli(trovate[0]);
+          if (e.key === "Escape") {
+            setTesto("");
+            setAperto(false);
+          }
+        }}
+        className="w-64 rounded-md border border-dashed border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 outline-none transition hover:border-slate-400 focus:border-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
+      />
+      {aperto && !disabilitato ? (
+        <ul className="absolute right-0 z-20 mt-1 max-h-72 w-96 overflow-auto rounded-md border border-slate-200 bg-white py-1 shadow-lg">
+          {trovate.length ? (
+            trovate.map((f) => (
+              <li key={f.base}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => scegli(f)}
+                  className="flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-xs transition hover:bg-slate-100"
+                >
+                  <span className="min-w-0 flex-1 truncate text-slate-700">{f.base}</span>
+                  <span className="shrink-0 tabular-nums text-slate-500">{f.assegnabili}</span>
+                  {f.nomi.length > 1 ? (
+                    <span className="shrink-0 text-[10px] text-slate-400">
+                      {f.nomi.length} varianti
+                    </span>
+                  ) : null}
+                </button>
+              </li>
+            ))
+          ) : (
+            <li className="px-3 py-2 text-xs text-slate-400">
+              {testo ? "nessuna campagna del serbatoio contiene queste parole" : "nessuna campagna"}
+            </li>
+          )}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 
@@ -784,16 +938,120 @@ export default function AssegnazioneContatti() {
     [applica]
   );
 
-  // Le campagne Live raggruppate per famiglia: una campagna e le sue varianti
-  // sono una voce sola nel menu, ma si salvano con i nomi interi. Si legge una
-  // volta: cambia quando nasce una campagna, non durante la giornata.
-  const [famiglie, setFamiglie] = useState<Array<{ base: string; nomi: string[] }>>([]);
+  /**
+   * Le campagne che il serbatoio contiene DAVVERO, con quanti contatti hanno.
+   *
+   * PRIMA ERANO LE LIVE: 119 su 5.206 in archivio. Dentro c'erano campagne da
+   * cui non arriva piu' un lead, e fuori restavano le 485 evergreen - che
+   * quindi non si potevano escludere, pur essendo fra quelle che producono.
+   * Escludere una campagna vuota non serve a niente; non poter escludere
+   * quella piena era il problema vero.
+   *
+   * Si legge il serbatoio, che e' lo stesso giro che alimenta le Categorie:
+   * nessuna lettura in piu' a HubSpot.
+   */
+  const [campagne, setCampagne] = useState<Array<{ nome: string; assegnabili: number }>>([]);
+  const [campagneCaricate, setCampagneCaricate] = useState(false);
   useEffect(() => {
-    fetch("/api/campagne-live", { cache: "no-store" })
+    fetch("/api/campagne-serbatoio", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => setFamiglie(d.campagne ?? []))
-      .catch(() => setFamiglie([]));
+      .then((d) => setCampagne(d.campagne ?? []))
+      .catch(() => setCampagne([]))
+      .finally(() => setCampagneCaricate(true));
   }, []);
+
+  /**
+   * Le campagne del serbatoio raggruppate per base: `..._test_instant` e
+   * `..._richiesta_informazioni` stanno sotto la campagna da cui nascono.
+   *
+   * UNA VOCE INVECE DI TRE, e il numero accanto e' la somma: chi sceglie
+   * decide su quanti contatti sta togliendo davvero, non su un terzo di essi.
+   * I nomi salvati restano interi, uno per variante.
+   */
+  const famiglieSerbatoio = (() => {
+    const per = new Map<string, { nomi: string[]; assegnabili: number }>();
+    for (const c of campagne) {
+      const base = baseCampagna(c.nome);
+      const g = per.get(base) ?? { nomi: [], assegnabili: 0 };
+      g.nomi.push(c.nome);
+      g.assegnabili += c.assegnabili;
+      per.set(base, g);
+    }
+    // IN ORDINE ALFABETICO, non per quantita': i nomi si somigliano tutti e
+    // l'alfabeto e' l'unico ordine che chi cerca conosce gia'. Quanti contatti
+    // ha ciascuna si legge accanto al nome, dove serve a decidere - non a
+    // trovare.
+    return [...per.entries()]
+      .map(([base, g]) => ({ base, ...g }))
+      .sort((a, b) => a.base.localeCompare(b.base));
+  })();
+
+  /**
+   * Le campagne in cui il blocco del webinar non vale.
+   *
+   * IL BLOCCO: chi ha un webinar non ancora finito - o finito da meno di sette
+   * giorni - non viene assegnato, perche' in quella finestra lo lavora il
+   * flusso del webinar. Qui si elencano le eccezioni, e l'elenco vuoto vuol
+   * dire "blocco pieno", cioe' il comportamento di sempre.
+   */
+  const [webinarEccezioni, setWebinarEccezioni] = useState<string[]>([]);
+  const [webinarAttivo, setWebinarAttivo] = useState(false);
+  const [webinarErrore, setWebinarErrore] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/assegnazione-lead/webinar", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        setWebinarEccezioni(d.campagne ?? []);
+        setWebinarAttivo(Boolean(d.attivo));
+      })
+      .catch(() => setWebinarEccezioni([]));
+  }, []);
+  const salvaWebinar = async (elenco: string[], attivo = webinarAttivo) => {
+    setWebinarEccezioni(elenco);
+    setWebinarAttivo(attivo);
+    try {
+      const r = await fetch("/api/assegnazione-lead/webinar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campagne: elenco, attivo })
+      });
+      const d = await r.json().catch(() => null);
+      // IL SALVATAGGIO FALLITO SI DICE, e si rimettono i valori veri.
+      //
+      // Tenersi il valore ottimista dopo un errore e' il guasto peggiore che
+      // ci sia: la pagina mostra una configurazione che non esiste, e chi
+      // l'ha scritta se ne accorge settimane dopo dai numeri. Successo il 15
+      // ottobre 2026, con la rotta ancora non pubblicata sul server: quattro
+      // campagne sembravano salvate e non erano mai arrivate.
+      if (!r.ok || !d || d.error) {
+        setWebinarErrore(d?.error || `non salvato (HTTP ${r.status})`);
+        const vero = await fetch("/api/assegnazione-lead/webinar", { cache: "no-store" })
+          .then((x) => x.json())
+          .catch(() => null);
+        setWebinarEccezioni(vero?.campagne ?? []);
+        setWebinarAttivo(Boolean(vero?.attivo));
+        return;
+      }
+      setWebinarErrore(null);
+      if (d.campagne) setWebinarEccezioni(d.campagne);
+      if (typeof d.attivo === "boolean") setWebinarAttivo(d.attivo);
+    } catch (e) {
+      setWebinarErrore(e instanceof Error ? e.message : "salvataggio non riuscito");
+    }
+  };
+
+  /**
+   * Le eccezioni raggruppate come le campagne escluse: una targhetta per
+   * famiglia, i nomi interi nel suggerimento del mouse.
+   */
+  const webinarRaggruppate = (() => {
+    const gruppi = new Map<string, string[]>();
+    for (const nome of webinarEccezioni) {
+      const chiave = baseCampagna(nome);
+      gruppi.set(chiave, [...(gruppi.get(chiave) ?? []), nome]);
+    }
+    return [...gruppi.entries()].map(([base, nomi]) => ({ base, nomi }));
+  })();
 
   const scelte = (stato?.campagne_sospese ?? "").split(",").map((c) => c.trim()).filter(Boolean);
   const salvaScelte = (elenco: string[]) => comanda({ campagne_sospese: elenco.join(",") });
@@ -807,9 +1065,13 @@ export default function AssegnazioneContatti() {
    * targhetta e' un modo di mostrarli, non un modo di accorciarli.
    */
   const scelteRaggruppate = (() => {
+    // La famiglia e' il nome piu' corto fra le scelte che fa da prefisso agli
+    // altri: le varianti si raggruppano da sole, senza bisogno dell'elenco
+    // delle campagne - che adesso contiene solo quelle del serbatoio e
+    // potrebbe non avere la base di una variante gia' scelta.
     const gruppi = new Map<string, string[]>();
     for (const nome of scelte) {
-      const chiave = famiglie.find((f) => f.nomi.includes(nome))?.base ?? nome;
+      const chiave = baseCampagna(nome);
       gruppi.set(chiave, [...(gruppi.get(chiave) ?? []), nome]);
     }
     return [...gruppi.entries()].map(([base, nomi]) => ({ base, nomi }));
@@ -981,34 +1243,17 @@ export default function AssegnazioneContatti() {
           <div>
             <Riga
               nome="Campagne"
-              aiuto="I contatti di queste campagne non vengono assegnati, finche' il filtro resta attivo. Si scelgono fra le campagne Live: una campagna e le sue varianti si aggiungono insieme e restano salvate con i nomi interi."
+              aiuto="I contatti di queste campagne non vengono assegnati, finche' il filtro resta attivo. Il menu offre solo le campagne che il serbatoio contiene davvero, con quanti contatti assegnabili hanno in questo momento: escludere una campagna vuota non cambierebbe niente. Il confronto e' sul nome intero."
               stato="Escluse dall'assegnazione"
             >
-              <select
-                value=""
-                disabled={bloccato || famiglie.length === 0}
-                onChange={(e) => {
-                  const scelta = famiglie.find((f) => f.base === e.target.value);
-                  // Si aggiungono TUTTI i nomi della famiglia, interi: la voce
-                  // del menu e' un raggruppamento, non un nome accorciato.
-                  if (scelta) {
-                    salvaScelte([...scelte, ...scelta.nomi.filter((n) => !scelte.includes(n))]);
-                  }
-                }}
-                className="max-w-[16rem] rounded-md border border-dashed border-slate-300 bg-white px-2 py-1 text-xs text-slate-500 outline-none transition hover:border-slate-400 focus:border-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <option value="">
-                  {famiglie.length ? "seleziona campagne" : "elenco non disponibile"}
-                </option>
-                {famiglie
-                  .filter((f) => f.nomi.some((n) => !scelte.includes(n)))
-                  .map((f) => (
-                    <option key={f.base} value={f.base}>
-                      {f.base}
-                      {f.nomi.length > 1 ? `  (${f.nomi.length} varianti)` : ""}
-                    </option>
-                  ))}
-              </select>
+              <CercaCampagna
+                famiglie={famiglieSerbatoio}
+                escluse={scelte}
+                disabilitato={bloccato}
+                onScegli={(f) =>
+                  salvaScelte([...scelte, ...f.nomi.filter((n) => !scelte.includes(n))])
+                }
+              />
               <Interruttore
                 acceso={Boolean(stato?.campagne_sospese_attivo)}
                 etichetta={stato?.campagne_sospese_attivo ? "On" : "Off"}
@@ -1041,6 +1286,77 @@ export default function AssegnazioneContatti() {
                       type="button"
                       disabled={bloccato}
                       onClick={() => salvaScelte(scelte.filter((x) => !g.nomi.includes(x)))}
+                      className="shrink-0 text-slate-300 transition hover:text-rose-600 disabled:cursor-not-allowed"
+                      title={`Togli ${g.base}${g.nomi.length > 1 ? " e le sue varianti" : ""}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          {/* IL BLOCCO DEL WEBINAR, con le sue eccezioni. Sta sotto le
+              campagne escluse perche' e' la stessa domanda - chi non si
+              assegna - posta da un'altra parte: li' per campagna, qui per
+              quello che la persona sta gia' ricevendo. */}
+          <div>
+            <Riga
+              nome="Webinar"
+              aiuto="Chi ha un webinar non ancora finito, o finito da meno di sette giorni, non viene assegnato: in quella finestra lo lavora il flusso del webinar. Le campagne elencate qui fanno eccezione, cioe' i loro contatti si assegnano lo stesso - ma solo finche' l'interruttore resta acceso. Spento, il blocco vale ovunque."
+              stato="Eccezioni al blocco"
+            >
+              <CercaCampagna
+                famiglie={famiglieSerbatoio}
+                escluse={webinarEccezioni}
+                disabilitato={bloccato}
+                onScegli={(f) =>
+                  salvaWebinar([
+                    ...webinarEccezioni,
+                    ...f.nomi.filter((n) => !webinarEccezioni.includes(n))
+                  ])
+                }
+              />
+              {webinarErrore ? (
+                <span className="text-xs text-rose-600" title={webinarErrore}>
+                  non salvato
+                </span>
+              ) : null}
+              <Interruttore
+                acceso={webinarAttivo}
+                etichetta={webinarAttivo ? "On" : "Off"}
+                disabilitato={bloccato}
+                onChange={(v) => salvaWebinar(webinarEccezioni, v)}
+              />
+            </Riga>
+
+            {/* Le targhette come quelle delle campagne escluse: stesso posto,
+                stesso modo di accorparsi, stessi nomi interi sotto il mouse.
+                Spente quando l'interruttore e' spento, perche' in quel caso
+                l'elenco c'e' ma non sta facendo niente. */}
+            {webinarRaggruppate.length ? (
+              <div className="flex flex-wrap items-center justify-end gap-2 px-4 pb-3">
+                {webinarRaggruppate.map((g) => (
+                  <span
+                    key={g.base}
+                    title={g.nomi.join(", ")}
+                    className={`inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
+                      webinarAttivo
+                        ? "border-slate-200 bg-slate-50 text-slate-700"
+                        : "border-slate-200 bg-white text-slate-400"
+                    }`}
+                  >
+                    <span className="truncate font-mono">{g.base}</span>
+                    {g.nomi.length > 1 ? (
+                      <span className="shrink-0 text-slate-400">+{g.nomi.length - 1}</span>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={bloccato}
+                      onClick={() =>
+                        salvaWebinar(webinarEccezioni.filter((x) => !g.nomi.includes(x)))
+                      }
                       className="shrink-0 text-slate-300 transition hover:text-rose-600 disabled:cursor-not-allowed"
                       title={`Togli ${g.base}${g.nomi.length > 1 ? " e le sue varianti" : ""}`}
                     >

@@ -105,8 +105,15 @@ type Pagina = {
   paging?: { next?: { after?: string } };
 };
 
+/** Una campagna di cui il serbatoio contiene almeno un contatto assegnabile. */
+export type CampagnaNelSerbatoio = { nome: string; assegnabili: number };
+
 /** L'ultimo elenco calcolato, finche' e' fresco. */
-let inCaldo: { quando: number; categorie: Categoria[] } | null = null;
+let inCaldo: {
+  quando: number;
+  categorie: Categoria[];
+  campagne: CampagnaNelSerbatoio[];
+} | null = null;
 
 export async function categorieAssegnabili(token: string): Promise<Categoria[]> {
   if (inCaldo && Date.now() - inCaldo.quando < FRESCHEZZA_MINUTI * 60_000) {
@@ -120,6 +127,11 @@ export async function categorieAssegnabili(token: string): Promise<Categoria[]> 
 
   const visti = new Set<string>();
   const conta = new Map<string, number>();
+  // LE CAMPAGNE VERE, non le categorie: stesso giro, due raccolte. Servono al
+  // menu delle campagne da escludere, che prima offriva tutte le Live - 119 su
+  // 5.206 in archivio - comprese quelle da cui in questo momento non arriva
+  // nessun lead, e nessuna delle evergreen, che sono 485.
+  const perCampagna = new Map<string, number>();
   let qualcosaAndatoStorto = false;
 
   for (const serie of ["serie_a", "serie_b"]) {
@@ -157,8 +169,13 @@ export async function categorieAssegnabili(token: string): Promise<Categoria[]> 
         for (const c of d.results ?? []) {
           if (visti.has(c.id)) continue;
           visti.add(c.id);
-          const categoria = guessCategoria(c.properties?.id_campagna_refresh ?? "");
+          const grezza = (c.properties?.id_campagna_refresh ?? "").trim();
+          const categoria = guessCategoria(grezza);
           conta.set(categoria, (conta.get(categoria) ?? 0) + 1);
+          // IL NOME SI TIENE COM'E', suffissi compresi: e' quello con cui
+          // l'assegnatore confronta, e accorciarlo farebbe escludere persone
+          // diverse da quelle scelte.
+          if (grezza) perCampagna.set(grezza, (perCampagna.get(grezza) ?? 0) + 1);
         }
         dopo = d.paging?.next?.after;
         if (!dopo) break;
@@ -181,6 +198,30 @@ export async function categorieAssegnabili(token: string): Promise<Categoria[]> 
     .filter((c) => c.assegnabili > 0)
     .sort((a, b) => b.assegnabili - a.assegnabili || a.etichetta.localeCompare(b.etichetta));
 
-  inCaldo = { quando: Date.now(), categorie };
+  const campagne = [...perCampagna.entries()]
+    .map(([nome, assegnabili]) => ({ nome, assegnabili }))
+    .sort((a, b) => b.assegnabili - a.assegnabili || a.nome.localeCompare(b.nome));
+
+  inCaldo = { quando: Date.now(), categorie, campagne };
   return categorie;
+}
+
+/**
+ * Le campagne che il serbatoio contiene DAVVERO, con quanti contatti ciascuna.
+ *
+ * PERCHE' NON TUTTE. Il menu delle campagne da escludere offriva le 119 Live
+ * su 5.206 in archivio: dentro c'erano campagne da cui non arriva piu' un
+ * lead, e fuori restavano le 485 evergreen, che quindi non si potevano
+ * escludere affatto. Escludere una campagna che non produce niente non serve,
+ * e non poter escludere quella che produce e' il problema vero.
+ *
+ * COSTA ZERO IN PIU': e' lo stesso giro che conta le categorie, con una
+ * raccolta in piu' nello stesso ciclo. Se nessuno ha ancora chiesto le
+ * categorie, questa chiamata fa il giro e le prepara entrambe.
+ */
+export async function campagneAssegnabili(token: string): Promise<CampagnaNelSerbatoio[]> {
+  if (!inCaldo || Date.now() - inCaldo.quando >= FRESCHEZZA_MINUTI * 60_000) {
+    await categorieAssegnabili(token);
+  }
+  return inCaldo?.campagne ?? [];
 }
