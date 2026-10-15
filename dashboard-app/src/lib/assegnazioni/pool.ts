@@ -149,6 +149,118 @@ function gruppi(serie: string, daMs: number) {
   ];
 }
 
+/**
+ * Quante pagine al massimo per ogni interrogazione dell'ingresso forzato.
+ *
+ * E' LO STESSO TETTO DELL'ASSEGNATORE, non un numero scelto qui: l'app legge
+ * cinque pagine per interrogazione e da quelle pesca. Contarne di piu'
+ * direbbe un numero che l'app non puo' raggiungere, cioe' la stessa bugia -
+ * al contrario - che questo file esiste per non raccontare.
+ */
+const INGRESSO_PAGINE_MAX = 5;
+
+/** Le campagne a ingresso forzato, lette dall'app. Elenco vuoto = regola spenta. */
+async function campagneIngresso(): Promise<string[]> {
+  const token = process.env.LMS_ASSEGNAZIONI_TOKEN;
+  if (!token) return [];
+  const indirizzo =
+    process.env.LMS_INGRESSO_URL ||
+    "https://lms.217.154.117.118.nip.io/dispatch-api/ingresso-forzato";
+  try {
+    const r = await fetch(indirizzo, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000)
+    });
+    if (!r.ok) return [];
+    const d = (await r.json()) as { attivo?: boolean; campagne?: string[] };
+    return d.attivo ? d.campagne ?? [] : [];
+  } catch {
+    // SI TORNA L'ELENCO VUOTO E NON SI FALLISCE: se l'app non risponde, il
+    // riquadro mostra il conteggio di sempre invece di non mostrare niente.
+    return [];
+  }
+}
+
+/**
+ * I contatti che entrano SOLO grazie all'ingresso forzato.
+ *
+ * PERCHE' NON BASTA UN `total`. Il conteggio normale di serie A chiede
+ * `dispatch_outcome` e nessun countdown; questi contatti entrano proprio
+ * perche' quelle due condizioni non le rispettano. Ma nelle stesse campagne
+ * ci sono anche contatti regolari, gia' contati: sommare i totali li
+ * conterebbe due volte. Quindi si enumerano e si tiene solo chi il conteggio
+ * normale NON poteva prendere.
+ *
+ * DUE INTERROGAZIONI PER CAMPAGNA, come altrove: la freschezza e' la piu'
+ * recente fra creazione e ultima conversione, e due gruppi in OR darebbero un
+ * ordinamento su cui il cursore delle pagine non e' stabile.
+ */
+async function ingressoForzato(token: string, daMs: number): Promise<number> {
+  const campagne = await campagneIngresso();
+  if (!campagne.length) return 0;
+  const quando = String(daMs);
+  const visti = new Set<string>();
+  let inPiu = 0;
+
+  for (const campagna of campagne) {
+    for (const campo of ["createdate", "recent_conversion_date"]) {
+      let dopo: string | undefined;
+      for (let pagina = 0; pagina < INGRESSO_PAGINE_MAX; pagina++) {
+        const r = await fetch(`${HUBSPOT}/crm/v3/objects/contacts/search`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({
+            filterGroups: [
+              {
+                filters: [
+                  { propertyName: "id_campagna_refresh", operator: "EQ", value: campagna },
+                  { propertyName: "hubspot_owner_id", operator: "NOT_HAS_PROPERTY" },
+                  { propertyName: "phone", operator: "HAS_PROPERTY" },
+                  { propertyName: campo, operator: "GTE", value: quando }
+                ]
+              }
+            ],
+            properties: ["dispatch_outcome", "countdown"],
+            sorts: [{ propertyName: "hs_object_id", direction: "ASCENDING" }],
+            limit: 100,
+            after: dopo
+          })
+        });
+        if (!r.ok) {
+          console.error(`[pool/ingresso] ${campagna}/${campo}: HubSpot ${r.status}`);
+          break;
+        }
+        const d = (await r.json()) as {
+          results?: Array<{ id: string; properties?: { dispatch_outcome?: string; countdown?: string } }>;
+          paging?: { next?: { after?: string } };
+        };
+        for (const c of d.results ?? []) {
+          if (visti.has(c.id)) continue;
+          visti.add(c.id);
+          const outcome = (c.properties?.dispatch_outcome ?? "").trim().toLowerCase();
+          const countdown = String(c.properties?.countdown ?? "").trim();
+          // GIA' CONTATO ALTROVE: un outcome che parla di serie, senza
+          // countdown, e' gia' dentro il conteggio di serie A o in quello di
+          // serie B. Sommarlo qui lo conterebbe due volte, e su serie_b lo
+          // farebbe comparire in tutti e due i riquadri.
+          //
+          // E' LA STESSA CONDIZIONE CHE USA L'ASSEGNATORE per decidere chi
+          // prendere con l'ingresso forzato. Devono restare uguali: se qui si
+          // contasse piu' largo di quanto l'app pesca, il riquadro
+          // prometterebbe lead che non esistono.
+          if (outcome.includes("serie") && !countdown) continue;
+          inPiu++;
+        }
+        dopo = d.paging?.next?.after;
+        if (!dopo) break;
+      }
+    }
+  }
+  return inPiu;
+}
+
 async function quanti(token: string, serie: string, daMs: number): Promise<number | null> {
   const r = await fetch(`${HUBSPOT}/crm/v3/objects/contacts/search`, {
     method: "POST",
@@ -203,9 +315,17 @@ export async function assegnabili(token: string, stato?: StatoApp): Promise<Asse
   da.setHours(0, 0, 0, 0);
   da.setDate(da.getDate() - GIORNI_MAX);
 
-  const [a, b] = await Promise.all([
+  const [a, b, inPiu] = await Promise.all([
     quanti(token, "serie_a", da.getTime()),
-    quanti(token, "serie_b", da.getTime())
+    quanti(token, "serie_b", da.getTime()),
+    // L'INGRESSO FORZATO ENTRA NEL CONTO DI SERIE A, perche' e' li' che
+    // l'assegnatore li mette. Senza questa riga il riquadro direbbe 660
+    // mentre l'app ne pesca 1.500, e il numero che si guarda per decidere
+    // sarebbe quello sbagliato.
+    //
+    // ZERO E NON NULL SE NON RIESCE: un conteggio in piu' che non si e'
+    // potuto fare non deve cancellare quello principale, che e' buono.
+    ingressoForzato(token, da.getTime()).catch(() => 0)
   ]);
   if (a === null && b === null) return null;
 
@@ -231,11 +351,18 @@ export async function assegnabili(token: string, stato?: StatoApp): Promise<Asse
         intero(stato?.persone_oggi),
         typeof stato?.sistema_acceso === "boolean" ? stato.sistema_acceso : null,
         typeof stato?.modalita_live === "boolean" ? stato.modalita_live : null,
-        a,
+        a === null ? null : a + inPiu,
         b
       ]
     );
   }
 
-  return { serieA: a, serieB: b, presoAt: new Date().toISOString() };
+  // LA STESSA SOMMA CHE SI E' SALVATA. Tenere due conti diversi - uno nel
+  // database e uno sullo schermo - vuol dire che un giorno il grafico e il
+  // riquadro diranno due numeri, e nessuno sapra' quale dei due guardare.
+  return {
+    serieA: a === null ? null : a + inPiu,
+    serieB: b,
+    presoAt: new Date().toISOString()
+  };
 }
