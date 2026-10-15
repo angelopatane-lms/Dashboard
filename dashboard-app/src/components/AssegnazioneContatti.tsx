@@ -996,6 +996,19 @@ export default function AssegnazioneContatti() {
    */
   const [webinarEccezioni, setWebinarEccezioni] = useState<string[]>([]);
   const [webinarAttivo, setWebinarAttivo] = useState(false);
+  /**
+   * IL SECONDO INTERRUTTORE DELLA STESSA RIGA: nelle campagne elencate qui
+   * sopra si assegnano solo i contatti che hanno partecipato al webinar, cioe'
+   * quelli con Si' in "Partecipazione Webinar Diventa Coach Intelligenza
+   * Spirituale" (`coach_spir_presenza`).
+   *
+   * STESSO ELENCO, NON UN SECONDO MENU. Le campagne su cui ha senso guardare
+   * la presenza sono esattamente quelle in cui il blocco del webinar fa
+   * eccezione: due elenchi da tenere allineati a mano si scollano, e il giorno
+   * in cui qualcuno aggiunge una campagna a uno solo dei due la regola agisce
+   * dove non deve senza dirlo.
+   */
+  const [soloPartecipanti, setSoloPartecipanti] = useState(false);
   const [webinarErrore, setWebinarErrore] = useState<string | null>(null);
   useEffect(() => {
     fetch("/api/assegnazione-lead/webinar", { cache: "no-store" })
@@ -1003,17 +1016,23 @@ export default function AssegnazioneContatti() {
       .then((d) => {
         setWebinarEccezioni(d.campagne ?? []);
         setWebinarAttivo(Boolean(d.attivo));
+        setSoloPartecipanti(Boolean(d.solo_partecipanti));
       })
       .catch(() => setWebinarEccezioni([]));
   }, []);
-  const salvaWebinar = async (elenco: string[], attivo = webinarAttivo) => {
+  const salvaWebinar = async (
+    elenco: string[],
+    attivo = webinarAttivo,
+    solo = soloPartecipanti
+  ) => {
     setWebinarEccezioni(elenco);
     setWebinarAttivo(attivo);
+    setSoloPartecipanti(solo);
     try {
       const r = await fetch("/api/assegnazione-lead/webinar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ campagne: elenco, attivo })
+        body: JSON.stringify({ campagne: elenco, attivo, solo_partecipanti: solo })
       });
       const d = await r.json().catch(() => null);
       // IL SALVATAGGIO FALLITO SI DICE, e si rimettono i valori veri.
@@ -1030,15 +1049,93 @@ export default function AssegnazioneContatti() {
           .catch(() => null);
         setWebinarEccezioni(vero?.campagne ?? []);
         setWebinarAttivo(Boolean(vero?.attivo));
+        setSoloPartecipanti(Boolean(vero?.solo_partecipanti));
         return;
       }
       setWebinarErrore(null);
       if (d.campagne) setWebinarEccezioni(d.campagne);
       if (typeof d.attivo === "boolean") setWebinarAttivo(d.attivo);
+      // UN SERVER PIU' VECCHIO DELLA PAGINA SI VEDE DA QUI. La rotta dell'app
+      // di assegnazione risponde 200 anche quando non conosce
+      // `solo_partecipanti`: ignora il campo e torna gli altri due. Senza
+      // questo controllo l'interruttore resterebbe acceso mostrando una regola
+      // che sul server non esiste - esattamente il guasto del 15 ottobre 2026,
+      // quando quattro campagne sembravano salvate e non erano mai arrivate.
+      if (typeof d.solo_partecipanti === "boolean") {
+        setSoloPartecipanti(d.solo_partecipanti);
+      } else if (solo) {
+        setSoloPartecipanti(false);
+        setWebinarErrore("il server non conosce ancora Solo partecipanti");
+        return;
+      }
     } catch (e) {
       setWebinarErrore(e instanceof Error ? e.message : "salvataggio non riuscito");
     }
   };
+
+  /**
+   * LE CAMPAGNE CHE ENTRANO ANCHE SENZA `dispatch_outcome` E COL COUNTDOWN.
+   *
+   * La ricerca dell'assegnatore chiede quattro cose insieme: niente
+   * proprietario, niente countdown, un telefono, e `dispatch_outcome` uguale a
+   * serie_a o serie_b. Misurato il 15 ottobre 2026 su
+   * lms_div_coach_intelligenza_spirituale_webinar: dei 2.062 contatti liberi,
+   * 1.567 hanno `dispatch_outcome` VUOTO e 71 ce l'hanno a "proprietario".
+   * Sono persone libere e raggiungibili che per l'assegnatore non esistono -
+   * non escluse da qualcuno, semplicemente mai marcate.
+   *
+   * NON SI CORREGGE HUBSPOT, SI ALLARGA LA PESCA, e solo dove viene chiesto.
+   */
+  const [ingressoForzato, setIngressoForzato] = useState<string[]>([]);
+  const [ingressoAttivo, setIngressoAttivo] = useState(false);
+  const [ingressoErrore, setIngressoErrore] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/assegnazione-lead/ingresso", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        setIngressoForzato(d.campagne ?? []);
+        setIngressoAttivo(Boolean(d.attivo));
+      })
+      .catch(() => setIngressoForzato([]));
+  }, []);
+  const salvaIngresso = async (elenco: string[], attivo = ingressoAttivo) => {
+    setIngressoForzato(elenco);
+    setIngressoAttivo(attivo);
+    try {
+      const r = await fetch("/api/assegnazione-lead/ingresso", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campagne: elenco, attivo })
+      });
+      const d = await r.json().catch(() => null);
+      // IL SALVATAGGIO FALLITO SI DICE, come nelle altre righe: tenersi il
+      // valore ottimista dopo un errore mostra una configurazione che non
+      // esiste, e chi l'ha scritta se ne accorge settimane dopo dai numeri.
+      if (!r.ok || !d || d.error) {
+        setIngressoErrore(d?.error || `non salvato (HTTP ${r.status})`);
+        const vero = await fetch("/api/assegnazione-lead/ingresso", { cache: "no-store" })
+          .then((x) => x.json())
+          .catch(() => null);
+        setIngressoForzato(vero?.campagne ?? []);
+        setIngressoAttivo(Boolean(vero?.attivo));
+        return;
+      }
+      setIngressoErrore(null);
+      if (d.campagne) setIngressoForzato(d.campagne);
+      if (typeof d.attivo === "boolean") setIngressoAttivo(d.attivo);
+    } catch (e) {
+      setIngressoErrore(e instanceof Error ? e.message : "salvataggio non riuscito");
+    }
+  };
+
+  const ingressoRaggruppate = (() => {
+    const gruppi = new Map<string, string[]>();
+    for (const nome of ingressoForzato) {
+      const chiave = baseCampagna(nome);
+      gruppi.set(chiave, [...(gruppi.get(chiave) ?? []), nome]);
+    }
+    return [...gruppi.entries()].map(([base, nomi]) => ({ base, nomi }));
+  })();
 
   /**
    * Le eccezioni raggruppate come le campagne escluse: una targhetta per
@@ -1304,9 +1401,28 @@ export default function AssegnazioneContatti() {
           <div>
             <Riga
               nome="Webinar"
-              aiuto="Chi ha un webinar non ancora finito, o finito da meno di sette giorni, non viene assegnato: in quella finestra lo lavora il flusso del webinar. Le campagne elencate qui fanno eccezione, cioe' i loro contatti si assegnano lo stesso - ma solo finche' l'interruttore resta acceso. Spento, il blocco vale ovunque."
-              stato="Eccezioni al blocco"
+              aiuto="Chi ha un webinar non ancora finito, o finito da meno di sette giorni, non viene assegnato: in quella finestra lo lavora il flusso del webinar. Le campagne elencate qui fanno eccezione, cioe' i loro contatti si assegnano lo stesso - ma solo finche' l'interruttore On/Off in fondo alla riga resta acceso. Spento, il blocco vale ovunque. SOLO PARTECIPANTI, l'interruttore accanto: di queste stesse campagne si assegnano soltanto i contatti che hanno Si' in Partecipazione Webinar Diventa Coach Intelligenza Spirituale. Non tocca le altre campagne del serbatoio, e vale anche a webinar finito da tempo - quando il blocco qui sopra non c'entra piu'. Attenzione: quella proprieta' il No non lo scrive mai, quindi vuoto vuol dire sia non e' venuto sia non ancora registrato, e questi ultimi restano fuori."
+              stato={
+                soloPartecipanti
+                  ? "Eccezioni al blocco \u00b7 solo chi ha partecipato"
+                  : "Eccezioni al blocco"
+              }
             >
+              {/* LA REGOLA IN PIU', sullo stesso elenco: solo chi ha
+                  partecipato. Ha l'etichetta scritta e non On/Off perche' nella
+                  stessa riga ci sono due interruttori, e due On/Off affiancati
+                  non si distinguono.
+
+                  APRE LA RIGA, prima del menu: e' una condizione su COME si
+                  assegnano le campagne elencate, quindi si legge prima di
+                  elencarle. L'On/Off resta in fondo, dove sta in tutte le altre
+                  righe - spostarlo romperebbe l'incolonnamento. */}
+              <Interruttore
+                acceso={soloPartecipanti}
+                etichetta="Solo partecipanti"
+                disabilitato={bloccato}
+                onChange={(v) => salvaWebinar(webinarEccezioni, webinarAttivo, v)}
+              />
               <CercaCampagna
                 famiglie={famiglieSerbatoio}
                 escluse={webinarEccezioni}
@@ -1323,6 +1439,8 @@ export default function AssegnazioneContatti() {
                   non salvato
                 </span>
               ) : null}
+              {/* IL FILTRO DELLA RIGA, come in Campagne: acceso, le
+                  eccezioni valgono. */}
               <Interruttore
                 acceso={webinarAttivo}
                 etichetta={webinarAttivo ? "On" : "Off"}
@@ -1356,6 +1474,73 @@ export default function AssegnazioneContatti() {
                       disabled={bloccato}
                       onClick={() =>
                         salvaWebinar(webinarEccezioni.filter((x) => !g.nomi.includes(x)))
+                      }
+                      className="shrink-0 text-slate-300 transition hover:text-rose-600 disabled:cursor-not-allowed"
+                      title={`Togli ${g.base}${g.nomi.length > 1 ? " e le sue varianti" : ""}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          {/* L'INGRESSO FORZATO, sotto il blocco del webinar. Le righe qui
+              sopra dicono CHI NON SI ASSEGNA; questa dice chi si assegna LO
+              STESSO, nonostante due condizioni della ricerca. Sta per ultima
+              perche' e' l'unica che allarga invece di stringere. */}
+          <div>
+            <Riga
+              nome="Ingresso"
+              aiuto="L'assegnatore pesca solo i contatti che hanno dispatch_outcome uguale a serie_a o serie_b e nessun countdown. Nelle campagne elencate qui queste due condizioni non si applicano: entrano anche i contatti che quella proprieta' non ce l'ha mai avuta, e quelli fermi su un countdown che nessuno sta consumando perche' proprietario non ne hanno. Misurato il 15 ottobre 2026 sulla campagna intelligenza spirituale: 1.567 contatti liberi con dispatch_outcome vuoto e 249 bloccati dal countdown. Tutto il resto resta in piedi - storico ICMD, No Show, numero errato, chi ha gia' comprato, i venti giorni di freschezza, le campagne sospese e il blocco del webinar. Non scrive niente su HubSpot: allarga soltanto la ricerca."
+              stato="Entrano anche senza dispatch_outcome"
+            >
+              <CercaCampagna
+                famiglie={famiglieSerbatoio}
+                escluse={ingressoForzato}
+                disabilitato={bloccato}
+                onScegli={(f) =>
+                  salvaIngresso([
+                    ...ingressoForzato,
+                    ...f.nomi.filter((n) => !ingressoForzato.includes(n))
+                  ])
+                }
+              />
+              {ingressoErrore ? (
+                <span className="text-xs text-rose-600" title={ingressoErrore}>
+                  non salvato
+                </span>
+              ) : null}
+              <Interruttore
+                acceso={ingressoAttivo}
+                etichetta={ingressoAttivo ? "On" : "Off"}
+                disabilitato={bloccato}
+                onChange={(v) => salvaIngresso(ingressoForzato, v)}
+              />
+            </Riga>
+
+            {ingressoRaggruppate.length ? (
+              <div className="flex flex-wrap items-center justify-end gap-2 px-4 pb-3">
+                {ingressoRaggruppate.map((g) => (
+                  <span
+                    key={g.base}
+                    title={g.nomi.join(", ")}
+                    className={`inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
+                      ingressoAttivo
+                        ? "border-slate-200 bg-slate-50 text-slate-700"
+                        : "border-slate-200 bg-white text-slate-400"
+                    }`}
+                  >
+                    <span className="truncate font-mono">{g.base}</span>
+                    {g.nomi.length > 1 ? (
+                      <span className="shrink-0 text-slate-400">+{g.nomi.length - 1}</span>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={bloccato}
+                      onClick={() =>
+                        salvaIngresso(ingressoForzato.filter((x) => !g.nomi.includes(x)))
                       }
                       className="shrink-0 text-slate-300 transition hover:text-rose-600 disabled:cursor-not-allowed"
                       title={`Togli ${g.base}${g.nomi.length > 1 ? " e le sue varianti" : ""}`}
