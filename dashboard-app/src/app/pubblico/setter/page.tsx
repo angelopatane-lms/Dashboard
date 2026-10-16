@@ -62,6 +62,13 @@ export default async function Page() {
         operators={uniqueValues(righeMenu, "Operatore")}
         campaigns={uniqueValues(righeMenu, "Campagna")}
         operatorLabel="Setter"
+        // L'ELENCO DEI SETTER VERI, come sulla pagina interna. Senza, la
+        // tabella mostra solo chi ha righe nel foglio Operatori, e tre chatter
+        // su cinque - Annalisa Cafora, Laura Monaco e Lorenza De Santis - di
+        // righe non ne hanno nessuna: il foglio registra l'attivita' al
+        // telefono, e loro non telefonano. I numeri di Sales Copilot ci sono,
+        // mancava la riga dove metterli.
+        operatoriAmmessi={team?.nomi ?? null}
         sottoTeamPerPersona={team?.sottoTeam}
         soloTabella
         hideCampagne
