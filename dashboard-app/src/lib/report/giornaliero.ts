@@ -489,7 +489,10 @@ export function messaggio(r: ReportGiornaliero): string {
     righe.push(`    Svolti = ${t.svolti}`);
     righe.push(`    Show up = ${pct(t.svolti, t.daSvolgere)}`);
     righe.push(`    NO SHOW = ${t.noShow}`);
-    righe.push(`    BOOM = ${t.boomHt} + ${t.boomIcmd} icmd`);
+    // SI CHIAMANO CHIUSURE A VIDEO E boom NEL CODICE, ed e' voluto: l'oggetto
+    // su HubSpot si chiama Boom, e chi un giorno cerchera' da dove esce questo
+    // numero deve ritrovare quel nome. L'etichetta e' per chi legge il report.
+    righe.push(`    CHIUSURE = ${t.boomHt} + ${t.boomIcmd} icmd`);
     righe.push(`    CR = ${pct(t.boomHt, t.svolti)} (ht) - ${pct(t.boomIcmd, t.svolti)} (icmd)`);
   };
   b(r.totali, "Da Svolgere TOTALI (comprese le ripianificate)");
@@ -500,7 +503,7 @@ export function messaggio(r: ReportGiornaliero): string {
   righe.push(
     `    Chiamate effettuate: ${r.icmdChiamate ?? "–"} - Risposte: ${r.icmdRisposte ?? "–"}`
   );
-  righe.push(`    Vendite: ${r.icmdVendite}`);
+  righe.push(`    CHIUSURE: ${r.icmdVendite}`);
   if (r.fuoriCrm.persone) {
     righe.push(
       `    Consulenze fuori CRM: ${r.fuoriCrm.persone}` +
