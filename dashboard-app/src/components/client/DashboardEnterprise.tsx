@@ -398,10 +398,53 @@ export default function DashboardEnterprise({
     [operatoriFiltered]
   );
 
-  const operatorSummaryAll = useMemo(
-    () => aggregateByOperatore(operatoriNorm),
-    [operatoriNorm]
-  );
+  /**
+   * Le righe della tabella: il TEAM, non chi compare nel foglio.
+   *
+   * IL FOGLIO NON HA RIGHE PER TUTTI. Misurato il 16 ottobre 2026: dei cinque
+   * chatter del sotto-team, Annalisa Cafora, Laura Monaco e Lorenza De Santis
+   * non hanno NESSUNA riga nel foglio Operatori - zero su 27.939, da sempre -
+   * mentre Bartolo ne ha 325 e Chiara 742. Il foglio registra l'attivita' al
+   * telefono, e i chatter non telefonano: Bartolo e Chiara ci sono solo perche'
+   * hanno anche appuntamenti e consulenze.
+   *
+   * COSA FACEVA PRIMA: chi non aveva righe non esisteva per la tabella, anche
+   * se lavorava. Il 15 ottobre Copilot riportava 188 messaggi per Lorenza, 109
+   * per Laura Monaco e 46 per Annalisa, e in Dashboard non comparivano affatto.
+   * I numeri c'erano, mancava la riga dove metterli.
+   *
+   * UNA RIGA VUOTA NON E' UNA RIGA FINTA: i campi del foglio restano a zero -
+   * e la tabella li disegna come trattini, non come zeri - mentre le colonne
+   * che vengono da HubSpot e da Copilot si riempiono normalmente.
+   *
+   * SENZA L'ELENCO DEL TEAM non si aggiunge niente, e la tabella resta quella
+   * di prima: una pagina che non ha ricevuto la fotografia del team deve
+   * mostrare meno persone, non inventarne.
+   */
+  const operatorSummaryAll = useMemo(() => {
+    const righe = aggregateByOperatore(operatoriNorm);
+    if (!operatoriAmmessi?.length) return righe;
+    const gia = new Set(righe.map((r) => chiaveNome(r.operatore)));
+    const mancanti = operatoriAmmessi
+      .filter((n) => !gia.has(chiaveNome(n)))
+      .map((operatore) => ({
+        operatore,
+        assegnati: 0,
+        reattivitaMinAvg: 0,
+        chiamate: 0,
+        connessioni: 0,
+        appuntamenti: 0,
+        noShow: 0,
+        consulenze: 0,
+        chiusure: 0,
+        boom: 0,
+        efficienzaContatto: 0,
+        conversioneAppuntamenti: 0,
+        noShowPct: 0,
+        indiceProntezza: 0
+      }));
+    return [...righe, ...mancanti];
+  }, [operatoriNorm, operatoriAmmessi]);
 
   /**
    * Le righe della tabella dopo il filtro Team.
