@@ -259,6 +259,7 @@ export default function OperatorStatsTable({
   onApriTeam,
   sottoTeamPerPersona,
   kpiChatter,
+  avvisoChatter,
   telefonici,
   trattativeOverrides,
   precomputedTotals,
@@ -360,6 +361,8 @@ export default function OperatorStatsTable({
     string,
     { assegnati: number | null; messaggi: number | null; qualificati: number | null }
   >;
+  /** Perche' le tre colonne dei chatter sono vuote. Null = non c'e' niente da dire. */
+  avvisoChatter?: string | null;
 }) {
   const isSetterView = operatorLabel === "Setter";
   /**
@@ -923,6 +926,21 @@ export default function OperatorStatsTable({
                     style={{ left: 0 }}
                   >
                     {etichettaSezione}
+                    {/* L'AVVISO ACCANTO AL NOME DELLA SEZIONE, non un trattino
+                        in piu'. Serve a distinguere "Copilot non ha ancora
+                        questi numeri" - che e' normale e si legge nel
+                        suggerimento delle celle - da "i numeri non sono
+                        arrivati", che e' un guasto e va riparato. Il 16 ottobre
+                        2026 i due casi si leggevano uguali, e la differenza
+                        stava solo nella console del browser. */}
+                    {sezioneChatter && avvisoChatter ? (
+                      <span
+                        className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium tracking-normal text-amber-700 normal-case"
+                        title={avvisoChatter}
+                      >
+                        {avvisoChatter}
+                      </span>
+                    ) : null}
                   </td>
                   {/* LA SEZIONE CHATTER PORTA I SUOI TITOLI, e sotto i suoi
                       numeri: quelle tre colonne per loro misurano un'altra cosa

@@ -171,6 +171,8 @@ export default function DashboardEnterprise({
     string,
     { assegnati: number | null; messaggi: number | null; qualificati: number | null }
   > | null>(null);
+  /** Perche' le tre colonne dei chatter sono vuote, quando lo sono. */
+  const [avvisoChatter, setAvvisoChatter] = useState<string | null>(null);
   // Gli obiettivi di Boom del mese. `meseObiettivo` vale null quando il periodo
   // scelto copre piu' mesi: in quel caso la colonna mostra la somma e non si
   // lascia scrivere, perche' non si saprebbe a quale mese attribuire la cifra.
@@ -484,7 +486,15 @@ export default function DashboardEnterprise({
     let vivo = true;
     const leggi = () =>
       fetch(`/api/copilot/setter-kpi?from=${da}&to=${a}`)
-        .then((r) => r.json())
+        // LO STATO SI GUARDA, e prima non si guardava. Un 403 - la password
+        // ridotta che chiede una rotta non sua - risponde con un oggetto che
+        // `perTabella` non ce l'ha: finiva in `{}`, cioe' in tre colonne di
+        // trattini identiche a quelle di "Copilot non ha ancora i numeri".
+        // Due cause lontanissime, lo stesso segno sullo schermo, e il motivo
+        // solo in console. Il 16 ottobre 2026 e' costato mezza mattina.
+        .then((r) =>
+          r.ok ? r.json() : r.json().then((d) => Promise.reject(new Error(d?.error || `HTTP ${r.status}`)))
+        )
         .then(
           (d: {
             perTabella?: Record<
@@ -495,6 +505,11 @@ export default function DashboardEnterprise({
             senzaAggancio?: string[];
           }) => {
             if (!vivo) return;
+            // IL MOTIVO VA IN TABELLA, non solo nel registro: "Copilot non ha
+            // ancora questi numeri" e "i numeri non sono arrivati" sono due
+            // cose diverse, e finche' si leggono uguali si rifa' ogni volta la
+            // stessa indagine.
+            setAvvisoChatter(d.vuotoPerche ?? null);
             if (d.vuotoPerche) console.info("[copilot]", d.vuotoPerche);
             // CHI NON SI E' AGGANCIATO SI DICE, anche solo nei registri: i
             // suoi numeri non finiscono in nessuna riga, e un'assenza muta e'
@@ -504,7 +519,19 @@ export default function DashboardEnterprise({
             setKpiChatter(d.perTabella ?? {});
           }
         )
-        .catch((e) => console.error("[copilot]", e));
+        .catch((e: unknown) => {
+          console.error("[copilot]", e);
+          if (!vivo) return;
+          const motivo = e instanceof Error ? e.message : "lettura non riuscita";
+          // SI DICE E BASTA, non si svuota: i numeri letti cinque minuti fa
+          // restano al loro posto. Una tabella che si azzera a ogni singhiozzo
+          // di rete e' peggio di una tabella vecchia.
+          setAvvisoChatter(
+            motivo.includes("Non consentito")
+              ? "numeri Copilot non consentiti con questo accesso"
+              : `numeri Copilot non arrivati (${motivo})`
+          );
+        });
     leggi();
     const battito = setInterval(leggi, 5 * 60 * 1000);
     return () => {
@@ -650,10 +677,23 @@ export default function DashboardEnterprise({
   // Se HubSpot non ha risposto si resta sulle righe del foglio: unire un elenco
   // vuoto azzererebbe gli appuntamenti di tutti, che e' peggio di un numero che
   // non coincide con la tabella.
-  const andamentoPersone = useMemo(
-    () => (conHubspot && daHubspot ? unisciAdvisor(daFoglio, daHubspot) : daFoglio),
-    [daFoglio, daHubspot, conHubspot]
-  );
+  const andamentoPersone = useMemo(() => {
+    const unite = conHubspot && daHubspot ? unisciAdvisor(daFoglio, daHubspot) : daFoglio;
+    // SOLO LE PERSONE DELLA PAGINA, le stesse della tabella qui sopra.
+    //
+    // HubSpot risponde con chiunque abbia trattative nel portale, non con i
+    // Setter: misurato il 16 ottobre 2026, il grafico disegnava 40 persone
+    // contro le 12 della tabella - dentro c'erano gli Advisor, i responsabili
+    // e gente fuori dal team - e per ottobre diceva 478 appuntamenti dove la
+    // tabella ne contava 306. Due numeri per la stessa cosa, a dieci
+    // centimetri di distanza sullo schermo.
+    //
+    // SENZA L'ELENCO NON SI FILTRA NIENTE: se la fotografia del team non
+    // arriva si torna al comportamento di prima, che e' sbagliato ma noto.
+    // Meglio di un grafico che si svuota perche' un foglio non ha risposto.
+    if (!ammessi) return unite;
+    return unite.filter((p) => ammessi.has(chiaveNome(p.gruppo)));
+  }, [daFoglio, daHubspot, conHubspot, ammessi]);
 
   const vista = useMemo(() => {
     const m = metricaAdvisor(metricaScelta, setterView, conHubspot);
@@ -1092,7 +1132,7 @@ export default function DashboardEnterprise({
                   Caricamento dei dati in corso...
                 </div>
               ) : (
-              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} sottoTeamPerPersona={sottoTeamPerPersona} kpiChatter={kpiChatter ?? undefined} />
+              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} sottoTeamPerPersona={sottoTeamPerPersona} kpiChatter={kpiChatter ?? undefined} avvisoChatter={avvisoChatter} />
               )}
             </Card>
           </div>

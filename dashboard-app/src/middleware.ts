@@ -21,7 +21,23 @@ const API_RIDOTTE = new Set([
   "/api/hubspot-boom-options",
   "/api/obiettivi",
   "/api/setter-trattative",
-  "/api/advisor-telefonici"
+  "/api/advisor-telefonici",
+  // LE TRE AGGIUNTE IL 16 OTTOBRE 2026, dopo che un chatter ha aperto la sua
+  // pagina e ha visto tre colonne di trattini. In console c'erano tre 403:
+  // queste rotte sono nate dopo l'elenco e nessuno le ha aggiunte.
+  //
+  // NON SONO SOLO IL GRAFICO. `advisor-andamento` alimenta anche la fusione
+  // che mette gli appuntamenti di HubSpot al posto di quelli del foglio: senza,
+  // la tabella non mostra un buco, mostra i numeri VECCHI - quelli che la
+  // fusione scarta perche' considerati sbagliati - e nessuno se ne accorge.
+  // E' la stessa trappola gia' vista sulla pagina pubblica degli Advisor.
+  //
+  // SONO TUTTE E TRE CONTEGGI PER PERSONA, in sola lettura, della stessa
+  // natura di setter-trattative e advisor-telefonici qui sopra: aggiungerle
+  // non apre niente che la tabella non mostri gia'.
+  "/api/copilot/setter-kpi",
+  "/api/advisor-andamento",
+  "/api/assegnati-oggi"
 ]);
 
 // Pagine e dati rispondono solo a chi ha fatto l'accesso. Senza accesso:

@@ -68,6 +68,13 @@ export default async function Page() {
         operators={operators}
         campaigns={campaigns}
         operatorLabel="Setter"
+        // L'ELENCO DEI SETTER VERI, che fino al 16 ottobre 2026 questa pagina
+        // non passava mentre la Advisor si'. Serve all'Andamento: senza, il
+        // grafico sotto la tabella disegnava le linee di chiunque abbia
+        // trattative nel CRM - 40 persone contro le 12 della tabella, con
+        // dentro Advisor e responsabili - e per ottobre diceva 478
+        // appuntamenti dove la tabella ne contava 306.
+        operatoriAmmessi={team?.nomi ?? null}
         sottoTeamPerPersona={team?.sottoTeam}
         gestioneTeam
       />

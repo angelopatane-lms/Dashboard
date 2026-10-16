@@ -12,7 +12,7 @@ import { formatInt } from "@/lib/format";
  * sezione diventerebbe per meta' questa tabella, e quello che le sta sotto
  * finirebbe sempre piu' lontano.
  */
-const RIGHE_VISIBILI = 20;
+const RIGHE_VISIBILI = 10;
 
 /**
  * Le due altezze, misurate a schermo il 10 ottobre 2026: una riga della
