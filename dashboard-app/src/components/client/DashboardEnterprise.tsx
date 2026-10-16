@@ -1209,6 +1209,36 @@ export default function DashboardEnterprise({
             riordinavano sotto gli occhi. Meglio una attesa sola. */}
         {!hideOperatorTable && (
           <div id="tabella-operatori" className="mt-6 scroll-mt-6">
+            {/* LO SCARICO DELLO STORICO, in alto a destra del riquadro.
+                LA TABELLA RESTA DI CHI C'E' OGGI, il file no: nel foglio ci
+                sono 118 persone e nei team 35, e le altre 83 - con mesi di
+                lavoro alle spalle - dalla pagina non si vedono piu'. Qui
+                "come stiamo andando" e "cosa e' successo" restano due domande
+                separate, con due strumenti: cosi' nessuno deve scegliere fra
+                una tabella leggibile e uno storico intero.
+                IL PERIODO E' QUELLO DEI FILTRI, non uno suo: due selettori di
+                date sulla stessa pagina sono due occasioni di guardare periodi
+                diversi credendo di guardarne uno. */}
+            {!soloTabella ? (
+              <div className="mb-2 flex justify-end">
+              <a
+                href={`/api/esporta/operatori?from=${filters.from ?? defaultFrom}&to=${filters.to ?? defaultTo}`}
+                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500 transition hover:border-slate-300 hover:text-slate-800"
+                title={`Scarica un CSV con tutti gli operatori del periodo, compresi quelli che non sono piu' in squadra (${filters.from ?? defaultFrom} - ${filters.to ?? defaultTo})`}
+              >
+                <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
+                  <path
+                    d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5M4 14.5v1A1.5 1.5 0 0 0 5.5 17h9a1.5 1.5 0 0 0 1.5-1.5v-1"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                CSV
+              </a>
+              </div>
+            ) : null}
             <Card>
               {useHubspot && (dealsLoading || boomLoading) ? (
                 <div className="flex h-64 items-center justify-center text-sm text-slate-500">
