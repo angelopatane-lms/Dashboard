@@ -46,7 +46,7 @@ function MenuTabella({
   periodo: string;
 }) {
   const [aperto, setAperto] = useState(false);
-  const scatola = useRef<HTMLSpanElement>(null);
+  const scatola = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!aperto) return;
     const fuori = (e: MouseEvent) => {
@@ -64,48 +64,83 @@ function MenuTabella({
   }, [aperto]);
 
   return (
-    <span ref={scatola} className="relative">
+    <>
       {/* IL BERSAGLIO E' IL TITOLO STESSO, senza tre puntini accanto: in una
           cella di intestazione ogni segno in piu' si legge come un comando
           della colonna - ordina, filtra - e questa non fa niente del genere.
-          Il titolo resta un titolo, e chi ci clicca trova il menu. */}
+          Il titolo resta un titolo, e chi ci clicca trova la finestra. */}
       <button
         type="button"
-        onClick={() => setAperto((v) => !v)}
-        aria-expanded={aperto}
-        className={`-ml-1 rounded px-1 transition ${
+        onClick={() => setAperto(true)}
+        className={`-ml-1 rounded px-1 uppercase transition ${
           aperto ? "bg-slate-100 text-slate-900" : "hover:bg-slate-100 hover:text-slate-700"
         }`}
       >
         {titolo}
       </button>
       {aperto ? (
-        <span className="absolute top-full left-0 z-30 mt-1 block w-max rounded-md border border-slate-200 bg-white shadow-lg">
-          {/* IL PERIODO SCRITTO SOPRA, non solo nel suggerimento del mouse:
-              questo file esce dalla Dashboard e finisce in mano a qualcuno, e
-              un CSV senza sapere che mesi contiene non si puo' usare. */}
-          <span className="block border-b border-slate-100 px-3 py-1.5 text-[11px] font-normal normal-case tracking-normal text-slate-500">
-            {periodo}
-          </span>
-          <a
-            href={href}
+        <>
+          {/* LA STESSA FINESTRA DEI NOMI, non una tendina: il periodo e cosa
+              contiene il file sono due righe da leggere, e in una tendina
+              sarebbero scritte in piccolo in un angolo. */}
+          <div
+            className="fixed inset-0 z-40 bg-slate-900/40"
             onClick={() => setAperto(false)}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-normal normal-case tracking-normal text-slate-700 transition hover:bg-slate-50"
+            aria-hidden="true"
+          />
+          <aside
+            ref={scatola}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Scarica i dati dei ${titolo}`}
+            className="fixed top-1/2 left-1/2 z-50 w-[calc(100vw-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg border border-slate-200 bg-white text-left font-normal tracking-normal normal-case shadow-2xl"
           >
-            <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0" aria-hidden="true">
-              <path
-                d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5M4 14.5v1A1.5 1.5 0 0 0 5.5 17h9a1.5 1.5 0 0 0 1.5-1.5v-1"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            Scarica CSV
-          </a>
-        </span>
+            <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-3.5">
+              <div className="min-w-0">
+                <div className="truncate text-base font-semibold text-slate-900">
+                  Scarica CSV
+                </div>
+                <div className="mt-0.5 truncate text-xs text-slate-500">{periodo}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAperto(false)}
+                className="-mt-0.5 -mr-1 rounded px-2 py-1 text-sm text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                aria-label="Chiudi"
+              >
+                &#10005;
+              </button>
+            </div>
+            <div className="px-5 py-4">
+              {/* COSA C'E' DENTRO, scritto prima di scaricarlo: questo file
+                  contiene anche chi dalla tabella e' sparito, ed e' la ragione
+                  per cui esiste. Chi lo scarica senza saperlo si chiede perche'
+                  ci sono nomi che non riconosce. */}
+              <p className="text-sm text-slate-600">
+                Storico delle performance di tutti gli utenti del periodo
+                selezionato (compresi quelli disattivati).
+              </p>
+              <a
+                href={href}
+                onClick={() => setAperto(false)}
+                className="mx-auto mt-4 flex w-fit items-center gap-2 rounded-md bg-slate-900 px-4 py-2 text-sm text-white transition hover:bg-slate-700"
+              >
+                <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0" aria-hidden="true">
+                  <path
+                    d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5M4 14.5v1A1.5 1.5 0 0 0 5.5 17h9a1.5 1.5 0 0 0 1.5-1.5v-1"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Scarica
+              </a>
+            </div>
+          </aside>
+        </>
       ) : null}
-    </span>
+    </>
   );
 }
 
