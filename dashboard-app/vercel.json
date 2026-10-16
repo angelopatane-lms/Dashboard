@@ -31,6 +31,14 @@
     {
       "path": "/api/cron/stati-lead",
       "schedule": "50 3 * * *"
+    },
+    {
+      "path": "/api/cron/report-giornaliero",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/report-giornaliero",
+      "schedule": "0 7 * * *"
     }
   ]
 }
