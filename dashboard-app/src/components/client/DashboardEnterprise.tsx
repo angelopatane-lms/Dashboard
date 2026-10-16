@@ -417,6 +417,13 @@ export default function DashboardEnterprise({
    * e la tabella li disegna come trattini, non come zeri - mentre le colonne
    * che vengono da HubSpot e da Copilot si riempiono normalmente.
    *
+   * SI AGGIUNGE SOLO CHI HA NUMERI DA QUALCHE ALTRA FONTE, e non tutto il
+   * team. La prima versione metteva dentro chiunque fosse nell'elenco, e
+   * comparivano righe di soli zeri: su HubSpot il team Advisor contiene anche
+   * chi advisor non fa - i responsabili - che nel foglio non hanno righe
+   * perche' non lavorano lead. Una riga tutta a zero non dice "ha lavorato
+   * zero", dice "questa persona non c'entra", e sporca la tabella.
+   *
    * SENZA L'ELENCO DEL TEAM non si aggiunge niente, e la tabella resta quella
    * di prima: una pagina che non ha ricevuto la fotografia del team deve
    * mostrare meno persone, non inventarne.
@@ -425,8 +432,20 @@ export default function DashboardEnterprise({
     const righe = aggregateByOperatore(operatoriNorm);
     if (!operatoriAmmessi?.length) return righe;
     const gia = new Set(righe.map((r) => chiaveNome(r.operatore)));
+    /** Qualcun altro ha numeri per questa persona nel periodo? */
+    const altrove = (n: string) => {
+      const k = chiaveNome(n);
+      const c = kpiChatter?.[k];
+      if (c && (c.assegnati || c.messaggi || c.qualificati)) return true;
+      // SOLO LE FONTI GIA' LETTE A QUESTO PUNTO: le trattative e i Boom si
+      // calcolano piu' sotto e non si possono guardare da qui. Non e' una
+      // perdita: chi ha trattative ha quasi sempre anche righe nel foglio, ed
+      // e' gia' in tabella per quella strada.
+      if (noShowSetter?.[k]) return true;
+      return Boolean(svolteSetter?.[k]);
+    };
     const mancanti = operatoriAmmessi
-      .filter((n) => !gia.has(chiaveNome(n)))
+      .filter((n) => !gia.has(chiaveNome(n)) && altrove(n))
       .map((operatore) => ({
         operatore,
         assegnati: 0,
@@ -444,7 +463,7 @@ export default function DashboardEnterprise({
         indiceProntezza: 0
       }));
     return [...righe, ...mancanti];
-  }, [operatoriNorm, operatoriAmmessi]);
+  }, [operatoriNorm, operatoriAmmessi, kpiChatter, noShowSetter, svolteSetter]);
 
   /**
    * Le righe della tabella dopo il filtro Team.
@@ -1209,7 +1228,8 @@ export default function DashboardEnterprise({
             riordinavano sotto gli occhi. Meglio una attesa sola. */}
         {!hideOperatorTable && (
           <div id="tabella-operatori" className="mt-6 scroll-mt-6">
-            {/* LO SCARICO DELLO STORICO, in alto a destra del riquadro.
+            {/* LO SCARICO DELLO STORICO sta nella cella d'angolo della
+                tabella, vedi esportaHref qui sotto.
                 LA TABELLA RESTA DI CHI C'E' OGGI, il file no: nel foglio ci
                 sono 118 persone e nei team 35, e le altre 83 - con mesi di
                 lavoro alle spalle - dalla pagina non si vedono piu'. Qui
@@ -1219,33 +1239,13 @@ export default function DashboardEnterprise({
                 IL PERIODO E' QUELLO DEI FILTRI, non uno suo: due selettori di
                 date sulla stessa pagina sono due occasioni di guardare periodi
                 diversi credendo di guardarne uno. */}
-            {!soloTabella ? (
-              <div className="mb-2 flex justify-end">
-              <a
-                href={`/api/esporta/operatori?from=${filters.from ?? defaultFrom}&to=${filters.to ?? defaultTo}&ruolo=${operatorLabel ?? "Advisor"}`}
-                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500 transition hover:border-slate-300 hover:text-slate-800"
-                title={`Scarica un CSV con tutti i ${operatorLabel ?? "Advisor"} del periodo, compresi quelli che non sono piu' in squadra (${filters.from ?? defaultFrom} - ${filters.to ?? defaultTo})`}
-              >
-                <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
-                  <path
-                    d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5M4 14.5v1A1.5 1.5 0 0 0 5.5 17h9a1.5 1.5 0 0 0 1.5-1.5v-1"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                CSV
-              </a>
-              </div>
-            ) : null}
             <Card>
               {useHubspot && (dealsLoading || boomLoading) ? (
                 <div className="flex h-64 items-center justify-center text-sm text-slate-500">
                   Caricamento dei dati in corso...
                 </div>
               ) : (
-              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} sottoTeamPerPersona={sottoTeamPerPersona} kpiChatter={kpiChatter ?? undefined} avvisoChatter={avvisoChatter} />
+              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} sottoTeamPerPersona={sottoTeamPerPersona} kpiChatter={kpiChatter ?? undefined} avvisoChatter={avvisoChatter} esportaHref={soloTabella ? null : `/api/esporta/operatori?from=${filters.from ?? defaultFrom}&to=${filters.to ?? defaultTo}&ruolo=${operatorLabel ?? "Advisor"}`} />
               )}
             </Card>
           </div>

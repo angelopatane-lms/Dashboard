@@ -24,6 +24,75 @@ import {
   LINEA_SOTTO
 } from "@/lib/tabelle";
 
+/**
+ * I tre puntini nella cella d'angolo, con il menu di scarico.
+ *
+ * TRE PUNTINI E NON UN'ICONA DI DOWNLOAD: un'icona dentro una cella di
+ * intestazione si legge come un comando della colonna - ordina, filtra - e
+ * quella cella non fa niente del genere. I tre puntini dicono "qui ci sono
+ * altre cose" senza promettere quali, e la parola la mette il menu.
+ *
+ * SI CHIUDE CLICCANDO FUORI O CON ESC, perche' un menu che resta aperto
+ * mentre si scorre una tabella lunga copre i numeri e non si capisce come
+ * mandarlo via.
+ */
+function MenuTabella({ href, etichetta }: { href: string; etichetta: string }) {
+  const [aperto, setAperto] = useState(false);
+  const scatola = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!aperto) return;
+    const fuori = (e: MouseEvent) => {
+      if (!scatola.current?.contains(e.target as Node)) setAperto(false);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAperto(false);
+    };
+    document.addEventListener("mousedown", fuori);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", fuori);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [aperto]);
+
+  return (
+    <span ref={scatola} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setAperto((v) => !v)}
+        aria-label="Altre azioni"
+        aria-expanded={aperto}
+        className={`rounded px-1 text-base leading-none transition ${
+          aperto ? "text-slate-900" : "text-slate-500 hover:text-slate-800"
+        }`}
+      >
+        &#8942;
+      </button>
+      {aperto ? (
+        <span className="absolute top-full right-0 z-30 mt-1 block w-max rounded-md border border-slate-200 bg-white py-1 shadow-lg">
+          <a
+            href={href}
+            onClick={() => setAperto(false)}
+            title={etichetta}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-normal normal-case tracking-normal text-slate-700 transition hover:bg-slate-50"
+          >
+            <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0" aria-hidden="true">
+              <path
+                d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5M4 14.5v1A1.5 1.5 0 0 0 5.5 17h9a1.5 1.5 0 0 0 1.5-1.5v-1"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Scarica CSV
+          </a>
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 function heatBg(value: number, max: number): string {
   if (max === 0 || value === 0) return "";
   const pct = Math.min(value / max, 1);
@@ -260,6 +329,7 @@ export default function OperatorStatsTable({
   sottoTeamPerPersona,
   kpiChatter,
   avvisoChatter,
+  esportaHref,
   telefonici,
   trattativeOverrides,
   precomputedTotals,
@@ -363,6 +433,8 @@ export default function OperatorStatsTable({
   >;
   /** Perche' le tre colonne dei chatter sono vuote. Null = non c'e' niente da dire. */
   avvisoChatter?: string | null;
+  /** Dove porta l'icona di scarico. Assente = niente icona. */
+  esportaHref?: string | null;
 }) {
   const isSetterView = operatorLabel === "Setter";
   /**
@@ -864,7 +936,27 @@ export default function OperatorStatsTable({
               className={`${INTESTAZIONE_ANGOLO} ${LINEA_SOTTO} bg-white py-2 pr-4 pl-0 text-left`}
               style={{ left: 0 }}
             >
-              {operatorLabel}
+              {/* L'ICONA DI SCARICO ALL'ESTREMA DESTRA DELLA CELLA D'ANGOLO.
+                  PRIMA STAVA SOPRA IL RIQUADRO e apriva un corridoio vuoto fra
+                  i filtri e la tabella per un pulsante usato di rado. Dentro
+                  questa cella non costa altezza, e la cella e' bloccata:
+                  resta a portata anche scorrendo. Provata anche in fondo alla
+                  riga del totale, dove pero' spariva: quella riga scorre via.
+                  A DESTRA E STACCATA DAL TITOLO, con `justify-between`:
+                  appiccicata alla parola sembrava un segno dell'ordinamento,
+                  mentre questa non e' un'intestazione di colonna e non ordina
+                  niente. */}
+              {esportaHref ? (
+                <span className="flex w-full items-center justify-between gap-2">
+                  {operatorLabel}
+                  <MenuTabella
+                    href={esportaHref}
+                    etichetta={`Tutti i ${operatorLabel} del periodo, compresi quelli che non sono piu' in squadra`}
+                  />
+                </span>
+              ) : (
+                operatorLabel
+              )}
             </th>
             {colonne.map((c) => {
               const attiva = ordina === c.label;
