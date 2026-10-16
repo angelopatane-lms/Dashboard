@@ -136,6 +136,10 @@ export async function GET(req: NextRequest) {
     );
   }
   const perCampagna = p.get("dettaglio") === "campagna";
+  // IL RUOLO DELLA PAGINA DA CUI SI SCARICA: la tabella Advisor da' il file
+  // degli Advisor, quella Setter dei Setter. Senza, in un file solo
+  // finiscono due mestieri con due significati per le stesse colonne.
+  const ruoloChiesto = p.get("ruolo") === "Setter" ? "Setter" : p.get("ruolo") === "Advisor" ? "Advisor" : null;
 
   try {
     const [righe, setter, advisor, db] = await Promise.all([
@@ -155,12 +159,42 @@ export async function GET(req: NextRequest) {
     // CHI C'E' ANCORA, per poterlo DIRE - non per filtrare. E' la differenza
     // fra questa esportazione e le tabelle.
     const squadra = new Map<string, string>();
+    const ruoloDi = new Map<string, "Setter" | "Advisor">();
     for (const [ruolo, t] of [["Setter", setter], ["Advisor", advisor]] as const) {
       for (const n of t?.nomi ?? []) {
         const k = chiaveNome(n);
         squadra.set(k, t?.sottoTeam[k] ? `${ruolo} / ${t.sottoTeam[k]}` : ruolo);
+        ruoloDi.set(k, ruolo);
       }
     }
+
+    /**
+     * Il ruolo di chi non e' piu' in squadra, dedotto dal CRM.
+     *
+     * NON E' SCRITTO DA NESSUNA PARTE. La distinzione fra Advisor e Setter la
+     * fanno gli elenchi dei team, che dicono com'e' OGGI: di chi e' uscito non
+     * resta traccia del mestiere. Si guarda allora cosa ha fatto - se compare
+     * piu' spesso come setter delle trattative o come loro proprietario - e lo
+     * si dice chiaramente nella colonna, con "(dedotto)", perche' chi legge
+     * sappia che quella riga e' un'ipotesi e non un dato.
+     *
+     * CHI NON HA NE' L'UNO NE' L'ALTRO resta "sconosciuto" e finisce in
+     * entrambi i file: meglio una riga di troppo da ignorare che una persona
+     * che sparisce di nuovo, visto che questo file esiste proprio per quello.
+     */
+    const dedotto = (k: string): "Setter" | "Advisor" | "entrambi" | null => {
+      const d = db.get(k);
+      if (!d) return null;
+      const comeSetter = d.appFissati + d.svolteSetter + d.noShow;
+      // CHI HA FATTO ENTRAMBI I MESTIERI NEL PERIODO si dice, non si sceglie.
+      // Chi cambia squadra a meta' anno ha lavorato davvero in tutti e due i
+      // modi, e metterlo da una parte sola sbaglia per l'altra meta': su una
+      // finestra lunga il ruolo non e' una proprieta' della persona, e' una
+      // proprieta' del periodo.
+      if (comeSetter > 0 && d.svolteProprietario > 0) return "entrambi";
+      if (comeSetter === 0 && d.svolteProprietario === 0) return null;
+      return comeSetter > 0 ? "Setter" : "Advisor";
+    };
 
     type Riga = { operatore: string; campagna: string; giorni: Set<string>; n: number[] };
     const per = new Map<string, Riga>();
@@ -195,12 +229,26 @@ export async function GET(req: NextRequest) {
     const intestazione = [
       "Operatore",
       ...(perCampagna ? ["Campagna"] : []),
+      "Ruolo",
       "In squadra oggi",
       "Giorni con attivita'",
       ...SOMMA.map((c) => `${c} (foglio)`),
       ...(perCampagna ? [] : DAL_CRM)
     ];
     const corpo = [...per.values()]
+      // SI TIENE CHI E' DI QUESTO RUOLO, e chi non si e' potuto classificare.
+      .filter((r) => {
+        if (!ruoloChiesto) return true;
+        const k = chiaveNome(r.operatore);
+        const vero = ruoloDi.get(k);
+        if (vero) return vero === ruoloChiesto;
+        const d = dedotto(k);
+        // Chi non si e' potuto classificare, e chi ha fatto tutti e due i
+        // mestieri, compare in entrambi i file: meglio una riga in piu' da
+        // ignorare che una persona che sparisce di nuovo, visto che questo
+        // file esiste proprio per non farla sparire.
+        return d === null || d === "entrambi" || d === ruoloChiesto;
+      })
       // Prima chi ha fatto piu' giorni: in un'esportazione di mesi, l'ordine
       // alfabetico mette in cima chi e' passato di qui una settimana.
       .sort((x, y) => y.giorni.size - x.giorni.size || x.operatore.localeCompare(y.operatore, "it"))
@@ -208,6 +256,14 @@ export async function GET(req: NextRequest) {
         [
           r.operatore,
           ...(perCampagna ? [r.campagna] : []),
+          (() => {
+            const k = chiaveNome(r.operatore);
+            const vero = ruoloDi.get(k);
+            if (vero) return vero;
+            const d = dedotto(k);
+            if (d === "entrambi") return "Setter e Advisor nel periodo";
+            return d ? `${d} (dedotto)` : "sconosciuto";
+          })(),
           squadra.get(chiaveNome(r.operatore)) ?? "no",
           r.giorni.size,
           ...r.n,
@@ -236,7 +292,7 @@ export async function GET(req: NextRequest) {
         // IL BOM davanti: senza, Excel in italiano legge le accentate come
         // geroglifici, e un'esportazione che si apre male non viene usata.
         "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": `attachment; filename="operatori-${da}_${a}.csv"`,
+        "Content-Disposition": `attachment; filename="${(ruoloChiesto ?? "operatori").toLowerCase()}-${da}_${a}.csv"`,
         "Cache-Control": "no-store"
       }
     });

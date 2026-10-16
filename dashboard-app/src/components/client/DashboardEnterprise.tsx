@@ -1222,9 +1222,9 @@ export default function DashboardEnterprise({
             {!soloTabella ? (
               <div className="mb-2 flex justify-end">
               <a
-                href={`/api/esporta/operatori?from=${filters.from ?? defaultFrom}&to=${filters.to ?? defaultTo}`}
+                href={`/api/esporta/operatori?from=${filters.from ?? defaultFrom}&to=${filters.to ?? defaultTo}&ruolo=${operatorLabel ?? "Advisor"}`}
                 className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500 transition hover:border-slate-300 hover:text-slate-800"
-                title={`Scarica un CSV con tutti gli operatori del periodo, compresi quelli che non sono piu' in squadra (${filters.from ?? defaultFrom} - ${filters.to ?? defaultTo})`}
+                title={`Scarica un CSV con tutti i ${operatorLabel ?? "Advisor"} del periodo, compresi quelli che non sono piu' in squadra (${filters.from ?? defaultFrom} - ${filters.to ?? defaultTo})`}
               >
                 <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
                   <path
