@@ -841,13 +841,47 @@ export default function DashboardEnterprise({
     [operatoriNorm]
   );
 
+  /**
+   * Gli appuntamenti del periodo COME LI CONTA LA TABELLA, cioe' dalle
+   * trattative di HubSpot invece che dalla colonna del foglio.
+   *
+   * PERCHE'. Fino al 16 ottobre 2026 la tabella mostrava gli appuntamenti di
+   * HubSpot e tutto quello che le sta sotto - la barra degli stati lead, la
+   * percentuale di no show, la conversione da connessione ad appuntamento -
+   * continuava a usare quelli del foglio. Due numeri per la stessa cosa a
+   * dieci centimetri di distanza, e nessun segno che fossero fonti diverse.
+   *
+   * SI APPLICA IL FILTRO PERSONA QUI, come per i no show: l'elenco arriva per
+   * nome e la scelta dell'operatore non e' dentro la rotta.
+   *
+   * NULL FINCHE' NON ARRIVA, e chi lo usa torna al foglio: una misura che si
+   * azzera in attesa della risposta e' peggio di una vecchia.
+   *
+   * NON COMPRENDE GLI AGGIUSTAMENTI DELLA TABELLA - i telefonici e le
+   * consulenze fuori CRM, che sulla pagina Advisor spostano qualche unita'.
+   * Quelli vivono dentro OperatorStatsTable e replicarli qui vorrebbe dire
+   * due copie della stessa regola, che col tempo divergono. Questo numero e'
+   * la base comune, non la riga per riga.
+   */
+  const appuntamentiDb = useMemo((): number | null => {
+    if (!trattativeOverrides) return null;
+    const chiave = (x: string) => x.trim().toLowerCase().replace(/\s+/g, " ");
+    const scelto = (filters.operatore ?? "").trim();
+    if (scelto) return trattativeOverrides[chiave(scelto)] ?? 0;
+    return Object.values(trattativeOverrides).reduce((somma, n) => somma + n, 0);
+  }, [trattativeOverrides, filters.operatore]);
+
   const effContatto = useMemo(
     () => (kpis.chiamate ? kpis.connessioni / kpis.chiamate : 0),
     [kpis]
   );
   const convApp = useMemo(
-    () => (kpis.connessioni ? kpis.appuntamenti / kpis.connessioni : 0),
-    [kpis]
+    () => {
+      // GLI STESSI APPUNTAMENTI DELLA TABELLA, vedi appuntamentiDb.
+      const presi = appuntamentiDb ?? kpis.appuntamenti;
+      return kpis.connessioni ? presi / kpis.connessioni : 0;
+    },
+    [kpis, appuntamentiDb]
   );
   /**
    * Il totale dei no show del periodo, dal database.
@@ -870,8 +904,9 @@ export default function DashboardEnterprise({
 
   const noShowPct = useMemo(() => {
     const disertati = noShowDb ?? kpis.noShow;
-    return kpis.appuntamenti ? disertati / kpis.appuntamenti : 0;
-  }, [kpis, noShowDb]);
+    const presi = appuntamentiDb ?? kpis.appuntamenti;
+    return presi ? disertati / presi : 0;
+  }, [kpis, noShowDb, appuntamentiDb]);
 
   const reactivityPct = useMemo(() => {
     if (kpis.chiamate === 0) return 0;
@@ -883,9 +918,10 @@ export default function DashboardEnterprise({
       { label: "Assegnati", value: kpis.assegnati, color: "#0ea5e9" },
       { label: "Chiamate", value: kpis.chiamate, color: "#64748b" },
       { label: "Conn.", value: kpis.connessioni, color: "#22c55e" },
-      { label: "App.", value: kpis.appuntamenti, color: "#a855f7" }
+      // GLI STESSI APPUNTAMENTI DELLA TABELLA, vedi appuntamentiDb.
+      { label: "App.", value: appuntamentiDb ?? kpis.appuntamenti, color: "#a855f7" }
     ],
-    [kpis]
+    [kpis, appuntamentiDb]
   );
 
   const leadStatusStages = useMemo(() => {
@@ -917,6 +953,10 @@ export default function DashboardEnterprise({
     // e' a zero, e una barra a cui manca una fetta ridistribuisce le
     // percentuali su tutte le altre, che diventano tutte sbagliate.
     const disertati = noShowDb ?? totals.noShow;
+    // LA FETTA DEGLI APPUNTAMENTI COME LA CONTA LA TABELLA: quella del foglio
+    // e' un'altra misura, e una fetta sbagliata ridistribuisce le percentuali
+    // su tutte le altre - che diventano tutte sbagliate insieme a lei.
+    const presi = appuntamentiDb ?? totals.appuntamenti;
 
     const total =
       totals.nuovi +
@@ -925,7 +965,7 @@ export default function DashboardEnterprise({
       totals.semina +
       totals.daRichiamare +
       totals.bin +
-      totals.appuntamenti +
+      presi +
       disertati;
 
     const toPct = (n: number) => (total > 0 ? n / total : 0);
@@ -937,10 +977,10 @@ export default function DashboardEnterprise({
       { label: "Semina", value: toPct(totals.semina), color: "#f59e0b" },
       { label: "Da\u00A0Richiamare", value: toPct(totals.daRichiamare), color: "#22c55e" },
       { label: "BIN", value: toPct(totals.bin), color: "#ef4444" },
-      { label: "Appuntamenti", value: toPct(totals.appuntamenti), color: "#14b8a6" },
+      { label: "Appuntamenti", value: toPct(presi), color: "#14b8a6" },
       { label: "No Show", value: toPct(disertati), color: "#94a3b8" }
     ];
-  }, [operatoriNorm, noShowDb]);
+  }, [operatoriNorm, noShowDb, appuntamentiDb]);
 
   const campaignAnomalies = useMemo(() => {
     const toMs = (iso: string) => new Date(iso).getTime();
