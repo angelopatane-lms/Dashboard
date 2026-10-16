@@ -36,7 +36,15 @@ import {
  * mentre si scorre una tabella lunga copre i numeri e non si capisce come
  * mandarlo via.
  */
-function MenuTabella({ href, etichetta }: { href: string; etichetta: string }) {
+function MenuTabella({
+  href,
+  titolo,
+  periodo
+}: {
+  href: string;
+  titolo: string;
+  periodo: string;
+}) {
   const [aperto, setAperto] = useState(false);
   const scatola = useRef<HTMLSpanElement>(null);
   useEffect(() => {
@@ -56,25 +64,33 @@ function MenuTabella({ href, etichetta }: { href: string; etichetta: string }) {
   }, [aperto]);
 
   return (
-    <span ref={scatola} className="relative shrink-0">
+    <span ref={scatola} className="relative">
+      {/* IL BERSAGLIO E' IL TITOLO STESSO, senza tre puntini accanto: in una
+          cella di intestazione ogni segno in piu' si legge come un comando
+          della colonna - ordina, filtra - e questa non fa niente del genere.
+          Il titolo resta un titolo, e chi ci clicca trova il menu. */}
       <button
         type="button"
         onClick={() => setAperto((v) => !v)}
-        aria-label="Altre azioni"
         aria-expanded={aperto}
-        className={`rounded px-1 text-base leading-none transition ${
-          aperto ? "text-slate-900" : "text-slate-500 hover:text-slate-800"
+        className={`-ml-1 rounded px-1 transition ${
+          aperto ? "bg-slate-100 text-slate-900" : "hover:bg-slate-100 hover:text-slate-700"
         }`}
       >
-        &#8942;
+        {titolo}
       </button>
       {aperto ? (
-        <span className="absolute top-full right-0 z-30 mt-1 block w-max rounded-md border border-slate-200 bg-white py-1 shadow-lg">
+        <span className="absolute top-full left-0 z-30 mt-1 block w-max rounded-md border border-slate-200 bg-white shadow-lg">
+          {/* IL PERIODO SCRITTO SOPRA, non solo nel suggerimento del mouse:
+              questo file esce dalla Dashboard e finisce in mano a qualcuno, e
+              un CSV senza sapere che mesi contiene non si puo' usare. */}
+          <span className="block border-b border-slate-100 px-3 py-1.5 text-[11px] font-normal normal-case tracking-normal text-slate-500">
+            {periodo}
+          </span>
           <a
             href={href}
             onClick={() => setAperto(false)}
-            title={etichetta}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-normal normal-case tracking-normal text-slate-700 transition hover:bg-slate-50"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-normal normal-case tracking-normal text-slate-700 transition hover:bg-slate-50"
           >
             <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0" aria-hidden="true">
               <path
@@ -330,6 +346,7 @@ export default function OperatorStatsTable({
   kpiChatter,
   avvisoChatter,
   esportaHref,
+  esportaPeriodo,
   telefonici,
   trattativeOverrides,
   precomputedTotals,
@@ -433,8 +450,10 @@ export default function OperatorStatsTable({
   >;
   /** Perche' le tre colonne dei chatter sono vuote. Null = non c'e' niente da dire. */
   avvisoChatter?: string | null;
-  /** Dove porta l'icona di scarico. Assente = niente icona. */
+  /** Dove porta lo scarico. Assente = il titolo non apre niente. */
   esportaHref?: string | null;
+  /** Il periodo scritto nel menu, per sapere cosa si sta scaricando. */
+  esportaPeriodo?: string | null;
 }) {
   const isSetterView = operatorLabel === "Setter";
   /**
@@ -762,7 +781,7 @@ export default function OperatorStatsTable({
   const colonnaOrdinata = colonne.find((c) => c.label === ordina);
   // Le celle vuote - una percentuale senza denominatore - vanno in fondo:
   // trattarle come zero le metterebbe in mezzo ai valori bassi veri.
-  const righe = colonnaOrdinata
+  let righe = colonnaOrdinata
     ? [...sorted].sort(
         (a, b) => (colonnaOrdinata.valore(b) ?? -Infinity) - (colonnaOrdinata.valore(a) ?? -Infinity)
       )
@@ -816,6 +835,34 @@ export default function OperatorStatsTable({
    * SENZA SOTTO-TEAM VENGONO PRIMI, perche' sono il grosso e il caso normale.
    */
   const sottoDi = (nome: string) => sottoDiNome(nome) ?? "";
+
+  /**
+   * CHI NON STA IN NESSUN SOTTO-TEAM E MOSTRA TUTTI ZERI NON E' UNA RIGA.
+   *
+   * Nel foglio ci sono anche persone che lead non ne lavorano - i
+   * responsabili, con qualche assegnazione di prova rimasta da mesi - e su
+   * HubSpot stanno nel team come tutti. Una fila di zeri non dice "ha
+   * lavorato zero": dice "questa persona non c'entra".
+   *
+   * SI GUARDANO I VALORI MOSTRATI, non quelli del foglio, e la differenza non
+   * e' teorica: il 16 ottobre 2026 una di queste righe aveva Appuntamenti=1 e
+   * Chiusure=1 nel foglio, ma a schermo erano zero perche' per gli Advisor
+   * quelle colonne vengono da HubSpot. Filtrando sui dati grezzi la riga
+   * restava.
+   *
+   * CHI UN SOTTO-TEAM CE L'HA RESTA ANCHE A ZERO: li' lo zero e'
+   * un'informazione - quel mese non ha chiuso - e toglierlo nasconderebbe
+   * proprio la persona di cui c'e' da preoccuparsi.
+   */
+  righe = righe.filter((r) => {
+    if (sottoDi(r.operatore)) return true;
+    return Boolean(
+      r.assegnati || r.chiamate || r.connessioni ||
+      effAppuntamenti(r) || effConsulenze(r) || effChiusure(r) || effBoom(r) ||
+      effNoShow(r)
+    );
+  });
+
   const gruppi: Array<{ etichetta: string | null; righe: typeof righe }> = (() => {
     if (!sottoTeamPerPersona) {
       return [
@@ -826,10 +873,19 @@ export default function OperatorStatsTable({
     const nomi = [...new Set(righe.map((r) => sottoDi(r.operatore)).filter(Boolean))].sort((a, b) =>
       a === ULTIMO_GRUPPO ? 1 : b === ULTIMO_GRUPPO ? -1 : a.localeCompare(b)
     );
-    return [
-      { etichetta: null, righe: righe.filter((r) => !sottoDi(r.operatore)) },
-      ...nomi.map((s) => ({ etichetta: s, righe: righe.filter((r) => sottoDi(r.operatore) === s) }))
+    const tutti = [
+      { etichetta: null as string | null, righe: righe.filter((r) => !sottoDi(r.operatore)) },
+      ...nomi.map((s) => ({
+        etichetta: s as string | null,
+        righe: righe.filter((r) => sottoDi(r.operatore) === s)
+      }))
     ].filter((g) => g.righe.length);
+    // IL PRIMO GRUPPO NON PORTA IL NOME. La tabella comincia da lui e non ha
+    // niente sopra da cui distinguersi: l'etichetta servirebbe solo a
+    // ripetere, sotto l'intestazione, una parola che nessuno sta cercando. Dal
+    // secondo in poi invece il nome e' quello che spiega perche' le righe si
+    // interrompono e ricominciano - una linea muta, li', e' un indovinello.
+    return tutti.map((g, i) => (i === 0 ? { ...g, etichetta: null } : g));
   })();
 
   const ordinate = gruppi.flatMap((g) => g.righe);
@@ -947,13 +1003,7 @@ export default function OperatorStatsTable({
                   mentre questa non e' un'intestazione di colonna e non ordina
                   niente. */}
               {esportaHref ? (
-                <span className="flex w-full items-center justify-between gap-2">
-                  {operatorLabel}
-                  <MenuTabella
-                    href={esportaHref}
-                    etichetta={`Tutti i ${operatorLabel} del periodo, compresi quelli che non sono piu' in squadra`}
-                  />
-                </span>
+                <MenuTabella href={esportaHref} titolo={operatorLabel} periodo={esportaPeriodo ?? ""} />
               ) : (
                 operatorLabel
               )}

@@ -429,7 +429,7 @@ export default function DashboardEnterprise({
    * mostrare meno persone, non inventarne.
    */
   const operatorSummaryAll = useMemo(() => {
-    const righe = aggregateByOperatore(operatoriNorm);
+    let righe = aggregateByOperatore(operatoriNorm);
     if (!operatoriAmmessi?.length) return righe;
     const gia = new Set(righe.map((r) => chiaveNome(r.operatore)));
     /** Qualcun altro ha numeri per questa persona nel periodo? */
@@ -444,6 +444,23 @@ export default function DashboardEnterprise({
       if (noShowSetter?.[k]) return true;
       return Boolean(svolteSetter?.[k]);
     };
+    // CHI NON HA UN SOTTO-TEAM E NON HA NUMERI NON E' UNA RIGA.
+    //
+    // Nel foglio ci sono anche persone che lead non ne lavorano - i
+    // responsabili, con qualche assegnazione di prova rimasta da mesi - e su
+    // HubSpot stanno nel team Advisor come tutti. La loro riga e' una fila di
+    // zeri, e una fila di zeri non dice "ha lavorato zero": dice "questa
+    // persona non c'entra". Chi invece un sotto-team ce l'ha resta anche a
+    // zero, perche' li' lo zero e' un'informazione: quel mese non ha chiuso.
+    const senzaSottoTeam = (n: string) => !(sottoTeamPerPersona?.[chiaveNome(n)] ?? "").trim();
+    const vuota = (r: (typeof righe)[number]) =>
+      !r.assegnati && !r.chiamate && !r.connessioni && !r.appuntamenti &&
+      !r.consulenze && !r.chiusure && !r.boom && !r.noShow;
+    //
+    // NON SI GUARDA SE HA NUMERI NEL CRM: un responsabile che si assegna un
+    // paio di lead per provare qualcosa ne ha, e basterebbe quello a
+    // rimetterlo in tabella. Conta la riga che si vedrebbe: tutta a zero.
+    righe = righe.filter((r) => !(senzaSottoTeam(r.operatore) && vuota(r)));
     const mancanti = operatoriAmmessi
       .filter((n) => !gia.has(chiaveNome(n)) && altrove(n))
       .map((operatore) => ({
@@ -463,7 +480,14 @@ export default function DashboardEnterprise({
         indiceProntezza: 0
       }));
     return [...righe, ...mancanti];
-  }, [operatoriNorm, operatoriAmmessi, kpiChatter, noShowSetter, svolteSetter]);
+  }, [
+    operatoriNorm,
+    operatoriAmmessi,
+    kpiChatter,
+    noShowSetter,
+    svolteSetter,
+    sottoTeamPerPersona
+  ]);
 
   /**
    * Le righe della tabella dopo il filtro Team.
@@ -756,6 +780,16 @@ export default function DashboardEnterprise({
     if (!ammessi) return unite;
     return unite.filter((p) => ammessi.has(chiaveNome(p.gruppo)));
   }, [daFoglio, daHubspot, conHubspot, ammessi]);
+
+  /** Il periodo scritto come lo leggerebbe una persona, per il menu di scarico. */
+  const periodoScritto = useMemo(() => {
+    const da = filters.from ?? defaultFrom;
+    const a = filters.to ?? defaultTo;
+    const gg = (d: string) =>
+      new Date(`${d}T12:00:00`).toLocaleDateString("it-IT", { day: "numeric", month: "long" });
+    const anno = a.slice(0, 4);
+    return da === a ? `${gg(da)} ${anno}` : `${gg(da)} - ${gg(a)} ${anno}`;
+  }, [filters.from, filters.to, defaultFrom, defaultTo]);
 
   const vista = useMemo(() => {
     const m = metricaAdvisor(metricaScelta, setterView, conHubspot);
@@ -1245,7 +1279,7 @@ export default function DashboardEnterprise({
                   Caricamento dei dati in corso...
                 </div>
               ) : (
-              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} sottoTeamPerPersona={sottoTeamPerPersona} kpiChatter={kpiChatter ?? undefined} avvisoChatter={avvisoChatter} esportaHref={soloTabella ? null : `/api/esporta/operatori?from=${filters.from ?? defaultFrom}&to=${filters.to ?? defaultTo}&ruolo=${operatorLabel ?? "Advisor"}`} />
+              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} sottoTeamPerPersona={sottoTeamPerPersona} kpiChatter={kpiChatter ?? undefined} avvisoChatter={avvisoChatter} esportaHref={soloTabella ? null : `/api/esporta/operatori?from=${filters.from ?? defaultFrom}&to=${filters.to ?? defaultTo}&ruolo=${operatorLabel ?? "Advisor"}`} esportaPeriodo={periodoScritto} />
               )}
             </Card>
           </div>
