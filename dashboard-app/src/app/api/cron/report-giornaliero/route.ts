@@ -25,6 +25,16 @@ import { getDb } from "@/lib/db";
  * La presa e' la INSERT stessa, non una lettura seguita da una scrittura: due
  * chiamate contemporanee leggerebbero entrambe "non ancora mandato".
  *
+ * NON PRIMA DELLE 8, pero'. "Esattamente le 8" era la regola sbagliata, ma
+ * nessuna regola e' sbagliata in un altro modo: d'inverno il cron delle 06:00
+ * UTC cade alle 7 di Roma e manderebbe il report un'ora in anticipo, ogni
+ * giorno da fine ottobre a fine marzo. Con "non prima delle 8" quello delle 6
+ * se ne va in silenzio e tocca a quello delle 7 - che d'inverno e' le 8 di
+ * Roma - mentre d'estate e' il contrario. L'orario resta stabile tutto l'anno.
+ *
+ * E' UN LIMITE SOLO IN BASSO, non una finestra: se la partenza scivola alle 9
+ * il report parte lo stesso, perche' tardi e' un fastidio e mai e' un guasto.
+ *
  * Il prezzo e' che il report arriva fra le 8 e le 9 invece che alle 8 spaccate.
  * Su Hobby non si puo' fare di meglio, e un report che arriva e' meglio di uno
  * puntuale che non arriva.
@@ -64,6 +74,21 @@ export async function GET(req: NextRequest) {
     ].filter(Boolean);
     // SI DICE QUALE MANCA, mai il valore di quelle che ci sono.
     return NextResponse.json({ error: `variabili mancanti: ${manca.join(", ")}` }, { status: 503 });
+  }
+
+  const oraRoma = Number(
+    new Intl.DateTimeFormat("it-IT", {
+      timeZone: "Europe/Rome",
+      hour: "2-digit",
+      hour12: false
+    }).format(new Date())
+  );
+  if (!forzato && oraRoma < 8) {
+    // NON E' UN ERRORE: e' la sveglia che d'inverno cade troppo presto. Si
+    // risponde ok, altrimenti Vercel la segna rossa ogni giorno e l'elenco dei
+    // fallimenti smette di voler dire qualcosa. E si esce PRIMA di prendersi
+    // la giornata, se no l'altra sveglia la troverebbe occupata.
+    return NextResponse.json({ ok: true, saltato: `a Roma sono le ${oraRoma}: troppo presto` });
   }
 
   const data = req.nextUrl.searchParams.get("giorno") ?? ieriRoma();
