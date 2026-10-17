@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { messaggio, reportDelGiorno, ieriRoma } from "@/lib/report/giornaliero";
 import { operatoriDelTeam } from "@/lib/operatoriTeam";
+import { getDb } from "@/lib/db";
 
 /**
  * Il report del giorno prima, su Slack, ogni mattina alle 8 di Roma.
@@ -9,29 +10,31 @@ import { operatoriDelTeam } from "@/lib/operatoriTeam";
  * report deve arrivare a un'ora prevedibile. Sul portatile arriva quando lo si
  * accende, e un rituale che slitta di tre ore smette di essere un rituale.
  *
- * DUE CRON PER UNA SOLA SVEGLIA. Vercel programma in UTC e non sa niente
- * dell'ora legale: le 8 di Roma sono le 6 UTC d'estate e le 7 d'inverno. Si
- * programmano entrambe e si controlla qui che a Roma siano davvero le 8 -
- * l'altra chiamata se ne va senza fare niente. L'alternativa, un cron solo,
- * vuol dire un report che per meta' anno arriva alle 9.
+ * DUE CRON E UNA SOLA MANDATA. Vercel programma in UTC e non sa niente
+ * dell'ora legale: le 8 di Roma sono le 6 UTC d'estate e le 7 d'inverno, e si
+ * programmano entrambe.
  *
- * SI PUO' FORZARE con ?ora=no, che salta il controllo: serve a rimandarlo a
- * mano quando qualcosa e' andato storto, senza aspettare domani.
+ * NON SI CONTROLLA CHE A ROMA SIANO LE 8, e il primo tentativo lo faceva: il
+ * 17 ottobre 2026 il report non e' arrivato, e il motivo e' scritto nella
+ * pagina dei cron di Vercel - "Cron jobs on Hobby have a flexible time window
+ * of 1-hour". L'ora in cui la chiamata arriva NON e' quella programmata, puo'
+ * scivolare di un'ora: il controllo la scartava e il report non partiva mai.
+ *
+ * AL SUO POSTO, UNA VOLTA SOLA AL GIORNO. Chi arriva per primo si prende la
+ * giornata scrivendo una riga, e chi arriva dopo la trova occupata e se ne va.
+ * La presa e' la INSERT stessa, non una lettura seguita da una scrittura: due
+ * chiamate contemporanee leggerebbero entrambe "non ancora mandato".
+ *
+ * Il prezzo e' che il report arriva fra le 8 e le 9 invece che alle 8 spaccate.
+ * Su Hobby non si puo' fare di meglio, e un report che arriva e' meglio di uno
+ * puntuale che non arriva.
+ *
+ * SI PUO' FORZARE con ?forza=si, che ignora la riga del giorno: serve a
+ * rimandarlo a mano quando qualcosa e' andato storto.
  */
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const maxDuration = 300;
-
-/** L'ora di Roma adesso, come numero. */
-function oraRoma(): number {
-  return Number(
-    new Intl.DateTimeFormat("it-IT", {
-      timeZone: "Europe/Rome",
-      hour: "2-digit",
-      hour12: false
-    }).format(new Date())
-  );
-}
 
 async function mandaSlack(testo: string, token: string, a: string) {
   const r = await fetch("https://slack.com/api/chat.postMessage", {
@@ -48,13 +51,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "non autorizzato" }, { status: 401 });
   }
 
-  const forzato = req.nextUrl.searchParams.get("ora") === "no";
-  if (!forzato && oraRoma() !== 8) {
-    // NON E' UN ERRORE: e' l'altra delle due sveglie, quella che d'estate non
-    // serve. Si risponde ok, altrimenti Vercel la segna rossa ogni giorno e
-    // l'elenco dei fallimenti smette di voler dire qualcosa.
-    return NextResponse.json({ ok: true, saltato: `a Roma sono le ${oraRoma()}, non le 8` });
-  }
+  const forzato = req.nextUrl.searchParams.get("forza") === "si";
 
   const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
   const slack = process.env.SLACK_BOT_TOKEN;
@@ -70,6 +67,20 @@ export async function GET(req: NextRequest) {
   }
 
   const data = req.nextUrl.searchParams.get("giorno") ?? ieriRoma();
+  const db = getDb();
+  if (!forzato) {
+    const { rowCount } = await db.query(
+      `INSERT INTO report_inviato (giorno) VALUES ($1::date) ON CONFLICT DO NOTHING`,
+      [data]
+    );
+    if (!rowCount) {
+      // NON E' UN ERRORE: e' la seconda delle due sveglie, che trova il lavoro
+      // gia' fatto. Si risponde ok, altrimenti Vercel la segna rossa ogni
+      // giorno e l'elenco dei fallimenti smette di voler dire qualcosa.
+      return NextResponse.json({ ok: true, saltato: `il report del ${data} e' gia' stato mandato` });
+    }
+  }
+
   try {
     // L'elenco dei Setter serve a dividere chatter e telefonici. Se il foglio
     // non risponde il report esce lo stesso, con tutti i fissati sotto setter.
@@ -83,11 +94,16 @@ export async function GET(req: NextRequest) {
     const esito = await mandaSlack(messaggio(r), slack, a);
     if (!esito.ok) {
       console.error("[report-giornaliero] Slack:", esito.error);
+      // SI RESTITUISCE LA GIORNATA: se Slack ha rifiutato, il report non e'
+      // arrivato, e la seconda sveglia deve poter riprovare invece di trovare
+      // la riga occupata da un tentativo fallito.
+      await db.query(`DELETE FROM report_inviato WHERE giorno = $1::date`, [data]);
       return NextResponse.json({ error: `Slack: ${esito.error}` }, { status: 502 });
     }
     return NextResponse.json({ ok: true, giorno: data });
   } catch (e) {
     console.error("[report-giornaliero]", e);
+    await db.query(`DELETE FROM report_inviato WHERE giorno = $1::date`, [data]).catch(() => {});
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "report non riuscito" },
       { status: 500 }

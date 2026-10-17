@@ -982,3 +982,18 @@ CREATE TABLE IF NOT EXISTS controllo_numeri (
   da          TEXT,
   fatto_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+
+-- IL REPORT DI UNA GIORNATA SI MANDA UNA VOLTA SOLA.
+--
+-- Su Vercel Hobby i cron hanno una finestra flessibile di un'ora, quindi
+-- l'orario programmato non e' quello di partenza: se ne programmano due - le 6
+-- e le 7 UTC, per coprire l'ora legale - e la prima che arriva si prende la
+-- giornata scrivendo qui una riga. La presa E' questa INSERT, non una lettura
+-- seguita da una scrittura: due chiamate contemporanee leggerebbero entrambe
+-- "non ancora mandato". Se l'invio fallisce la riga si cancella, cosi' la
+-- seconda sveglia puo' riprovare.
+CREATE TABLE IF NOT EXISTS report_inviato (
+  giorno date PRIMARY KEY,
+  inviato_at timestamptz NOT NULL DEFAULT now()
+);
