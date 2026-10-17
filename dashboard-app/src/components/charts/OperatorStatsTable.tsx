@@ -117,8 +117,8 @@ function MenuTabella({
                   per cui esiste. Chi lo scarica senza saperlo si chiede perche'
                   ci sono nomi che non riconosce. */}
               <p className="text-sm text-slate-600">
-                Storico delle performance di tutti gli utenti del periodo
-                selezionato (compresi quelli disattivati).
+                Storico delle performance di tutti gli utenti nel periodo
+                selezionato (sia attivi che disattivati).
               </p>
               <a
                 href={href}
