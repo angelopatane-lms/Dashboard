@@ -64,6 +64,19 @@ const numero = (v: unknown) => {
 };
 
 /** Una cella CSV: le virgolette si raddoppiano, il resto si lascia stare. */
+/**
+ * IL SEPARATORE E' IL PUNTO E VIRGOLA, non la virgola.
+ *
+ * Excel in italiano si aspetta quello: con la virgola apre il file e mette
+ * tutte le colonne dentro la prima, ammassate in una cella sola. Lo standard
+ * dice virgola, ma uno standard che nessuno dei destinatari legge non serve a
+ * niente, e questo file si apre con Excel.
+ *
+ * I NUMERI RESTANO INTERI, quindi non si scontrano con la virgola decimale
+ * italiana: se un giorno ci finissero dei decimali andrebbero protetti.
+ */
+const SEP = ";";
+
 const cella = (v: string | number) => {
   const s = String(v ?? "");
   return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -283,10 +296,10 @@ export async function GET(req: NextRequest) {
               })())
         ]
           .map(cella)
-          .join(",")
+          .join(SEP)
       );
 
-    const csv = [intestazione.map(cella).join(","), ...corpo].join("\r\n");
+    const csv = [intestazione.map(cella).join(SEP), ...corpo].join("\r\n");
     return new NextResponse(`﻿${csv}`, {
       headers: {
         // IL BOM davanti: senza, Excel in italiano legge le accentate come
