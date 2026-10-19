@@ -42,6 +42,20 @@ import { getDb } from "@/lib/db";
  * SI PUO' FORZARE con ?forza=si, che ignora la riga del giorno: serve a
  * rimandarlo a mano quando qualcosa e' andato storto.
  */
+/**
+ * Il canale di destinazione, scritto qui e non solo fra le variabili.
+ *
+ * UN ID DI CANALE NON E' UN SEGRETO, e non doveva stare fra le variabili
+ * d'ambiente senza una scorta: il 17 e il 18 ottobre 2026 il report non e'
+ * arrivato perche' REPORT_SLACK_A non era stata salvata in produzione, e la
+ * rotta rispondeva 503 prima ancora di provarci. Una chiave va protetta, un id
+ * di canale va scritto nel codice - cosi' non puo' mancare.
+ *
+ * La variabile resta e ha la precedenza: serve a spostare il report altrove
+ * senza ripubblicare.
+ */
+const CANALE = "C07K733QWBS";
+
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const maxDuration = 300;
@@ -65,12 +79,11 @@ export async function GET(req: NextRequest) {
 
   const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
   const slack = process.env.SLACK_BOT_TOKEN;
-  const a = process.env.REPORT_SLACK_A;
-  if (!token || !slack || !a) {
+  const a = process.env.REPORT_SLACK_A || CANALE;
+  if (!token || !slack) {
     const manca = [
       !token && "HUBSPOT_PRIVATE_APP_TOKEN",
-      !slack && "SLACK_BOT_TOKEN",
-      !a && "REPORT_SLACK_A"
+      !slack && "SLACK_BOT_TOKEN"
     ].filter(Boolean);
     // SI DICE QUALE MANCA, mai il valore di quelle che ci sono.
     return NextResponse.json({ error: `variabili mancanti: ${manca.join(", ")}` }, { status: 503 });
