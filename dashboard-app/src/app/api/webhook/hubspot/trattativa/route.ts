@@ -116,7 +116,7 @@ async function lavora(dealId: string): Promise<void> {
       try {
         const esito = await rilanciaACopilot(dealId, token);
         if (esito.riga.includes("non e' un chatter") === false) {
-          await annota(esito.mandata ? "ok" : "errore", `copilot ${esito.riga}`);
+          await annota(esito.mandata ? "ok" : esito.ignorata ? "ignorato" : "errore", `copilot ${esito.riga}`);
         }
         for (const rinvio of await rimandaInSospeso(token)) {
           await annota("ok", `copilot ${rinvio}`);

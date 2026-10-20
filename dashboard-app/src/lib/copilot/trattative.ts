@@ -27,6 +27,16 @@ import { getDb } from "@/lib/db";
 const COPILOT = "https://salescopilot.it/api/v1/hubspot/deals";
 const HUBSPOT = "https://api.hubapi.com";
 
+/**
+ * SOLO LA PIPELINE APPUNTAMENTI (HIGH TICKET), come dice la scheda data a
+ * Copilot il 14 ottobre 2026. Prima passava qualunque trattativa di un
+ * chatter, e a loro sono arrivate una Vinta della Low Ticket e una Consulenza
+ * Prenotata della Evergreen Webinar: fasi che non sapevano leggere. Per
+ * mandare anche altre pipeline basta togliere il filtro: il campo `pipeline`
+ * viaggia comunque nel corpo.
+ */
+const PIPELINE_HIGH_TICKET = "433643709";
+
 /** Il sotto-team che fa di una persona un chatter, come su HubSpot. */
 const TEAM_CHATTER = "Chatter";
 
@@ -35,6 +45,8 @@ const RIPROVA_DOPO_MINUTI = 10;
 
 export type EsitoInvio = {
   mandata: boolean;
+  /** Non era da mandare (altra pipeline): non e' un errore e non si rimanda. */
+  ignorata?: boolean;
   /** Una riga da mettere nei registri: dice sempre perche'. */
   riga: string;
 };
@@ -70,6 +82,11 @@ export async function rilanciaACopilot(dealId: string, tokenHubspot: string): Pr
   }
 
   const corpo = await componi(dealId, t, tokenHubspot);
+  // Si salta solo se la pipeline e' NOTA e diversa: se la lettura della
+  // trattativa non e' riuscita si manda lo stesso, come prima del filtro.
+  if (corpo.pipeline && corpo.pipeline !== PIPELINE_HIGH_TICKET) {
+    return { mandata: false, ignorata: true, riga: `${dealId}: pipeline ${corpo.pipeline}, non e' la High Ticket` };
+  }
   return await manda(dealId, t, corpo);
 }
 
@@ -145,7 +162,7 @@ export async function componi(
   if (t.fase_ts) corpo.hs_lastmodifieddate = String(new Date(t.fase_ts).getTime());
 
   const deal = await leggi(
-    `${HUBSPOT}/crm/v3/objects/deals/${dealId}?properties=dealname,amount,closedate,dealstage,hubspot_owner_id,hs_lastmodifieddate`,
+    `${HUBSPOT}/crm/v3/objects/deals/${dealId}?properties=dealname,amount,closedate,dealstage,pipeline,hubspot_owner_id,hs_lastmodifieddate`,
     token
   );
   for (const campo of [
@@ -153,6 +170,7 @@ export async function componi(
     "amount",
     "closedate",
     "dealstage",
+    "pipeline",
     "hubspot_owner_id",
     "hs_lastmodifieddate"
   ]) {
@@ -383,7 +401,14 @@ export async function storicoACopilot(
   for (let i = 0; i < nostre.length; i += lotto) {
     const pezzo = nostre.slice(i, i + lotto);
     const corpi = [];
-    for (const t of pezzo) corpi.push(await componi(t.deal_id, t, tokenHubspot));
+    for (const t of pezzo) {
+      const corpo = await componi(t.deal_id, t, tokenHubspot);
+      if (!corpo.pipeline || corpo.pipeline === PIPELINE_HIGH_TICKET) corpi.push(corpo);
+    }
+    if (!corpi.length) {
+      lotti++;
+      continue;
+    }
     try {
       const r = await fetch(COPILOT, {
         method: "POST",
