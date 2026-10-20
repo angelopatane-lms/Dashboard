@@ -75,7 +75,8 @@ async function mandaSlack(testo: string, token: string, a: string): Promise<bool
     token,
     data,
     sottoTeam: team?.sottoTeam,
-    edizioneDal: process.env.REPORT_EDIZIONE_DAL || "2026-05-01"
+    bigliettiBase: Number(process.env.REPORT_BIGLIETTI_BASE) || undefined,
+    bigliettiBaseAl: process.env.REPORT_BIGLIETTI_BASE_AL || undefined
   });
 
   const testo = messaggio(r);

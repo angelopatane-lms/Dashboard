@@ -127,7 +127,11 @@ export async function GET(req: NextRequest) {
       token,
       data,
       sottoTeam: team?.sottoTeam,
-      edizioneDal: process.env.REPORT_EDIZIONE_DAL || "2026-05-01"
+      // IL VALORE NEL CODICE E' IL PADRONE, le variabili sono una scorciatoia
+      // per correggere il conteggio senza ripubblicare. Se mancano, il report
+      // esce comunque: una variabile assente non deve fermarlo.
+      bigliettiBase: Number(process.env.REPORT_BIGLIETTI_BASE) || undefined,
+      bigliettiBaseAl: process.env.REPORT_BIGLIETTI_BASE_AL || undefined
     });
     const esito = await mandaSlack(messaggio(r), slack, a);
     if (!esito.ok) {

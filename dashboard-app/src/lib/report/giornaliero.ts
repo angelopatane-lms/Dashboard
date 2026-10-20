@@ -77,6 +77,29 @@ const SVOLTE = new Set<string>([
 /** Le tipologie di incasso che contano come una vendita chiusa. */
 const CHIUSURE = new Set(["Quota unica", "Acconto"]);
 
+/**
+ * I BIGLIETTI ICMD PAGANTI PARTONO DA UN CONTEGGIO A MANO, non da HubSpot.
+ *
+ * Contandoli dal Boom - prodotto con "ICMD", incasso Quota unica o Acconto,
+ * pagamento dall'inizio dell'edizione - il 19 ottobre 2026 venivano 208,
+ * mentre il conteggio dell'ufficio era 244. I 36 che mancano non si
+ * ricostruiscono da qui: sono biglietti comprati prima della finestra, pagati
+ * fuori dal Boom, o regalati e diventati paganti dopo. Un numero che sbaglia
+ * di 36 su 244 non serve a nessuno.
+ *
+ * COSI' SI PARTE DAL NUMERO VERO e si somma solo quello che arriva dopo, che
+ * HubSpot conta bene perche' lo vede nascere. La base copre tutto FINO AL
+ * GIORNO INDICATO COMPRESO; dal giorno dopo somma il report.
+ *
+ * QUANDO IL CONTEGGIO SI RIFA' si cambiano queste due righe - oppure
+ * REPORT_BIGLIETTI_BASE e REPORT_BIGLIETTI_BASE_AL nell'ambiente, che hanno la
+ * precedenza e non richiedono di ripubblicare. Il valore nel codice resta
+ * comunque: una variabile che manca in produzione e' il motivo per cui il
+ * report non arrivo' per tre mattine.
+ */
+const BIGLIETTI_BASE = 244;
+const BIGLIETTI_BASE_AL = "2026-10-19";
+
 export type Blocco = {
   daSvolgere: number;
   svolti: number;
@@ -93,6 +116,9 @@ export type ReportGiornaliero = {
   appChatter: number;
   appSenzaSetter: number;
   venditeTelefoniche: number;
+  /** Le chiusure che non sono telefoniche: il pezzo che mancava all'appello. */
+  altreVendite: number;
+  altreVenditeTipi: string[];
   totaleRate: number;
   totaleIncasso: number;
   totali: Blocco;
@@ -103,7 +129,9 @@ export type ReportGiornaliero = {
   icmdVendite: number;
   fuoriCrm: { persone: number; conTrattativa: number; senza: number };
   bigliettiCumulati: number;
-  bigliettiDal: string;
+  bigliettiBase: number;
+  bigliettiBaseAl: string;
+  bigliettiNuovi: number;
   edizioneTracciata: boolean;
 };
 
@@ -156,11 +184,41 @@ async function dalFoglio(giorno: string, soloCampagna?: string) {
 
 const giorno = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
+/** Il giorno dopo. Mezzogiorno per non sfiorare nessun confine. */
+const giornoDopo = (data: string) =>
+  giorno(new Date(`${data}T12:00:00Z`).getTime() + 24 * 3600 * 1000);
+
+/**
+ * La mezzanotte di Roma di quel giorno, in millisecondi.
+ *
+ * LO SCARTO NON SI SCRIVE FISSO, si chiede. La prima versione faceva
+ * `new Date(`${data}T00:00:00+02:00`)`, cioe' l'ora legale per sempre: dal 26
+ * ottobre 2026 - fine dell'ora legale - quella finestra sarebbe partita alle
+ * 23 della sera prima e finita alle 23 di ieri. Un'ora di mercoledi' sera
+ * contata nel giovedi' e l'ultima ora di giovedi' perduta, ogni giorno
+ * dell'inverno, su `createdate` che e' un istante vero. Nessuno se ne
+ * accorgerebbe dai numeri: tornerebbero sempre plausibili.
+ *
+ * COME SI CHIEDE: si legge lo stesso istante a Roma e a Greenwich, la
+ * differenza e' lo scarto di quel giorno, e si corregge. La mezzanotte a Roma
+ * esiste sempre - il cambio dell'ora avviene alle 2 o alle 3 - quindi una
+ * correzione sola basta ed e' esatta.
+ */
+function mezzanotteRoma(data: string): number {
+  const utc = new Date(`${data}T00:00:00Z`).getTime();
+  const letto = new Date(
+    new Intl.DateTimeFormat("sv-SE", {
+      timeZone: "Europe/Rome",
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+    }).format(utc).replace(" ", "T") + "Z"
+  ).getTime();
+  return utc - (letto - utc);
+}
+
 /** Mezzanotte di Roma, in millisecondi. Il giorno lo decide il fuso di chi lavora. */
 function estremiRoma(data: string): { da: number; a: number } {
-  const da = new Date(`${data}T00:00:00+02:00`).getTime();
-  const a = da + 24 * 3600 * 1000;
-  return { da, a };
+  return { da: mezzanotteRoma(data), a: mezzanotteRoma(giornoDopo(data)) };
 }
 
 export function ieriRoma(): string {
@@ -323,15 +381,17 @@ export async function reportDelGiorno(opzioni: {
   data?: string;
   /** Il sotto-team di ciascuno, per nome normalizzato: serve a dividere setter e chatter. */
   sottoTeam?: Record<string, string>;
-  /** Da quando contare i biglietti ICMD dell'edizione in corso. */
-  edizioneDal?: string;
+  /** Il conteggio a mano dei biglietti ICMD paganti, e il giorno a cui si ferma. */
+  bigliettiBase?: number;
+  bigliettiBaseAl?: string;
   /** Gli assegnati e le chiamate ICMD di ieri, se chi chiama li ha gia'. */
   icmd?: { assegnati: number | null; chiamate: number | null; risposte: number | null };
 }): Promise<ReportGiornaliero> {
   const { token } = opzioni;
   const data = opzioni.data ?? ieriRoma();
   const { da, a } = estremiRoma(data);
-  const edizioneDal = opzioni.edizioneDal ?? "2026-05-01";
+  const bigliettiBase = opzioni.bigliettiBase ?? BIGLIETTI_BASE;
+  const bigliettiBaseAl = opzioni.bigliettiBaseAl ?? BIGLIETTI_BASE_AL;
 
   // 1. GLI APPUNTAMENTI FISSATI IERI: trattative nate ieri nella pipeline.
   const fissate = await sfoglia(token, "deals", [
@@ -383,16 +443,37 @@ export async function reportDelGiorno(opzioni: {
   const somma = (righe: typeof incassi) =>
     righe.reduce((s, b) => s + (Number(b.properties.importo) || 0), 0);
 
-  // 4. IL CUMULATO DEI BIGLIETTI ICMD PAGANTI.
+  // LE TRE RIGHE DEI SOLDI NON SONO TRE ADDENDI, e per questo il 20 ottobre
+  // 2026 il totale sembrava sbagliato: 5.000 telefoniche + 1.700 rate non
+  // facevano i 6.950 incassati. Mancava un ICMD Gold da 250 venduto come
+  // "Contatto Personale" - una chiusura che non e' telefonica, quindi fuori
+  // dalla prima riga e dentro al totale. Qui si tiene da parte, e la riga
+  // compare solo nei giorni in cui resta davvero qualcosa fuori: cosi' i
+  // numeri si sommano a vista e nei giorni tutti telefonici il report e'
+  // identico a prima.
+  const telefoniche = chiusure.filter(
+    (b) => (b.properties.tipo_di_vendita ?? "").trim() === "Telefonica"
+  );
+  const altre = chiusure.filter(
+    (b) => (b.properties.tipo_di_vendita ?? "").trim() !== "Telefonica"
+  );
+  const altreVenditeTipi = [
+    ...new Set(altre.map((b) => (b.properties.tipo_di_vendita ?? "").trim() || "senza tipo"))
+  ];
+
+  // 4. IL CUMULATO DEI BIGLIETTI ICMD PAGANTI: la base piu' quelli nuovi.
   //
-  // FINCHE' `edizione` E' VUOTA si contano quelli pagati dall'inizio
-  // dell'edizione, che e' la stessa approssimazione che si faceva a mano: ci
-  // sono dentro gli acquisti anticipati per l'edizione dopo, e mancano quelli
-  // comprati prima per questa. Appena il campo viene scritto il filtro si
-  // stringe da solo e il numero diventa esatto, senza toccare questo codice.
-  const dalMs = new Date(`${edizioneDal}T00:00:00+02:00`).getTime();
-  const biglietti = await sfoglia(token, BOOM, [
-    { propertyName: "data_di_pagamento", operator: "GTE", value: String(dalMs) }
+  // FINO ALLA FINE DELLA GIORNATA DI CUI PARLA IL REPORT, non fino a adesso:
+  // un report rigenerato per un giorno passato deve dare il numero di allora,
+  // non quello di oggi. Prima la finestra era aperta in avanti e il cumulato
+  // cambiava a ogni rilettura.
+  //
+  // SE IL GIORNO E' DENTRO LA BASE non si chiede niente a HubSpot: la base lo
+  // contiene gia', e sommarci qualcosa lo conterebbe due volte.
+  const dalMs = mezzanotteRoma(giornoDopo(bigliettiBaseAl));
+  const biglietti = dalMs >= a ? [] : await sfoglia(token, BOOM, [
+    { propertyName: "data_di_pagamento", operator: "GTE", value: String(dalMs) },
+    { propertyName: "data_di_pagamento", operator: "LT", value: String(a) }
   ], ["prodotto", "tipologia_di_incasso", "edizione"]);
   const pagantiIcmd = biglietti.filter(
     (b) => eIcmd(b.properties.prodotto) && CHIUSURE.has((b.properties.tipologia_di_incasso ?? "").trim())
@@ -446,9 +527,9 @@ export async function reportDelGiorno(opzioni: {
     appSetter,
     appChatter,
     appSenzaSetter,
-    venditeTelefoniche: somma(
-      chiusure.filter((b) => (b.properties.tipo_di_vendita ?? "").trim() === "Telefonica")
-    ),
+    venditeTelefoniche: somma(telefoniche),
+    altreVendite: somma(altre),
+    altreVenditeTipi,
     totaleRate: somma(incassi.filter((b) => (b.properties.tipologia_di_incasso ?? "").trim() === "Rata")),
     totaleIncasso: somma(incassi),
     totali: blocco(c.svolteTutte, c.noShowTutti, fermi.length, chiusure),
@@ -458,8 +539,10 @@ export async function reportDelGiorno(opzioni: {
     icmdRisposte: icmd?.risposte ?? null,
     icmdVendite: chiusure.filter((b) => eIcmd(b.properties.prodotto)).length,
     fuoriCrm: fc,
-    bigliettiCumulati: pagantiIcmd.length,
-    bigliettiDal: edizioneDal,
+    bigliettiCumulati: bigliettiBase + pagantiIcmd.length,
+    bigliettiBase,
+    bigliettiBaseAl,
+    bigliettiNuovi: pagantiIcmd.length,
     edizioneTracciata: conEdizione.length > 0
   };
 }
@@ -479,6 +562,11 @@ export function messaggio(r: ReportGiornaliero): string {
       ` = ${r.appSetter + r.appChatter + r.appSenzaSetter}`
   );
   righe.push(`    TOTALE VENDITE TELEFONICHE: ${eur(r.venditeTelefoniche)}`);
+  // SOLO SE C'E' DAVVERO: nei giorni tutti telefonici la riga non compare e il
+  // report resta quello di sempre.
+  if (r.altreVendite) {
+    righe.push(`    ALTRE VENDITE: ${eur(r.altreVendite)} (${r.altreVenditeTipi.join(", ")})`);
+  }
   righe.push(`    TOTALE RATE: ${eur(r.totaleRate)}`);
   righe.push(`    TOTALE INCASSO: ${eur(r.totaleIncasso)}`);
   righe.push("");
@@ -510,9 +598,10 @@ export function messaggio(r: ReportGiornaliero): string {
         ` (su ${r.fuoriCrm.conTrattativa} trattative, ${r.fuoriCrm.senza} senza)`
     );
   }
-  righe.push(
-    `    Totale biglietti paganti: ${r.bigliettiCumulati}` +
-      (r.edizioneTracciata ? "" : `   (dal ${r.bigliettiDal}: edizione non ancora tracciata)`)
-  );
+  // SOLO IL NUMERO, nessuna specifica fra parentesi: chi legge il report vuole
+  // sapere quanti biglietti paganti ci sono, non da dove viene il conteggio.
+  // La composizione resta nei dati - `bigliettiBase` e `bigliettiNuovi` - per
+  // chi deve controllare che la base di partenza sia ancora giusta.
+  righe.push(`    Totale biglietti paganti: ${r.bigliettiCumulati}`);
   return righe.join("\n");
 }
