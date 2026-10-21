@@ -38,7 +38,16 @@
  */
 import "./env";
 
-const QSTASH = "https://qstash.upstash.io/v2";
+/**
+ * L'INDIRIZZO DIPENDE DALLA REGIONE, e non e' un dettaglio: l'account e' in EU
+ * Region e risponde su qstash-eu-central-1. Chiamando l'indirizzo globale
+ * (qstash.upstash.io) il token viene rifiutato con "invalid token", che fa
+ * credere a una chiave sbagliata e manda a cercare nel posto sbagliato - e'
+ * successo il 21 ottobre 2026, due token diversi e lo stesso 401. La console
+ * lo scrive nel riquadro Quickstart, alla voce QSTASH_URL.
+ */
+const QSTASH =
+  (process.env.QSTASH_URL || "https://qstash-eu-central-1.upstash.io").replace(/\/$/, "") + "/v2";
 const NOME = "dashboard-sync-conversioni";
 const ROTTA = "/api/cron/campaign-conversions-incremental";
 const CRON = "0 * * * *";
@@ -127,7 +136,10 @@ async function elenca() {
     }
   }
 
-  const esito = (await qstash("POST", `/schedules/${encodeURIComponent(destinazione)}`, {
+  // L'INDIRIZZO VA IN CHIARO NEL PERCORSO, non codificato: con
+  // encodeURIComponent "https://" diventa "https%3A%2F%2F" e QStash risponde
+  // "endpoint has invalid scheme, add http:// or https://".
+  const esito = (await qstash("POST", `/schedules/${destinazione}`, {
     "Upstash-Cron": CRON,
     "Upstash-Schedule-Id": NOME,
     // L'intestazione che la rotta si aspetta, inoltrata da QStash alla
