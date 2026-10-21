@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { eChatterCon } from "@/lib/chatter";
+import { attivoDaPoco } from "@/lib/attivita";
 import { eAdvisorTelefonico } from "@/lib/statiLead";
 import type { CsvRow } from "@/lib/csv";
 import { applyFilters, computeKpis, type Filters } from "@/lib/metrics";
@@ -387,7 +388,10 @@ export default function DashboardEnterprise({
   // numeri vecchi.
     tocca();
     const battito = setInterval(() => {
-      if (document.visibilityState === "visible") tocca();
+      // VISIBILE NON BASTA: una finestra dietro a un'altra, o su un secondo
+      // monitor, resta "visibile" per sempre. Si chiede anche se qualcuno
+      // ha toccato la pagina di recente - vedi lib/attivita.
+      if (document.visibilityState === "visible" && attivoDaPoco()) tocca();
     }, 10 * 60 * 1000);
     const alRitorno = () => document.visibilityState === "visible" && tocca();
     document.addEventListener("visibilitychange", alRitorno);
@@ -642,7 +646,10 @@ export default function DashboardEnterprise({
     // Stessa regola del battito degli assegnati, e per lo stesso motivo.
     leggi();
     const battito = setInterval(() => {
-      if (document.visibilityState === "visible") leggi();
+      // VISIBILE NON BASTA: una finestra dietro a un'altra, o su un secondo
+      // monitor, resta "visibile" per sempre. Si chiede anche se qualcuno
+      // ha toccato la pagina di recente - vedi lib/attivita.
+      if (document.visibilityState === "visible" && attivoDaPoco()) leggi();
     }, 10 * 60 * 1000);
     const alRitorno = () => document.visibilityState === "visible" && leggi();
     document.addEventListener("visibilitychange", alRitorno);
