@@ -276,7 +276,14 @@ async function proprietari(token: string): Promise<Map<string, string>> {
 export function conAssegnatiDiOggi<T extends Record<string, string>>(
   righe: T[],
   conteggi: AssegnatiOggi["conteggi"] | null,
-  colonnaOperatore = "Operatore"
+  colonnaOperatore = "Operatore",
+  /**
+   * Grafie gia' note dei nomi, da usare quando la riga nuova riguarda
+   * qualcuno che oggi non ha ancora righe. Senza, si ripiegava sulla chiave
+   * normalizzata - tutta minuscola - e quella diventava una SECONDA riga in
+   * tabella accanto a quella vera: stessa persona, nome scritto in due modi.
+   */
+  nomiNoti?: Iterable<string>
 ): T[] {
   if (!conteggi || !Object.keys(conteggi).length) return righe;
 
@@ -302,6 +309,12 @@ export function conAssegnatiDiOggi<T extends Record<string, string>>(
   // una riga - il caso di una persona appena entrata - entra con una riga sua.
   const data = righe[0]?.["Data"] ?? oggiRoma();
   const nomeVero = new Map<string, string>();
+  // Prima le grafie note, poi quelle di oggi: a parita' di persona vince la
+  // riga di oggi, che e' la piu' recente.
+  for (const n of nomiNoti ?? []) {
+    const s = String(n ?? "").trim();
+    if (s) nomeVero.set(chiaveNome(s), s);
+  }
   for (const r of righe) {
     const n = String(r[colonnaOperatore] ?? "");
     if (n) nomeVero.set(chiaveNome(n), n);

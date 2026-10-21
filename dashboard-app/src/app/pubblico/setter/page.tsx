@@ -42,7 +42,14 @@ export default async function Page() {
   // QUI SI LEGGE SOLO L'ARCHIVIO, mai HubSpot: il conto vero costa venti
   // secondi e lo rifa' /api/assegnati-oggi, che il browser chiama da solo.
   const contiOggi = await assegnatiOggiInArchivio();
-  const righeOggi = conAssegnatiDiOggi(operatoriRowsOggi, contiOggi?.conteggi ?? null);
+  const righeOggi = conAssegnatiDiOggi(
+    operatoriRowsOggi,
+    contiOggi?.conteggi ?? null,
+    "Operatore",
+    // Lo storico porta i nomi scritti per esteso: serve a non far comparire
+    // una riga in minuscolo accanto a quella vera. Vedi conAssegnatiDiOggi().
+    operatoriRows.map((r) => String(r["Operatore"] ?? ""))
+  );
 
   // GLI STESSI SETTER DELLA PAGINA INTERNA, dalla stessa funzione.
   const team = await operatoriDelTeam("Setter");
