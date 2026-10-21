@@ -36,3 +36,8 @@ Thumbs.db
 /*.csv
 /trascrizioni-*/
 /report-20*.md
+
+# Prodotto della compilazione TypeScript: cambia a ogni build, su ogni
+# macchina. Tracciarlo significava un conflitto garantito ogni volta che si
+# lavora da due computer, su un file che non contiene niente di utile.
+dashboard-app/tsconfig.tsbuildinfo
