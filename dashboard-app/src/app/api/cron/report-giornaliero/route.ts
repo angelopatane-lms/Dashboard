@@ -56,6 +56,16 @@ import { getDb } from "@/lib/db";
  */
 const CANALE = "C07K733QWBS";
 
+/**
+ * Chi riceve lo stesso report in privato, oltre al canale. Dal 21 ottobre 2026
+ * Salvatore Scibetta, chiesto da Angelo.
+ *
+ * IL CANALE COMANDA, i privati seguono: se un privato non parte la giornata
+ * resta presa, perche' liberarla farebbe ripartire il report anche nel canale
+ * con la seconda sveglia, e l'ufficio lo riceverebbe due volte.
+ */
+const ANCHE_A = ["U05GRL80N85"];
+
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const maxDuration = 300;
@@ -133,7 +143,8 @@ export async function GET(req: NextRequest) {
       bigliettiBase: Number(process.env.REPORT_BIGLIETTI_BASE) || undefined,
       bigliettiBaseAl: process.env.REPORT_BIGLIETTI_BASE_AL || undefined
     });
-    const esito = await mandaSlack(messaggio(r), slack, a);
+    const testo = messaggio(r);
+    const esito = await mandaSlack(testo, slack, a);
     if (!esito.ok) {
       console.error("[report-giornaliero] Slack:", esito.error);
       // SI RESTITUISCE LA GIORNATA: se Slack ha rifiutato, il report non e'
@@ -142,7 +153,13 @@ export async function GET(req: NextRequest) {
       await db.query(`DELETE FROM report_inviato WHERE giorno = $1::date`, [data]);
       return NextResponse.json({ error: `Slack: ${esito.error}` }, { status: 502 });
     }
-    return NextResponse.json({ ok: true, giorno: data });
+    const privati: Record<string, string> = {};
+    for (const u of ANCHE_A) {
+      const p = await mandaSlack(testo, slack, u).catch((e) => ({ ok: false, error: String(e) }));
+      privati[u] = p.ok ? "ok" : `non mandato: ${p.error}`;
+      if (!p.ok) console.error(`[report-giornaliero] privato a ${u}:`, p.error);
+    }
+    return NextResponse.json({ ok: true, giorno: data, privati });
   } catch (e) {
     console.error("[report-giornaliero]", e);
     await db.query(`DELETE FROM report_inviato WHERE giorno = $1::date`, [data]).catch(() => {});
