@@ -369,11 +369,32 @@ export default function DashboardEnterprise({
           if (vivo && d?.rifatto) router.refresh();
         })
         .catch((e) => console.error("[assegnati-oggi]", e));
+  // UNA SCHEDA IN SECONDO PIANO NON INTERROGA NIENTE.
+  //
+  // Neon fa pagare il tempo in cui il database e' ACCESO, non le query, e lo
+  // sospende dopo cinque minuti di silenzio. Questo battito stava esattamente
+  // su cinque minuti: una scheda dimenticata aperta lo svegliava un attimo
+  // prima che si addormentasse, tutta la notte, per sempre. Il 21 ottobre 2026
+  // il progetto era all'80% delle 100 CU-ore mensili con tre settimane
+  // passate - 0,25 CU accesi 24 ore al giorno fanno 180 CU-ore, il doppio
+  // dell'incluso.
+  //
+  // DUE CORREZIONI INSIEME: si interroga solo con la pagina davvero visibile -
+  // la stessa regola che AssegnazioneContatti ha sempre avuto - e l'intervallo
+  // passa a dieci minuti, cosi' il database fa in tempo a spegnersi fra un
+  // battito e l'altro anche con la Dashboard aperta sotto gli occhi. Al
+  // ritorno sulla scheda si rilegge subito, quindi chi guarda non vede
+  // numeri vecchi.
     tocca();
-    const battito = setInterval(tocca, 5 * 60 * 1000);
+    const battito = setInterval(() => {
+      if (document.visibilityState === "visible") tocca();
+    }, 10 * 60 * 1000);
+    const alRitorno = () => document.visibilityState === "visible" && tocca();
+    document.addEventListener("visibilitychange", alRitorno);
     return () => {
       vivo = false;
       clearInterval(battito);
+      document.removeEventListener("visibilitychange", alRitorno);
     };
   }, [includeToday, router]);
 
@@ -618,11 +639,17 @@ export default function DashboardEnterprise({
               : `numeri Copilot non arrivati (${motivo})`
           );
         });
+    // Stessa regola del battito degli assegnati, e per lo stesso motivo.
     leggi();
-    const battito = setInterval(leggi, 5 * 60 * 1000);
+    const battito = setInterval(() => {
+      if (document.visibilityState === "visible") leggi();
+    }, 10 * 60 * 1000);
+    const alRitorno = () => document.visibilityState === "visible" && leggi();
+    document.addEventListener("visibilitychange", alRitorno);
     return () => {
       vivo = false;
       clearInterval(battito);
+      document.removeEventListener("visibilitychange", alRitorno);
     };
   }, [servonoKpiChatter, filters.from, filters.to, defaultFrom, defaultTo]);
 

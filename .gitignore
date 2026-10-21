@@ -25,3 +25,14 @@ Thumbs.db
 /dashboard-app/.next/
 /dashboard-app/out/
 /dashboard-app/.vercel/
+
+# DATI DELLE PERSONE, MAI NEL REPO.
+#
+# Gli export delle task - contatti, note delle consulenze, trascrizioni - vivono
+# in questa cartella perche' e' dove girano gli script, ma sono nomi, email,
+# telefoni e conversazioni di clienti veri. Fino al 20 ottobre 2026 niente li
+# fermava: un "git add -A" distratto li avrebbe spediti su GitHub insieme al
+# codice. Qui non si decide piu' a mano ogni volta.
+/*.csv
+/trascrizioni-*/
+/report-20*.md
