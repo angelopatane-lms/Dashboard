@@ -1,12 +1,23 @@
 # Chiama ogni ora l'endpoint di sincronizzazione delle conversioni su Vercel.
 #
-# PERCHE' QUI E NON SU VERCEL: il piano Hobby di Vercel consente cron al
-# massimo GIORNALIERI ("Hobby accounts are limited to cron jobs that run once
-# per day"), e una schedulazione oraria fa addirittura fallire il deploy.
-# GitHub Actions non ha quel limite ed e' gratuito sui minuti inclusi.
-# Su Vercel resta comunque un cron giornaliero come rete di sicurezza: se
-# questa action si ferma, quello recupera tutto al giro successivo, perche' la
-# finestra temporale parte dall'ultima esecuzione RIUSCITA e non da "un'ora fa".
+# DAL 21 OTTOBRE 2026 QUESTA NON E' PIU' LA SVEGLIA PRINCIPALE, e' la seconda
+# di tre. Qui i cron schedulati partono quando GitHub puo': misurato sui sette
+# giorni precedenti, 46 giri su 168 attesi (27%), intervallo medio 216 minuti
+# invece di 60, buco piu' lungo sette ore, quaranta buchi sopra le due. Alle 9
+# e alle 17 non e' partita mai in una settimana. Non si perdeva nessun dato -
+# la finestra riparte dall'ultima esecuzione RIUSCITA - ma si perdeva
+# freschezza, fino a sette ore.
+#
+# La sveglia vera adesso e' QStash, che chiama lo stesso indirizzo ogni ora e
+# riprova da solo: vedi dashboard-app/scripts/qstash-sincronizzazione.ts.
+#
+# QUESTA RESTA LO STESSO, e costa zero: se QStash ha un disservizio, qui o nel
+# cron giornaliero di Vercel qualcuno prima o poi passa. Chi arriva per primo
+# sincronizza, gli altri trovano poco da fare.
+#
+# PERCHE' NON SU VERCEL: il piano Hobby consente cron al massimo GIORNALIERI
+# ("Hobby accounts are limited to cron jobs that run once per day"), e una
+# schedulazione oraria fa addirittura fallire il deploy.
 #
 # SEGRETI DA IMPOSTARE (Settings -> Secrets and variables -> Actions):
 #   DASHBOARD_URL  es. https://dashboard-xxxx.vercel.app   (senza barra finale)
