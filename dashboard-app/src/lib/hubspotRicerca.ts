@@ -142,7 +142,18 @@ export async function sfogliaRicerca<T = Record<string, string | null>>(
   let after: string | undefined;
 
   do {
-    const d = await ricercaHubSpot<T>(token, url, { ...corpo, ...(after ? { after } : {}) }, etichetta);
+    // CENTO PER PAGINA, SEMPRE. Senza "limit" HubSpot ne manda DIECI, e chi
+    // sfoglia non se ne accorge: il risultato e' giusto, solo dieci volte piu'
+    // lento. Misurato il 21 ottobre 2026 su un mese di incassi: 192 righe in 20
+    // pagine e 11,1 secondi col valore predefinito, 2 pagine e 1,1 secondi con
+    // cento. Su advisor-andamento, che legge otto mesi, erano una sessantina di
+    // secondi e una raffica di 429 che rallentava tutte le altre chiamate della
+    // pagina.
+    //
+    // Sta qui e non nelle rotte perche' qui non si puo' dimenticare. Chi ha
+    // bisogno di pagine piu' corte passa il suo "limit" e vince, perche' corpo
+    // viene dopo.
+    const d = await ricercaHubSpot<T>(token, url, { limit: 100, ...corpo, ...(after ? { after } : {}) }, etichetta);
     out.push(...(d.results ?? []));
     after = d.paging?.next?.after;
   } while (after);
