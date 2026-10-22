@@ -11,8 +11,8 @@ import { getDb } from "@/lib/db";
  * comparivano i "Nessun lead disponibile nel pool" con il serbatoio apparente
  * pieno.
  *
- * COSA TAGLIA DAVVERO. Quasi tutto lo fa l'eta' massima - venti giorni - che da
- * sola porta 38.299 a 534. Gli altri filtri misurati sul serbatoio vero valgono
+ * COSA TAGLIA DAVVERO. Quasi tutto lo fa l'eta' massima - venti giorni alla
+ * misura dell'8 ottobre, trenta da ieri - che da sola porta 38.299 a 534. Gli altri filtri misurati sul serbatoio vero valgono
  * una manciata: zero clienti, quattro dentro la finestra webinar, cinque senza
  * campagna. Per questo il conto si puo' fare da qui con due ricerche, senza
  * coinvolgere l'app.
@@ -25,8 +25,16 @@ import { getDb } from "@/lib/db";
 
 const HUBSPOT = "https://api.hubapi.com";
 
-/** L'eta' massima del serbatoio principale, la stessa dell'app. */
-const GIORNI_MAX = 20;
+/**
+ * L'eta' massima del serbatoio principale, la stessa dell'app.
+ *
+ * TRENTA E NON PIU' VENTI dal 21 ottobre 2026: l'app ha alzato la finestra
+ * (`MAX_LEAD_AGE_DAYS`) perche' a venti giorni la serie B era scesa a due
+ * candidati su venti e la sala riceveva "Nessun lead disponibile nel pool".
+ * Questa costante deve inseguire quella: conta su una finestra diversa e il
+ * riquadro misura un serbatoio che non e' quello da cui l'app pesca.
+ */
+const GIORNI_MAX = 30;
 
 /**
  * IL SECONDO SERBATOIO NON SI CONTA, ED E' UNA SCELTA MISURATA.
