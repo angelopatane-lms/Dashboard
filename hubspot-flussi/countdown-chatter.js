@@ -15,8 +15,9 @@
 // STEP 2", quando il countdown arriva a zero, scrive `dispatched` con l'ora e
 // svuota il proprietario. Ogni ciclo lascia quindi una voce datata nella
 // cronologia di `dispatched`; chi era proprietario prima si legge da quella di
-// `hubspot_owner_id`. Setter o advisor e' il team PRINCIPALE di quella persona.
-// Un utente disattivato non ha piu' team: i suoi cicli non si contano.
+// `hubspot_owner_id`. Setter o advisor e' il team PRINCIPALE di quella persona,
+// letto dagli utenti (/settings/v3/users). Un utente disattivato non ha piu'
+// team: i suoi cicli non si contano.
 //
 // I CHATTER NON CONTANO (deciso da Angelo il 26 ottobre 2026). Anche loro hanno
 // team principale Setter, ma in piu' il team Chatter. Mihai riassegna i
@@ -75,20 +76,36 @@ exports.main = async (event, callback) => {
       return fine("scartato", 0, `esito del countdown ${p.dispatch_outcome || "vuoto"}`);
     }
 
-    // Setter o advisor, dal team principale di ogni owner.
+    // Setter, chatter o advisor, dai team degli UTENTI. Non dai team della
+    // lista owner: li' Chatter e Telefonici, che sono team figli di Setter,
+    // compaiono per tutti i setter (il 26 ottobre 2026 22 su 22, contro i 7
+    // veri). L'owner serve solo come ponte fra id owner e id utente.
+    const team = new Map(((await api("/settings/v3/users/teams")).results || []).map((t) => [t.name, String(t.id)]));
+    const perUtente = new Map();
+    let dopo;
+    do {
+      const d = await api(`/settings/v3/users?limit=100${dopo ? `&after=${dopo}` : ""}`);
+      for (const u of d.results || []) {
+        const principale = String(u.primaryTeamId || "");
+        const secondari = (u.secondaryTeamIds || []).map(String);
+        if (principale === team.get("Advisor")) perUtente.set(String(u.id), "advisor");
+        if (principale === team.get("Setter")) {
+          perUtente.set(String(u.id), secondari.includes(team.get("Chatter")) ? "chatter" : "setter");
+        }
+      }
+      dopo = d.paging && d.paging.next && d.paging.next.after;
+    } while (dopo);
     const ruolo = new Map();
     for (const archiviati of [false, true]) {
-      let dopo;
+      let dopoOwner;
       do {
-        const d = await api(`/crm/v3/owners?limit=100&archived=${archiviati}${dopo ? `&after=${dopo}` : ""}`);
+        const d = await api(`/crm/v3/owners?limit=100&archived=${archiviati}${dopoOwner ? `&after=${dopoOwner}` : ""}`);
         for (const o of d.results || []) {
-          const t = (o.teams || []).find((x) => x.primary);
-          const chatter = (o.teams || []).some((x) => x.name === "Chatter");
-          if (t && t.name === "Setter") ruolo.set(String(o.id), chatter ? "chatter" : "setter");
-          if (t && t.name === "Advisor") ruolo.set(String(o.id), "advisor");
+          const r = perUtente.get(String(o.userId || ""));
+          if (r) ruolo.set(String(o.id), r);
         }
-        dopo = d.paging && d.paging.next && d.paging.next.after;
-      } while (dopo);
+        dopoOwner = d.paging && d.paging.next && d.paging.next.after;
+      } while (dopoOwner);
     }
 
     const conversione = Date.parse(p.recent_conversion_date || "") || 0;
