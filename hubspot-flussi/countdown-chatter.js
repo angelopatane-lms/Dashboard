@@ -18,6 +18,12 @@
 // `hubspot_owner_id`. Setter o advisor e' il team PRINCIPALE di quella persona.
 // Un utente disattivato non ha piu' team: i suoi cicli non si contano.
 //
+// I CHATTER NON CONTANO (deciso da Angelo il 26 ottobre 2026). Anche loro hanno
+// team principale Setter, ma in piu' il team Chatter. Mihai riassegna i
+// contatti ai suoi chatter e il countdown riparte: se scade, il contatto NON
+// torna a Mihai, va nel serbatoio normale per i setter. E il giro dai chatter
+// non e' un ciclo.
+//
 // MODALITA'. Con ATTIVO = false (prova) scrive solo "Cluster Chatter
 // (simulato)" e la data, e il proprietario non si tocca. Con ATTIVO = true
 // assegna a Mihai Pislaru e scrive "Cluster Chatter".
@@ -77,7 +83,8 @@ exports.main = async (event, callback) => {
         const d = await api(`/crm/v3/owners?limit=100&archived=${archiviati}${dopo ? `&after=${dopo}` : ""}`);
         for (const o of d.results || []) {
           const t = (o.teams || []).find((x) => x.primary);
-          if (t && t.name === "Setter") ruolo.set(String(o.id), "setter");
+          const chatter = (o.teams || []).some((x) => x.name === "Chatter");
+          if (t && t.name === "Setter") ruolo.set(String(o.id), chatter ? "chatter" : "setter");
           if (t && t.name === "Advisor") ruolo.set(String(o.id), "advisor");
         }
         dopo = d.paging && d.paging.next && d.paging.next.after;
@@ -97,13 +104,17 @@ exports.main = async (event, callback) => {
     }
 
     let cicli = 0;
+    let ultimo = "";
     for (const s of scadenze) {
       const tolto = proprietari.find((h) => !h.v && Math.abs(h.t - s.t) <= STESSA_AZIONE_MS);
       if (!tolto) continue;
       // Il proprietario che c'era appena prima che il flusso lo togliesse.
       const prima = proprietari.filter((h) => h.t < tolto.t && h.v).pop();
-      if (prima && ruolo.get(prima.v) === "setter") cicli++;
+      ultimo = prima ? ruolo.get(prima.v) || "" : "";
+      if (ultimo === "setter") cicli++;
     }
+    // L'ha appena perso un chatter: torna al serbatoio dei setter, non a Mihai.
+    if (ultimo === "chatter") return fine("scartato", 0, "perso da un chatter: resta ai setter");
     if (!cicli) return fine("scartato", 0, "nessun ciclo da setter dall'ultima conversione");
     const ciclo = Math.min(cicli, ULTIMO_CLUSTER);
 
