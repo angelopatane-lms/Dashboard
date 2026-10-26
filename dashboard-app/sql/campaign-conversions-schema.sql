@@ -997,3 +997,21 @@ CREATE TABLE IF NOT EXISTS report_inviato (
   giorno date PRIMARY KEY,
   inviato_at timestamptz NOT NULL DEFAULT now()
 );
+
+
+-- I contatti usciti dal countdown e valutati per i Chatter (src/lib/chatter/cluster.ts).
+--
+-- Una riga per ogni avviso del flusso, con l'esito: simulato (sola lettura),
+-- assegnato, oltre_quota, scartato o errore, e il perche'. Serve a contare i
+-- 100 al giorno per cluster e a vedere i numeri veri prima di accendere.
+CREATE TABLE IF NOT EXISTS chatter_cluster_esito (
+  id           BIGSERIAL PRIMARY KEY,
+  contact_id   BIGINT NOT NULL,
+  ciclo        INT,
+  esito        TEXT NOT NULL,
+  motivo       TEXT,
+  ricevuto_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS chatter_cluster_esito_giorno
+  ON chatter_cluster_esito (ricevuto_at DESC, ciclo);
