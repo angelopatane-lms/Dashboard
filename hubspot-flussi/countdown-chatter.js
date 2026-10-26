@@ -27,7 +27,7 @@
 //
 // MODALITA'. Con ATTIVO = false (prova) scrive solo "Cluster Chatter
 // (simulato)" e la data, e il proprietario non si tocca. Con ATTIVO = true
-// assegna a Mihai Pislaru e scrive "Cluster Chatter".
+// assegna a Mihai Pislaru, con Stato Lead Nuovo, e scrive "Cluster Chatter".
 
 const ATTIVO = false;
 
@@ -162,7 +162,14 @@ exports.main = async (event, callback) => {
     }
 
     const proprieta = { [PROPRIETA_CLUSTER]: `ciclo_${ciclo}`, data_cluster_chatter: new Date().toISOString() };
-    if (ATTIVO) proprieta.hubspot_owner_id = MIHAI;
+    // Stato Lead Nuovo (deciso da Angelo il 26 ottobre 2026). Serve anche al
+    // countdown: STEP 1 lo fa ripartire quando Mihai da' il contatto a un
+    // chatter, ma solo se lo Stato Lead e' fra quelli che conosce, e lo STEP 2
+    // l'aveva svuotato. Per Mihai non parte, perche' non e' in nessun team.
+    if (ATTIVO) {
+      proprieta.hubspot_owner_id = MIHAI;
+      proprieta.hs_lead_status = "NEW";
+    }
     await api(`/crm/v3/objects/contacts/${id}`, { method: "PATCH", body: JSON.stringify({ properties: proprieta }) });
     return fine(ATTIVO ? "assegnato" : "simulato", ciclo, ATTIVO ? "assegnato a Mihai Pislaru" : "prova: sarebbe andato a Mihai");
   } catch (e) {
