@@ -29,7 +29,7 @@
 // (simulato)" e la data, e il proprietario non si tocca. Con ATTIVO = true
 // assegna a Mihai Pislaru, con Stato Lead Nuovo, e scrive "Cluster Chatter".
 
-const ATTIVO = false;
+const ATTIVO = true;
 
 const MIHAI = "39286816";
 const MASSIMO_PER_CLUSTER = 100;
