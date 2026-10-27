@@ -1758,10 +1758,22 @@ export default function AssegnazioneContatti() {
                 <div className="py-2 text-sm text-slate-300">
                   {dettaglioInCorso ? "Leggo da HubSpot…" : "—"}
                 </div>
-              ) : dettaglio.righe.length === 0 ? (
+              ) : dettaglio.righe.length === 0 &&
+                !dettaglio.richieste?.some((r) => r.esito === "assegnato") ? (
                 // ZERO E "MAI CALCOLATO" NON SONO LA STESSA COSA, e qui si vede:
                 // una giornata senza assegnazioni ha comunque un istante di
                 // calcolo, un giorno mai fotografato no.
+                //
+                // E L'ARCHIVIO DA SOLO NON PUO' DIRE CHE NON C'E' NIENTE.
+                // Questa colonna elenca le richieste servite, che arrivano dal
+                // registro dell'app e non dalla ricostruzione HubSpot. Fino al
+                // 27 ottobre 2026 stava dentro il controllo sull'archivio: le
+                // 27 richieste servite di lunedì erano arrivate al browser e
+                // non venivano disegnate, perché l'archivio di lunedì non
+                // esiste - si scrive solo aprendo questa riga in giornata, e
+                // sàbato e lunedì nessuno l'ha aperta. Si guarda quindi anche
+                // il registro, e il vuoto si annuncia solo quando sono vuoti
+                // tutti e due.
                 <div className="py-2 text-sm text-slate-400">
                   {dettaglio.aggiornatoAt
                     ? "Oggi non è ancora stato assegnato nessun lead."
@@ -1795,7 +1807,18 @@ export default function AssegnazioneContatti() {
                     className="mb-1 flex items-baseline gap-2 border-b border-slate-200 pb-1.5"
                     title={
                       dettaglio.richieste
-                        ? `${dettaglio.righe.length} persone`
+                        ? // LE PERSONE SI CONTANO DALL'ARCHIVIO QUANDO C'E',
+                          // ALTRIMENTI DAI NOMI DEL REGISTRO: senza archivio
+                          // diceva "0 persone" accanto a un elenco di venti
+                          // righe piene.
+                          `${
+                            dettaglio.righe.length ||
+                            new Set(
+                              dettaglio.richieste
+                                .filter((r) => r.esito === "assegnato")
+                                .map((r) => r.nome)
+                            ).size
+                          } persone`
                         : "le richieste non si sono lette: questo e' il numero di persone"
                     }
                   >
