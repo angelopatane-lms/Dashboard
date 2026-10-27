@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import CampagnePersonaRiga, { CampagnePersonaPannello } from "@/components/CampagnePersona";
 import FinestraRichieste from "@/components/FinestraRichieste";
 import SectionTitle from "@/components/ui/SectionTitle";
+import { attivoDaPoco } from "@/lib/attivita";
 import { formatInt } from "@/lib/format";
 
 /**
@@ -805,10 +806,27 @@ export default function AssegnazioneContatti() {
       .catch((e) => mio === richiesta.current && setErrore(String(e)));
   }, [applica]);
 
+  // IL GIRO AUTOMATICO SI FERMA QUANDO NON C'E' NESSUNO.
+  //
+  // `document.visibilityState` da solo non basta, ed e' la stessa regola che
+  // gli altri due battiti della Dashboard applicano gia': una finestra dietro
+  // a un'altra, o su un secondo monitor, resta "visibile" per sempre, e questa
+  // sezione interrogava il database ogni minuto finche' la scheda restava
+  // aperta. Neon fa pagare il tempo in cui il database e' ACCESO - si sospende
+  // dopo cinque minuti di silenzio - quindi una scheda dimenticata lo teneva
+  // sveglio tutta la notte.
+  //
+  // MISURATO IL 27 OTTOBRE 2026, il giorno dell'email del 100%: questa sezione
+  // ha tenuto il database acceso in media 8,7 ore al giorno, e il 16 ottobre
+  // 19,7 - dalle 00:03 alle 19:43. A 0,25 CU sono 65 CU-ora al mese su una
+  // quota di 100, accanto alle 57 del webhook degli Stati Lead.
+  //
+  // CHI STA DAVVERO GUARDANDO NON SE NE ACCORGE: ha toccato la pagina da meno
+  // di mezz'ora per definizione, e al ritorno sulla scheda si rilegge subito.
   useEffect(() => {
     leggi();
     const ogniMinuto = setInterval(() => {
-      if (document.visibilityState === "visible") leggi();
+      if (document.visibilityState === "visible" && attivoDaPoco()) leggi();
     }, 60_000);
     const alRitorno = () => document.visibilityState === "visible" && leggi();
     document.addEventListener("visibilitychange", alRitorno);
