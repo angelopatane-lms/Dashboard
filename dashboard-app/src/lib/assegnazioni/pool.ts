@@ -274,22 +274,49 @@ async function ingressoForzato(token: string, daMs: number): Promise<number> {
   return inPiu;
 }
 
-async function quanti(token: string, serie: string, daMs: number): Promise<number | null> {
-  const r = await fetch(`${HUBSPOT}/crm/v3/objects/contacts/search`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    cache: "no-store",
-    body: JSON.stringify({ filterGroups: gruppi(serie, daMs), limit: 1 })
-  });
-  if (!r.ok) {
-    // NULL E NON ZERO: un serbatoio vuoto e un serbatoio non misurato si
-    // leggono diversissimi, e mostrare zero farebbe pensare che non c'e' piu'
-    // niente da assegnare.
-    console.error(`[pool] ${serie}: HubSpot ${r.status}`);
-    return null;
+/**
+ * Un totale dalla ricerca, con il respiro sul 429.
+ *
+ * SERVE DAVVERO, E L'HO ROTTO IO. Questa pagina fa SETTE interrogazioni in
+ * parallelo - i due serbatoi, l'ingresso forzato, le due sospese, i due ICMD -
+ * su un tetto condiviso con decine di flussi Zapier. Appena aggiunte le due
+ * degli ICMD, il 27 ottobre 2026, la prima prova e' tornata
+ * `{"serieA":null,...}`: HubSpot aveva risposto 429 sul conteggio principale,
+ * che senza riprova diventa `null`, cioe' il riquadro vuoto. Un numero
+ * ottimista si corregge, un numero assente si legge "non c'e' piu' niente da
+ * assegnare" - ed e' il guasto peggiore dei due.
+ *
+ * NULL SOLO SE DAVVERO NON SI PUO': chi chiama decide cosa farne. Il conteggio
+ * principale lo mostra come assente, le sottrazioni lo trattano come zero.
+ */
+async function totale(token: string, corpo: unknown, etichetta: string): Promise<number | null> {
+  for (let tentativo = 1; tentativo <= 4; tentativo++) {
+    const r = await fetch(`${HUBSPOT}/crm/v3/objects/contacts/search`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify(corpo)
+    });
+    if (r.status === 429 && tentativo < 4) {
+      await new Promise((x) => setTimeout(x, 1200 * tentativo));
+      continue;
+    }
+    if (!r.ok) {
+      console.error(`[pool] ${etichetta}: HubSpot ${r.status}`);
+      return null;
+    }
+    const d = (await r.json()) as { total?: number };
+    return typeof d.total === "number" ? d.total : null;
   }
-  const d = (await r.json()) as { total?: number };
-  return typeof d.total === "number" ? d.total : null;
+  console.error(`[pool] ${etichetta}: 429 ripetuti`);
+  return null;
+}
+
+async function quanti(token: string, serie: string, daMs: number): Promise<number | null> {
+  // NULL E NON ZERO: un serbatoio vuoto e un serbatoio non misurato si
+  // leggono diversissimi, e mostrare zero farebbe pensare che non c'e' piu'
+  // niente da assegnare.
+  return totale(token, { filterGroups: gruppi(serie, daMs), limit: 1 }, serie);
 }
 
 /** Le campagne sospese dichiarate dall'app, in minuscolo. Vuoto = regola spenta. */
@@ -340,18 +367,7 @@ async function sospesi(
     ],
     limit: 1
   };
-  const r = await fetch(`${HUBSPOT}/crm/v3/objects/contacts/search`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    cache: "no-store",
-    body: JSON.stringify(corpo)
-  });
-  if (!r.ok) {
-    console.error(`[pool] sospesi ${serie}: HubSpot ${r.status}`);
-    return 0;
-  }
-  const d = (await r.json()) as { total?: number };
-  return typeof d.total === "number" ? d.total : 0;
+  return (await totale(token, corpo, `sospesi ${serie}`)) ?? 0;
 }
 
 /**
@@ -388,18 +404,7 @@ async function icmd(token: string, serie: string, daMs: number): Promise<number>
     ],
     limit: 1
   };
-  const r = await fetch(`${HUBSPOT}/crm/v3/objects/contacts/search`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    cache: "no-store",
-    body: JSON.stringify(corpo)
-  });
-  if (!r.ok) {
-    console.error(`[pool] icmd ${serie}: HubSpot ${r.status}`);
-    return 0;
-  }
-  const d = (await r.json()) as { total?: number };
-  return typeof d.total === "number" ? d.total : 0;
+  return (await totale(token, corpo, `icmd ${serie}`)) ?? 0;
 }
 
 /** Un nome di campagna ICMD, con la stessa regola del token. */
