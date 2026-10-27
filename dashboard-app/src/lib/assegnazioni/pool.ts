@@ -91,6 +91,11 @@ export type Assegnabili = {
 export type StatoApp = {
   pool_a?: unknown;
   pool_b?: unknown;
+  /** L'elenco delle campagne sospese, come lo dichiara l'app: nomi separati
+   *  da virgola. Serve a togliere dagli assegnabili i lead che l'app non
+   *  peschera' mai - vedi `sospesi()`. */
+  campagne_sospese?: unknown;
+  campagne_sospese_attivo?: unknown;
   riserva?: unknown;
   riserva_max?: unknown;
   assegnati_oggi?: unknown;
@@ -287,6 +292,68 @@ async function quanti(token: string, serie: string, daMs: number): Promise<numbe
   return typeof d.total === "number" ? d.total : null;
 }
 
+/** Le campagne sospese dichiarate dall'app, in minuscolo. Vuoto = regola spenta. */
+function elencoSospese(stato?: StatoApp): string[] {
+  if (!stato || stato.campagne_sospese_attivo === false) return [];
+  return String(stato.campagne_sospese ?? "")
+    .split(",")
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/**
+ * Quanti, fra quelli contati da `quanti`, stanno in una campagna sospesa.
+ *
+ * PERCHE' SI SOTTRAGGONO. `quanti` conta chi passa i filtri della RICERCA, che
+ * sono gli stessi dell'app. Ma l'app, dopo, scarta in Python i lead delle
+ * campagne sospese - e sono la maggioranza. Misurato il 27 ottobre 2026 con
+ * `scripts/serbatoio-vero.ts`: su 2.195 contatti di serie A letti dalla
+ * ricerca, **1.755 erano di campagne sospese** e ne restavano 428. La pagina
+ * dichiarava 2.268: cinque volte il serbatoio vero, e su quel numero si
+ * decide se riaprire le campagne o allargare i tetti.
+ *
+ * SEI FILTRI ESATTI, non sette: `id_campagna_refresh IN [...]` prende il posto
+ * di `HAS_PROPERTY` invece di aggiungersi. HubSpot ne accetta sei per gruppo e
+ * il settimo da' 400 - che qui tornerebbe `null` e lascerebbe il numero
+ * gonfio. L'elenco dei nomi conta come UN filtro, qualunque sia la sua
+ * lunghezza.
+ *
+ * ZERO SE NON SI PUO' MISURARE, non null: un conteggio in meno mancato non
+ * deve cancellare quello principale, che e' buono. Il numero resta ottimista
+ * come prima, non diventa assente.
+ */
+async function sospesi(
+  token: string, serie: string, daMs: number, elenco: string[]
+): Promise<number> {
+  if (!elenco.length) return 0;
+  const conSospese = (filtri: ReturnType<typeof comuni>) =>
+    filtri.map((f) =>
+      f.propertyName === "id_campagna_refresh"
+        ? { propertyName: "id_campagna_refresh", operator: "IN", values: elenco }
+        : f
+    );
+  const quando = String(daMs);
+  const corpo = {
+    filterGroups: [
+      { filters: [...conSospese(comuni(serie)), { propertyName: "createdate", operator: "GTE", value: quando }] },
+      { filters: [...conSospese(comuni(serie)), { propertyName: "recent_conversion_date", operator: "GTE", value: quando }] }
+    ],
+    limit: 1
+  };
+  const r = await fetch(`${HUBSPOT}/crm/v3/objects/contacts/search`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify(corpo)
+  });
+  if (!r.ok) {
+    console.error(`[pool] sospesi ${serie}: HubSpot ${r.status}`);
+    return 0;
+  }
+  const d = (await r.json()) as { total?: number };
+  return typeof d.total === "number" ? d.total : 0;
+}
+
 /**
  * Gli assegnabili, riusando l'ultimo conteggio finche' e' fresco.
  *
@@ -323,7 +390,8 @@ export async function assegnabili(token: string, stato?: StatoApp): Promise<Asse
   da.setHours(0, 0, 0, 0);
   da.setDate(da.getDate() - GIORNI_MAX);
 
-  const [a, b, inPiu] = await Promise.all([
+  const sospese = elencoSospese(stato);
+  const [a, b, inPiu, sospA, sospB] = await Promise.all([
     quanti(token, "serie_a", da.getTime()),
     quanti(token, "serie_b", da.getTime()),
     // L'INGRESSO FORZATO ENTRA NEL CONTO DI SERIE A, perche' e' li' che
@@ -333,9 +401,25 @@ export async function assegnabili(token: string, stato?: StatoApp): Promise<Asse
     //
     // ZERO E NON NULL SE NON RIESCE: un conteggio in piu' che non si e'
     // potuto fare non deve cancellare quello principale, che e' buono.
-    ingressoForzato(token, da.getTime()).catch(() => 0)
+    ingressoForzato(token, da.getTime()).catch(() => 0),
+    sospesi(token, "serie_a", da.getTime(), sospese).catch(() => 0),
+    sospesi(token, "serie_b", da.getTime(), sospese).catch(() => 0)
   ]);
   if (a === null && b === null) return null;
+
+  // VIA I SOSPESI, che l'app non pesca. Mai sotto zero: i due conteggi sono
+  // due interrogazioni diverse e in mezzo qualcosa puo' cambiare, quindi la
+  // differenza potrebbe venire negativa per un contatto o due.
+  //
+  // RESTA UN TETTO, non la cifra esatta: l'app scarta anche per stato non
+  // pescabile, lifecycle cliente, "NR +11 Volte", webinar in corso e - dal 27
+  // ottobre 2026 - per chi era in BIN prima che lo stato venisse svuotato.
+  // Misurate quel giorno, quelle regole toglievano altri 12 contatti sulla
+  // serie A e 71 sulla B: poco rispetto ai 1.755 delle campagne, e ognuna
+  // costerebbe un'interrogazione in piu' su un token condiviso con Zapier.
+  const meno = (n: number | null, s: number) => (n === null ? null : Math.max(n - s, 0));
+  const assA = meno(a, sospA);
+  const assB = meno(b, sospB);
 
   // Si scrive un campione solo se l'ultimo e' abbastanza vecchio: la sezione
   // chiama ogni minuto, e una riga al minuto per ogni scheda aperta sarebbe
@@ -359,8 +443,8 @@ export async function assegnabili(token: string, stato?: StatoApp): Promise<Asse
         intero(stato?.persone_oggi),
         typeof stato?.sistema_acceso === "boolean" ? stato.sistema_acceso : null,
         typeof stato?.modalita_live === "boolean" ? stato.modalita_live : null,
-        a === null ? null : a + inPiu,
-        b
+        assA === null ? null : assA + inPiu,
+        assB
       ]
     );
   }
@@ -369,8 +453,8 @@ export async function assegnabili(token: string, stato?: StatoApp): Promise<Asse
   // database e uno sullo schermo - vuol dire che un giorno il grafico e il
   // riquadro diranno due numeri, e nessuno sapra' quale dei due guardare.
   return {
-    serieA: a === null ? null : a + inPiu,
-    serieB: b,
+    serieA: assA === null ? null : assA + inPiu,
+    serieB: assB,
     presoAt: new Date().toISOString()
   };
 }
