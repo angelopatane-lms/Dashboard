@@ -355,6 +355,57 @@ async function sospesi(
 }
 
 /**
+ * Quanti, fra quelli contati da `quanti`, stanno in una campagna ICMD.
+ *
+ * PERCHE' SI SOTTRAGGONO. Non si distribuiscono mai: l'assegnatore li scarta
+ * due volte, una sullo storico e una sulla campagna, e per la stessa ragione
+ * non compaiono nel menu delle categorie. Il riquadro invece li contava, e
+ * sono tanti: misurato il 27 ottobre 2026, dei 769 contatti di serie A che la
+ * ricerca restituiva dopo aver tolto le campagne sospese, **402 erano ICMD** -
+ * piu' della meta' di un numero su cui si decide se riaprire campagne o
+ * spostare il mix.
+ *
+ * UN TOKEN, NON UN PREFISSO: `CONTAINS_TOKEN` confronta una parola intera e
+ * `_` separa le parole, quindi "icmd" prende `icmd_14_workshop_ottobre` e non
+ * prende `lms_div_coach_icmdizzato`. Sei filtri esatti come in `sospesi()`:
+ * l'elenco prende il posto di `HAS_PROPERTY` invece di aggiungersi.
+ *
+ * ZERO SE NON SI PUO' MISURARE, non null: come per le sospese, un conteggio in
+ * meno mancato non deve cancellare quello principale, che e' buono.
+ */
+async function icmd(token: string, serie: string, daMs: number): Promise<number> {
+  const conIcmd = (filtri: ReturnType<typeof comuni>) =>
+    filtri.map((f) =>
+      f.propertyName === "id_campagna_refresh"
+        ? { propertyName: "id_campagna_refresh", operator: "CONTAINS_TOKEN", value: "icmd" }
+        : f
+    );
+  const quando = String(daMs);
+  const corpo = {
+    filterGroups: [
+      { filters: [...conIcmd(comuni(serie)), { propertyName: "createdate", operator: "GTE", value: quando }] },
+      { filters: [...conIcmd(comuni(serie)), { propertyName: "recent_conversion_date", operator: "GTE", value: quando }] }
+    ],
+    limit: 1
+  };
+  const r = await fetch(`${HUBSPOT}/crm/v3/objects/contacts/search`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify(corpo)
+  });
+  if (!r.ok) {
+    console.error(`[pool] icmd ${serie}: HubSpot ${r.status}`);
+    return 0;
+  }
+  const d = (await r.json()) as { total?: number };
+  return typeof d.total === "number" ? d.total : 0;
+}
+
+/** Un nome di campagna ICMD, con la stessa regola del token. */
+const PARE_ICMD = (nome: string) => /(^|_)icmd(_|$)/.test(nome);
+
+/**
  * Gli assegnabili, riusando l'ultimo conteggio finche' e' fresco.
  *
  * Il conteggio e la fotografia dell'andamento sono la stessa riga: calcolare e
@@ -391,7 +442,7 @@ export async function assegnabili(token: string, stato?: StatoApp): Promise<Asse
   da.setDate(da.getDate() - GIORNI_MAX);
 
   const sospese = elencoSospese(stato);
-  const [a, b, inPiu, sospA, sospB] = await Promise.all([
+  const [a, b, inPiu, sospA, sospB, icmdA, icmdB] = await Promise.all([
     quanti(token, "serie_a", da.getTime()),
     quanti(token, "serie_b", da.getTime()),
     // L'INGRESSO FORZATO ENTRA NEL CONTO DI SERIE A, perche' e' li' che
@@ -403,7 +454,13 @@ export async function assegnabili(token: string, stato?: StatoApp): Promise<Asse
     // potuto fare non deve cancellare quello principale, che e' buono.
     ingressoForzato(token, da.getTime()).catch(() => 0),
     sospesi(token, "serie_a", da.getTime(), sospese).catch(() => 0),
-    sospesi(token, "serie_b", da.getTime(), sospese).catch(() => 0)
+    sospesi(token, "serie_b", da.getTime(), sospese).catch(() => 0),
+    // GLI ICMD SI SOTTRAGGONO SOLO SE NON SONO GIA' FRA LE SOSPESE, altrimenti
+    // gli stessi contatti uscirebbero dal conto due volte e il numero
+    // diventerebbe pessimista invece che esatto. Dal menu non ci possono
+    // finire - gli ICMD ne sono fuori - ma il campo e' testo libero.
+    sospese.some(PARE_ICMD) ? 0 : icmd(token, "serie_a", da.getTime()).catch(() => 0),
+    sospese.some(PARE_ICMD) ? 0 : icmd(token, "serie_b", da.getTime()).catch(() => 0)
   ]);
   if (a === null && b === null) return null;
 
@@ -418,8 +475,8 @@ export async function assegnabili(token: string, stato?: StatoApp): Promise<Asse
   // serie A e 71 sulla B: poco rispetto ai 1.755 delle campagne, e ognuna
   // costerebbe un'interrogazione in piu' su un token condiviso con Zapier.
   const meno = (n: number | null, s: number) => (n === null ? null : Math.max(n - s, 0));
-  const assA = meno(a, sospA);
-  const assB = meno(b, sospB);
+  const assA = meno(meno(a, sospA), icmdA);
+  const assB = meno(meno(b, sospB), icmdB);
 
   // Si scrive un campione solo se l'ultimo e' abbastanza vecchio: la sezione
   // chiama ogni minuto, e una riga al minuto per ogni scheda aperta sarebbe

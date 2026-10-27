@@ -35,8 +35,21 @@ import { CATEGORIE, categoriaResidua, guessCategoria } from "@/lib/campaignCateg
 
 const HUBSPOT = "https://api.hubapi.com";
 
-/** L'eta' massima del serbatoio principale, la stessa dell'app e di pool.ts. */
-const GIORNI_MAX = 20;
+/**
+ * L'eta' massima del serbatoio, la stessa dell'app (`MAX_LEAD_AGE_DAYS`) e di
+ * `pool.ts`.
+ *
+ * ERANO VENTI, E L'APP NE PESCA TRENTA. `pool.ts` era stato allineato (commit
+ * 85ce2e0) e questo file no, quindi il menu offriva solo le campagne con
+ * contatti negli ultimi venti giorni mentre il riquadro ne contava trenta: le
+ * campagne i cui contatti stanno fra i 20 e i 30 giorni venivano assegnate e
+ * **non si potevano escludere**, perche' nel menu non comparivano affatto.
+ *
+ * Misurato il 27 ottobre 2026 su `lms_rem_workshop_liberi_col_mattone_aste`:
+ * zero contatti a 20 giorni, 38 a 30. E' il guasto che questo file esiste per
+ * non avere - "non poter escludere quella che produce e' il problema vero".
+ */
+const GIORNI_MAX = 30;
 
 /**
  * Quanto vale l'elenco prima di rifarlo. Cambia con il ritmo con cui nascono
