@@ -142,6 +142,15 @@ async function elenca() {
   const esito = (await qstash("POST", `/schedules/${destinazione}`, {
     "Upstash-Cron": CRON,
     "Upstash-Schedule-Id": NOME,
+    // IL METODO VA DETTO, perche' QStash chiama in POST se non lo si dice e la
+    // rotta espone solo GET. Dal 21 ottobre al 29 ottobre 2026 ogni giro ha
+    // risposto 405: QStash riprovava tre volte, poi marcava FAILED, e da
+    // questa parte non si vedeva niente - nessun errore nei nostri log,
+    // perche' la rotta non veniva nemmeno eseguita. La freschezza oraria in
+    // quei nove giorni l'hanno retta solo GitHub Actions (che parte un giro su
+    // quattro) e il cron giornaliero di Vercel. Si scopre dagli eventi di
+    // QStash, non da qui: vale la pena guardarli dopo ogni modifica.
+    "Upstash-Method": "GET",
     // L'intestazione che la rotta si aspetta, inoltrata da QStash alla
     // destinazione. Il valore non compare da nessuna parte nei registri.
     "Upstash-Forward-Authorization": `Bearer ${segreto}`,
