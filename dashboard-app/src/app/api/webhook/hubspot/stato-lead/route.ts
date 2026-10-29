@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { waitUntil } from "@vercel/functions";
-import { getDb } from "@/lib/db";
 import { aggiornaUnContatto } from "@/lib/statiLead/sync";
+import { prenotaScarico } from "@/lib/statiLead/prenota";
 
 /**
  * NESSUNA RISPOSTA MEMORIZZATA, per lo stesso motivo del webhook delle
@@ -37,6 +37,17 @@ export const maxDuration = 60;
  * volte chi viene ripreso un mese dopo. aggiornaUnContatto() usa le stesse
  * funzioni e lo stesso SQL del giro completo, con un contatto solo in ingresso.
  *
+ * NON SCRIVE PIU' LUI. Dal 29 ottobre 2026 questo endpoint non tocca il
+ * database: PRENOTA un giro di scarico alla fine del quarto d'ora in corso, e
+ * le prenotazioni dello stesso quarto d'ora valgono per una sola. Il motivo e'
+ * il conto di Neon, che si paga a ore di accensione: una scrittura isolata ne
+ * costa cinque minuti, e centinaia di cambi di stato sparsi sulla giornata
+ * tenevano il database sveglio 7,5 ore al giorno, circa 57 CU-ore al mese su
+ * 100 incluse. Quel giorno la quota e' finita e il progetto e' stato sospeso.
+ * La cronologia arriva quindi con un quarto d'ora di ritardo invece che
+ * subito: per una tabella che prima aspettava la notte, e' comunque un altro
+ * mondo.
+ *
  * NON SOSTITUISCE IL GIRO A LOTTI, lo affianca. Un webhook puo' mancare - un
  * rilascio, un minuto di irraggiungibilita', i tentativi di HubSpot che si
  * esauriscono - e quando manca non lascia traccia: il dato semplicemente non
@@ -47,17 +58,17 @@ export const maxDuration = 60;
 /** Il corpo ammesso. Il payload di un workflow sono poche proprieta'. */
 const TETTO_CORPO = 64 * 1024;
 
+/**
+ * L'annotazione va NEL LOG, non piu' su sync_log.
+ *
+ * Scriverla sul database significava svegliarlo a ogni consegna, comprese
+ * quelle respinte e quelle ignorate: era meta' del costo di questo webhook, e
+ * per un rigo di diagnostica. I log di Vercel li conservano lo stesso, e le
+ * righe che contano - quante voci di cronologia sono state scritte - le scrive
+ * il giro di scarico, che il database lo tiene acceso comunque.
+ */
 async function annota(esito: string, messaggio: string): Promise<void> {
-  try {
-    const ora = new Date().toISOString();
-    await getDb().query(
-      `INSERT INTO sync_log (tipo, iniziato_at, finito_at, esito, messaggio)
-       VALUES ('webhook-stato-lead', $1::timestamptz, $1::timestamptz, $2, $3)`,
-      [ora, esito, messaggio.slice(0, 4000)]
-    );
-  } catch (e) {
-    console.error("[webhook/stato-lead] non sono riuscito ad annotare", e);
-  }
+  console.log(`[webhook/stato-lead] ${esito}: ${messaggio.slice(0, 1000)}`);
 }
 
 /** Confronto a tempo costante fra due stringhe di lunghezza qualsiasi. */
@@ -114,6 +125,27 @@ async function lavora(contattoId: string): Promise<void> {
     console.error("[webhook/stato-lead]", e);
     await annota("errore", `contatto ${contattoId}: ${m}`);
   }
+}
+
+/**
+ * Prenota lo scarico invece di scrivere subito.
+ *
+ * E' il cuore del risparmio: trecento cambi di stato in un pomeriggio
+ * diventano quattro risvegli del database all'ora invece di trecento. Vedi
+ * src/lib/statiLead/prenota.ts.
+ *
+ * SE LA PRENOTAZIONE NON PARTE si ricade sul lavoro diretto di prima, che
+ * costa una sveglia ma non perde niente. Un appuntamento che sparisce dalla
+ * tabella degli advisor telefonici vale piu' di cinque minuti di accensione.
+ */
+async function prenota(contattoId: string): Promise<void> {
+  const esito = await prenotaScarico();
+  if (esito.prenotato) {
+    console.log(`[webhook/stato-lead] contatto ${contattoId}: scarico prenotato per ${esito.quando} - ${esito.dettaglio}`);
+    return;
+  }
+  console.warn(`[webhook/stato-lead] prenotazione non riuscita (${esito.dettaglio}): scrivo subito`);
+  await lavora(contattoId);
 }
 
 /**
@@ -185,7 +217,7 @@ export async function POST(req: NextRequest) {
 
   // Risposta subito, lavoro dopo: un webhook che va in timeout viene
   // considerato fallito anche quando ha funzionato, e HubSpot lo ripete.
-  waitUntil(lavora(contattoId));
+  waitUntil(prenota(contattoId));
 
   return NextResponse.json({ ok: true, preso: contattoId });
 }
