@@ -29,12 +29,24 @@
  *                         Rate stanno in una voce a parte: sono incasso, non
  *                         vendita nuova.
  *
- *   storni                Boom con `boom_stage` = "Richiesta rimborso",
- *                         attribuiti al GIORNO DEL PAGAMENTO e non al giorno
+ *   storni                Boom con `boom_stage` = `recessed` (l'etichetta che
+ *                         si legge in HubSpot e' "Richiesta rimborso", ma la
+ *                         proprieta' contiene il VALORE INTERNO: confrontare
+ *                         con l'etichetta non e' mai vero, ed e' l'errore che
+ *                         teneva la colonna a zero fino al 31 ottobre 2026).
+ *                         Attribuiti al GIORNO DEL PAGAMENTO e non al giorno
  *                         della richiesta: cosi' il venduto netto di quel
  *                         giorno scende davvero, invece di lasciare un giorno
  *                         gonfio e uno negativo. E' il motivo per cui la
  *                         finestra di ricalcolo e' di 30 giorni.
+ *
+ *                         OGGI QUELLA PROPRIETA' NON LA RIEMPIE NESSUNO: su
+ *                         6.412 Boom di sempre, tre soli hanno `recessed`,
+ *                         tutti da 10 euro e di inizio 2025, con l'aria di
+ *                         essere prove. Nessun Boom ha importo negativo. La
+ *                         colonna quindi restera' a zero finche' i recessi
+ *                         non si cominceranno a segnare li' - e allora
+ *                         funzionera' da sola, senza toccare questo codice.
  *
  * IL DATABASE SI SVEGLIA UNA VOLTA SOLA per esecuzione, per le svolte e i no
  * show. Tutto il resto e' HubSpot. Neon si paga a ore di accensione, non a
@@ -46,7 +58,8 @@ import { PIPELINE_HT, FASE, estremiRoma, sfoglia } from "@/lib/report/giornalier
 const HUBSPOT = "https://api.hubapi.com";
 const BOOM = "2-130365112";
 const CHIUSURE = new Set(["Quota unica", "Acconto"]);
-const RIMBORSO = "Richiesta rimborso";
+/** Il valore interno, non l'etichetta "Richiesta rimborso" che si vede a schermo. */
+const RIMBORSO = "recessed";
 
 /** Un giorno piu' o meno n, senza farsi ingannare dall'ora legale. */
 export const piuGiorni = (d: string, n: number) =>
