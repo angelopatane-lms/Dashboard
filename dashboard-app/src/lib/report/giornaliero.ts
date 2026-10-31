@@ -50,7 +50,7 @@ const BOOM = "2-130365112";
 export const PIPELINE_HT = "433643709";
 
 /** Le fasi che servono, per id. Gli id non cambiano, le etichette si'. */
-const FASE = {
+export const FASE = {
   daSvolgere: "665590998",
   semina: "762372819",
   ripianificata: "665590999",
@@ -217,7 +217,7 @@ function mezzanotteRoma(data: string): number {
 }
 
 /** Mezzanotte di Roma, in millisecondi. Il giorno lo decide il fuso di chi lavora. */
-function estremiRoma(data: string): { da: number; a: number } {
+export function estremiRoma(data: string): { da: number; a: number } {
   return { da: mezzanotteRoma(data), a: mezzanotteRoma(giornoDopo(data)) };
 }
 
@@ -227,7 +227,7 @@ export function ieriRoma(): string {
   return `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, "0")}-${String(oggi.getDate()).padStart(2, "0")}`;
 }
 
-async function sfoglia(
+export async function sfoglia(
   token: string,
   oggetto: string,
   filters: unknown[],
