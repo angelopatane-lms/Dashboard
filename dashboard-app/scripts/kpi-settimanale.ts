@@ -105,28 +105,43 @@ async function campagneConSpesa(db: ReturnType<typeof getDb>, da: string, a: str
 }
 
 async function boom(token: string, da: string, a: string) {
-  const r = await fetch(`${HUBSPOT}/crm/v3/objects/${BOOM}/search`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      filterGroups: [
-        {
-          filters: [
-            { propertyName: "data_di_pagamento", operator: "GTE", value: String(mezzanotteRoma(da)) },
-            {
-              propertyName: "data_di_pagamento",
-              operator: "LT",
-              value: String(mezzanotteRoma(piuGiorni(a, 1)))
-            }
-          ]
-        }
-      ],
-      properties: ["prodotto", "tipologia_di_incasso", "tipo_di_vendita", "importo", "fatturato_atteso"],
-      limit: 100
-    })
-  });
-  if (!r.ok) throw new Error(`HubSpot ${r.status} sui Boom`);
-  return ((await r.json()) as { results?: Array<{ properties: Record<string, string> }> }).results ?? [];
+  // A PAGINE: una settimana sta sotto i 100 Boom, un mese no (ottobre 2026: 220).
+  const righe: Array<{ properties: Record<string, string> }> = [];
+  let after: string | undefined;
+  do {
+    const r = await fetch(`${HUBSPOT}/crm/v3/objects/${BOOM}/search`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filterGroups: [
+          {
+            filters: [
+              { propertyName: "data_di_pagamento", operator: "GTE", value: String(mezzanotteRoma(da)) },
+              {
+                propertyName: "data_di_pagamento",
+                operator: "LT",
+                value: String(mezzanotteRoma(piuGiorni(a, 1)))
+              }
+            ]
+          }
+        ],
+        properties: [
+          "prodotto", "tipologia_di_incasso", "tipo_di_vendita", "importo", "fatturato_atteso",
+          "data_di_pagamento", "hubspot_owner_id", "id_trattativa", "id_contatto_associato"
+        ],
+        limit: 100,
+        ...(after ? { after } : {})
+      })
+    });
+    if (!r.ok) throw new Error(`HubSpot ${r.status} sui Boom`);
+    const d = (await r.json()) as {
+      results?: Array<{ properties: Record<string, string> }>;
+      paging?: { next?: { after?: string } };
+    };
+    righe.push(...(d.results ?? []));
+    after = d.paging?.next?.after;
+  } while (after);
+  return righe;
 }
 
 const EVENTI = `(SELECT lower(nome) FROM utente_team_adesso WHERE team_nome = 'Eventi')`;
@@ -180,20 +195,20 @@ const PROGRAMMI = `(SELECT lower(nome) FROM utente_team_adesso WHERE team_nome =
           WHERE t.creata_ts >= $1::date AND t.creata_ts < ($2::date + INTERVAL '1 day')
             AND t.campagna_id = ANY($3::int[])
             AND (p.nome IS NULL OR lower(p.nome) NOT IN ${EVENTI}))::text AS appuntamenti,
-        (SELECT COUNT(DISTINCT t.contact_id) FROM trattativa t
-          JOIN proprietario p ON p.id::text = t.proprietario_id::text
-          WHERE t.svolta_ts >= $1::date AND t.svolta_ts < ($2::date + INTERVAL '1 day')
-            AND t.ripianificata_al IS NULL AND lower(p.nome) IN ${PROGRAMMI})::text AS svolti,
-        (SELECT COUNT(*) FROM trattativa t
-          JOIN proprietario p ON p.id::text = t.proprietario_id::text
-          WHERE t.vinta_ts >= $1::date AND t.vinta_ts < ($2::date + INTERVAL '1 day')
-            AND t.ripianificata_al IS NULL AND lower(p.nome) IN ${PROGRAMMI})::text AS vendite1`,
+        (SELECT COUNT(*) FROM (
+            SELECT DISTINCT ON (contact_id) contact_id, svolta_ts, proprietario_id, ripianificata_al
+            FROM trattativa
+            WHERE svolta_ts IS NOT NULL
+            ORDER BY contact_id, svolta_ts
+          ) prima
+          JOIN proprietario p ON p.id::text = prima.proprietario_id::text
+          WHERE prima.svolta_ts >= $1::date AND prima.svolta_ts < ($2::date + INTERVAL '1 day')
+            AND prima.ripianificata_al IS NULL AND lower(p.nome) IN ${PROGRAMMI})::text AS svolti`,
       [da, a, ids]
     )
   ).rows[0];
   const appuntamenti = Number(t.appuntamenti);
   const svolti1 = Number(t.svolti);
-  const vendite1 = Number(t.vendite1);
 
   // SOLDI.
   const righe = await boom(token, da, a);
@@ -208,6 +223,48 @@ const PROGRAMMI = `(SELECT lower(nome) FROM utente_team_adesso WHERE team_nome =
   const caricatoTot = somma(righe);
   const fatturato = somma(chiusure, "fatturato_atteso");
   const soloRate = somma(rate);
+
+  // VENDITE DA PRIMO APPUNTAMENTO: le chiusure qui sopra (quindi mai piu' di
+  // VENDITE TOTALI) di un advisor Programmi, il cui contatto fino al giorno del
+  // pagamento ha avuto UNA sola consulenza svolta e nessuna trattativa
+  // ripianificata. Il contatto si prende dalla trattativa del Boom, e solo se
+  // manca da id_contatto_associato: chi chiude spesso apre una trattativa nuova
+  // gia' vinta, e la consulenza sta su quella vecchia.
+  //
+  // LA SOLA REGOLA DEL REPORT GIORNALIERO (mai ripianificata) NON BASTA: a
+  // ottobre 2026 solo 20 consulenze svolte su 473 erano ripianificate, perche'
+  // la seconda consulenza di solito nasce su una trattativa nuova. Nella
+  // settimana 44 faceva passare per primo appuntamento un cliente con 15
+  // consulenze alle spalle. Le vendite senza nessuna consulenza sul CRM
+  // (trattativa creata gia' vinta) restano fuori: non si puo' dire da dove
+  // vengono.
+  //
+  // FINO AL 3 NOVEMBRE 2026 contava le trattative segnate vinte: nella
+  // settimana 44 davano 19 contro 15 vendite, perche' dentro c'erano rate di
+  // vendite vecchie, trattative vinte senza nessun pagamento e lo stesso
+  // contatto due volte.
+  const v1 = await db.query<{ n: string }>(
+    `SELECT COUNT(DISTINCT COALESCE(td.contact_id::text, b.contatto))::text AS n
+     FROM unnest($1::text[], $2::text[], $3::text[], $4::text[]) AS b(deal, contatto, owner, pagato)
+     LEFT JOIN trattativa td ON td.deal_id::text = b.deal
+     JOIN proprietario p ON p.id::text = b.owner
+     WHERE lower(p.nome) IN ${PROGRAMMI}
+       AND (SELECT COUNT(*) FROM trattativa t
+            WHERE t.contact_id::text = COALESCE(td.contact_id::text, b.contatto)
+              AND t.svolta_ts IS NOT NULL
+              AND t.svolta_ts < (b.pagato::timestamptz AT TIME ZONE 'Europe/Rome')::date + INTERVAL '1 day') = 1
+       AND NOT EXISTS (SELECT 1 FROM trattativa t
+            WHERE t.contact_id::text = COALESCE(td.contact_id::text, b.contatto)
+              AND t.ripianificata_al IS NOT NULL
+              AND t.ripianificata_al < (b.pagato::timestamptz AT TIME ZONE 'Europe/Rome')::date + INTERVAL '1 day')`,
+    [
+      chiusure.map((b) => (b.properties.id_trattativa ?? "").trim()),
+      chiusure.map((b) => (b.properties.id_contatto_associato ?? "").trim()),
+      chiusure.map((b) => b.properties.hubspot_owner_id ?? ""),
+      chiusure.map((b) => b.properties.data_di_pagamento)
+    ]
+  );
+  const vendite1 = Number(v1.rows[0].n);
 
   // I NUMERI COME LI VUOLE IL FOGLIO: virgola decimale e NESSUN separatore di
   // migliaia, che in un incollaggio trasformerebbe il numero in testo.
