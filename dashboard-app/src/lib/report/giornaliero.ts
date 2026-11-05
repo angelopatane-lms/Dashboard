@@ -451,40 +451,42 @@ export async function reportDelGiorno(opzioni: {
   // Rata senza chiusura nello stesso giorno resta rata, anche se non ci sono
   // pagamenti prima (storico mancante: non dovrebbe succedere). Le CHIUSURE
   // non cambiano: la rata non aggiunge una vendita, si somma a quella che c'e'.
-  const tipoIncasso = (b: (typeof incassi)[number]) => (b.properties.tipologia_di_incasso ?? "").trim();
-  const chiave = (b: (typeof incassi)[number]) =>
-    `${(b.properties.id_contatto_associato ?? "").trim()}|${(b.properties.prodotto ?? "").trim()}`;
-  const chiusuraPer = new Map<string, (typeof incassi)[number]>();
-  for (const b of chiusure) {
-    if ((b.properties.id_contatto_associato ?? "").trim()) chiusuraPer.set(chiave(b), b);
-  }
-  const rateCandidate = incassi.filter((b) => tipoIncasso(b) === "Rata" && chiusuraPer.has(chiave(b)));
+  type Boom = (typeof incassi)[number];
+  const tipoIncasso = (b: Boom) => (b.properties.tipologia_di_incasso ?? "").trim();
+  const contatto = (b: Boom) => (b.properties.id_contatto_associato ?? "").trim();
+  // LO STESSO PROGRAMMA. L'edizione a volte e' nel nome ("LIFE 13"), a volte
+  // solo nel suo campo ("ICMD Gold", "LIFE"), e le due cose non sempre
+  // tornano: al 5 novembre 2026 20 Boom "LIFE 13" avevano edizione 12. Quando
+  // c'e' il campo edizione su tutti e due vince lui (deciso da Angelo), e del
+  // nome conta solo la famiglia, senza il numero in fondo. Se manca su uno
+  // dei due, si confronta il nome intero.
+  const nome = (b: Boom) => (b.properties.prodotto ?? "").trim().toLowerCase();
+  const famiglia = (b: Boom) => nome(b).replace(/\s+\d+$/, "");
+  const edizione = (b: Boom) => (b.properties.edizione ?? "").trim();
+  const stessoProgramma = (x: Boom, y: Boom) =>
+    contatto(x) === contatto(y) &&
+    (edizione(x) && edizione(y)
+      ? famiglia(x) === famiglia(y) && edizione(x) === edizione(y)
+      : nome(x) === nome(y));
+  const chiusuraDi = (r: Boom) => chiusure.find((c) => contatto(c) && stessoProgramma(c, r));
+  const rateCandidate = incassi.filter((b) => tipoIncasso(b) === "Rata" && chiusuraDi(b));
   // Programma NUOVO: nessun Boom di quel contatto per quel programma prima di
-  // oggi. Altrimenti la chiusura di oggi non e' il primo pagamento.
-  //
-  // L'EDIZIONE CONTA. Il nome del prodotto non la porta: "ICMD Gold" e' lo
-  // stesso per la 13 e per la 14, l'edizione sta nel suo campo. Chi aveva
-  // gia' un biglietto della 13 e oggi compra la 14 compra un programma nuovo.
-  // Un'edizione vuota su uno dei due non separa niente.
-  const edizione = (b: (typeof incassi)[number]) => (b.properties.edizione ?? "").trim();
-  const prima: typeof incassi = [];
-  const contattiCandidati = [...new Set(rateCandidate.map((b) => b.properties.id_contatto_associato.trim()))];
+  // oggi. Altrimenti la chiusura di oggi non e' il primo pagamento: chi aveva
+  // l'edizione 13 e oggi compra la 14 compra un programma nuovo.
+  const prima: Boom[] = [];
+  const contattiCandidati = [...new Set(rateCandidate.map(contatto))];
   for (let i = 0; i < contattiCandidati.length; i += 100) {
     prima.push(...await sfoglia(token, BOOM, [
       { propertyName: "id_contatto_associato", operator: "IN", values: contattiCandidati.slice(i, i + 100) },
       { propertyName: "data_di_pagamento", operator: "LT", value: String(da) }
     ], ["prodotto", "id_contatto_associato", "edizione"]));
   }
-  const giaPagato = (r: (typeof incassi)[number]) => {
-    const ed = edizione(chiusuraPer.get(chiave(r))!);
-    return prima.some((b) => chiave(b) === chiave(r) && (!ed || !edizione(b) || edizione(b) === ed));
-  };
-  const rateDiVendita = rateCandidate.filter((b) => !giaPagato(b));
+  const rateDiVendita = rateCandidate.filter((r) => !prima.some((b) => stessoProgramma(b, chiusuraDi(r)!)));
   const rateVere = incassi.filter((b) => tipoIncasso(b) === "Rata" && !rateDiVendita.includes(b));
   // La rata segue la riga della sua chiusura, cosi' i numeri si sommano a vista.
   const conRate = [...chiusure, ...rateDiVendita];
-  const tipoVendita = (b: (typeof incassi)[number]) =>
-    (tipoIncasso(b) === "Rata" ? chiusuraPer.get(chiave(b))! : b).properties.tipo_di_vendita?.trim() ?? "";
+  const tipoVendita = (b: Boom) =>
+    (tipoIncasso(b) === "Rata" ? chiusuraDi(b)! : b).properties.tipo_di_vendita?.trim() ?? "";
 
   // LE TRE RIGHE DEI SOLDI NON SONO TRE ADDENDI, e per questo il 20 ottobre
   // 2026 il totale sembrava sbagliato: 5.000 telefoniche + 1.700 rate non
