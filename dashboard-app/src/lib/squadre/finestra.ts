@@ -1,65 +1,72 @@
 /**
- * I numeri di ogni persona, giorno per giorno, per le pagine delle squadre.
+ * La FOTOGRAFIA del giorno per le pagine delle squadre: una riga per persona,
+ * con le stesse colonne che la Dashboard mostra nelle sue due tabelle.
  *
- * PERCHE' STA QUI E NON NELLO SCRIPT. Lo stesso calcolo serve in due posti: lo
- * script che si lancia a mano (`scripts/squadre-giorno.ts`) e la rotta che il
- * progetto Squadre chiama ogni mattina (`/api/squadre/giorni`). Ricopiarlo
- * vorrebbe dire due definizioni di "chiusura" che prima o poi divergono.
+ * COSA C'E' QUI E COSA NO. Qui c'e' tutto tranne i soldi. Chiusure, venduto e
+ * storni le pagine delle squadre se li vanno a prendere su HubSpot ogni volta
+ * che qualcuno apre la pagina - vedi `src/lib/squadre/boom.ts` - perche' un
+ * Boom cancellato due giorni dopo renderebbe falsa una fotografia scattata
+ * prima, e sui soldi una cifra vecchia non e' accettabile. Tutto il resto -
+ * assegnati, chiamate, connessioni, appuntamenti, consulenze, no show - una
+ * volta passata la giornata non cambia piu', e si fotografa.
  *
- * LE DEFINIZIONI NON SONO NUOVE NEMMENO QUI. Vengono da
- * `src/lib/report/giornaliero.ts`, importate e non ricopiate: lo stesso codice
- * che fa il report delle 8. Se una regola cambia li', cambia qui lo stesso
- * giorno.
+ * LE REGOLE SONO QUELLE DELLE DUE TABELLE, non regole nuove. Un setter e un
+ * advisor non leggono le stesse colonne nemmeno quando si chiamano uguale, e
+ * il confronto riga per riga del 5 novembre 2026 lo ha misurato: su 26 persone
+ * delle squadre, 26 avevano almeno un numero diverso da quello della Dashboard.
+ * Per questo ogni voce qui sotto porta scritto da quale tabella viene.
  *
- *   svolte e no show      DAL DATABASE, non dalle fasi delle trattative.
- *                         `trattativa.svolta_ts` dice il giorno in cui la
- *                         consulenza si e' svolta; la fase dice dove sta la
- *                         trattativa adesso, che e' un'altra domanda. Le due
- *                         strade, misurate il 16 ottobre 2026, davano 20
- *                         contro 31. Il proprietario di quelle trattative non
- *                         sta nel database, quindi si chiede a HubSpot in
- *                         blocchi da 100.
+ *   assegnati, chiamate,  dal foglio Operatori, come le prime tre colonne di
+ *   connessioni           tutte e due le tabelle. Nel foglio le intestazioni
+ *                         convivono in due grafie ("Chiamate"/"Chiamati"), e
+ *                         si leggono tutte e due come in src/lib/analytics.ts.
  *
- *   appuntamenti fissati  trattative NATE quel giorno nella pipeline, contate
- *                         al SETTER. Il campo `setter` e' un id di
- *                         proprietario, non un nome.
+ *   appuntamenti          trattative NATE quel giorno nella pipeline High
+ *                         Ticket, contate a chi le ha FISSATE. Vale per tutte
+ *                         e due le tabelle: anche la colonna Appuntamenti di
+ *                         un advisor conta le trattative in cui e' lui il
+ *                         setter. Quando il campo `setter` e' vuoto si ripiega
+ *                         sul proprietario, come /api/hubspot-deals: sono 9
+ *                         trattative su 871 in trenta giorni, e buttarle via
+ *                         faceva sparire 2 appuntamenti a Tiffany Armel.
  *
- *   chiusure e venduto    Boom con `data_di_pagamento` quel giorno e tipologia
- *                         Quota unica o Acconto, contati al proprietario. Le
- *                         Rate stanno in una voce a parte: sono incasso, non
- *                         vendita nuova.
+ *   consulenze            DUE NUMERI DIVERSI, uno per tabella.
+ *                         Tabella Setter: le consulenze nate dai suoi
+ *                         appuntamenti, dal database per `setter_id`, come
+ *                         /api/setter-trattative. Contarle al proprietario
+ *                         lasciava i setter a zero - Mariarosaria 68 nella
+ *                         tabella Setter, 1 sulle pagine delle squadre.
+ *                         Tabella Advisor: la colonna Consulenze del foglio
+ *                         Operatori piu' le call registrate senza
+ *                         appuntamento, come effConsulenze() in
+ *                         OperatorStatsTable. Verificato il 5 novembre 2026 su
+ *                         Asma Bouchrit, 5 ottobre -> 4 novembre: la Dashboard
+ *                         dice 74, cioe' 64 dal foglio piu' 10 fuori CRM. Il
+ *                         database per proprietario ne direbbe 65.
  *
- *   storni                Boom con `boom_stage` = `recessed` (l'etichetta che
- *                         si legge in HubSpot e' "Richiesta rimborso", ma la
- *                         proprieta' contiene il VALORE INTERNO: confrontare
- *                         con l'etichetta non e' mai vero, ed e' l'errore che
- *                         teneva la colonna a zero fino al 31 ottobre 2026).
- *                         Attribuiti al GIORNO DEL PAGAMENTO e non al giorno
- *                         della richiesta: cosi' il venduto netto di quel
- *                         giorno scende davvero, invece di lasciare un giorno
- *                         gonfio e uno negativo. E' il motivo per cui la
- *                         finestra di ricalcolo e' di 30 giorni.
+ *   no show               al setter i suoi, dal database per `setter_id`, come
+ *                         fa la tabella Setter. All'advisor quelli delle
+ *                         trattative di cui e' proprietario: quella colonna
+ *                         nella tabella Advisor non c'e', e resta qui perche'
+ *                         a una squadra serve saperlo. La legenda lo dice.
  *
- *                         OGGI QUELLA PROPRIETA' NON LA RIEMPIE NESSUNO: su
- *                         6.412 Boom di sempre, tre soli hanno `recessed`,
- *                         tutti da 10 euro e di inizio 2025, con l'aria di
- *                         essere prove. Nessun Boom ha importo negativo. La
- *                         colonna quindi restera' a zero finche' i recessi
- *                         non si cominceranno a segnare li' - e allora
- *                         funzionera' da sola, senza toccare questo codice.
+ *   in programma          consulenze che erano in agenda quel giorno, al
+ *                         proprietario. Non viene da nessuna tabella: e' una
+ *                         colonna delle pagine delle squadre e basta.
  *
- * IL DATABASE SI SVEGLIA UNA VOLTA SOLA per esecuzione, per le svolte e i no
- * show. Tutto il resto e' HubSpot. Neon si paga a ore di accensione, non a
- * query: un'esecuzione al giorno costa i suoi cinque minuti di minimo e basta.
+ * IL DATABASE SI SVEGLIA UNA VOLTA SOLA per esecuzione, e solo qui dentro: le
+ * pagine aperte durante il giorno non lo toccano mai. Neon si paga a ore di
+ * accensione, non a query.
  */
 import { getDb } from "@/lib/db";
+import { fetchCsv } from "@/lib/csv";
+import { chiaveNome } from "@/lib/nomi";
 import { PIPELINE_HT, FASE, estremiRoma, sfoglia } from "@/lib/report/giornaliero";
+import { proprietari } from "@/lib/squadre/proprietari";
 
-const HUBSPOT = "https://api.hubapi.com";
-const BOOM = "2-130365112";
-const CHIUSURE = new Set(["Quota unica", "Acconto"]);
-/** Il valore interno, non l'etichetta "Richiesta rimborso" che si vede a schermo. */
-const RIMBORSO = "recessed";
+/** Il foglio Operatori: assegnati, chiamate, connessioni e consulenze. */
+const FOGLIO_OPERATORI = "1wHpVsYwB_5PKGSYYfD0W2pYa7U_3yWI1Re10T3jGgnM";
+const GID_OPERATORI = "245526930";
 
 /** Un giorno piu' o meno n, senza farsi ingannare dall'ora legale. */
 export const piuGiorni = (d: string, n: number) =>
@@ -74,20 +81,33 @@ function giornoRoma(grezzo: string | undefined): string {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Rome" }).format(new Date(ms));
 }
 
+/**
+ * I numeri di una persona in un giorno, come li direbbero le due tabelle.
+ *
+ * I nomi dicono da quale lato arrivano: `comeSetter` e' la riga della tabella
+ * Setter, `comeAdvisor` quella della tabella Advisor. Chi disegna sceglie il
+ * lato secondo il ruolo, e il totale di squadra somma un lato solo per
+ * colonna, cosi' la stessa consulenza non si conta due volte.
+ */
 export type Voci = {
-  fissati: number;
+  /** Foglio Operatori, uguale per tutte e due le tabelle. */
+  assegnati: number;
+  chiamate: number;
+  connessioni: number;
+  /** Appuntamenti fissati: sempre a chi ha fissato, in tutte e due le tabelle. */
+  appuntamenti: number;
+  /** Tabella Setter: consulenze nate dai suoi appuntamenti, e suoi no show. */
+  svolteComeSetter: number;
+  svolteComeSetterPrime: number;
+  noShowComeSetter: number;
+  /** Tabella Advisor: la colonna Consulenze e' questa piu' `fuoriCrm`. */
+  consulenzeFoglio: number;
+  fuoriCrm: number;
+  /** Lato proprietario, per le colonne che solo le squadre mostrano. */
   inProgramma: number;
-  svolti: number;
-  svoltiPrimi: number;
-  noShow: number;
   nonRegistrati: number;
-  chiusure: number;
-  venduto: number;
-  storni: number;
-  vendutoStornato: number;
-  rate: number;
-  chiusureComeSetter: number;
-  vendutoComeSetter: number;
+  svolteComeProprietario: number;
+  noShowComeProprietario: number;
 };
 
 export type Finestra = {
@@ -106,109 +126,109 @@ export type Storico = {
 };
 
 const vuote = (): Voci => ({
-  fissati: 0,
+  assegnati: 0,
+  chiamate: 0,
+  connessioni: 0,
+  appuntamenti: 0,
+  svolteComeSetter: 0,
+  svolteComeSetterPrime: 0,
+  noShowComeSetter: 0,
+  consulenzeFoglio: 0,
+  fuoriCrm: 0,
   inProgramma: 0,
-  svolti: 0,
-  svoltiPrimi: 0,
-  noShow: 0,
   nonRegistrati: 0,
-  chiusure: 0,
-  venduto: 0,
-  storni: 0,
-  vendutoStornato: 0,
-  rate: 0,
-  chiusureComeSetter: 0,
-  vendutoComeSetter: 0
+  svolteComeProprietario: 0,
+  noShowComeProprietario: 0
 });
 
-/** Le trattative chieste per id, in blocchi da 100. */
-async function trattativePerId(
-  token: string,
-  ids: string[],
-  properties: string[]
-): Promise<Map<string, Record<string, string>>> {
-  const out = new Map<string, Record<string, string>>();
-  for (let i = 0; i < ids.length; i += 100) {
-    const blocco = ids.slice(i, i + 100);
-    const r = await fetch(`${HUBSPOT}/crm/v3/objects/deals/batch/read`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ properties, inputs: blocco.map((id) => ({ id })) })
-    });
-    if (!r.ok) {
-      // UNA TRATTATIVA CANCELLATA fa fallire tutto il blocco con 207/404: si
-      // lascia perdere quel blocco invece di fermare tutto, che e' raro.
-      if (r.status === 404 || r.status === 207) continue;
-      throw new Error(`HubSpot ${r.status} sul blocco di trattative`);
-    }
-    const d = (await r.json()) as { results?: Array<{ id: string; properties: Record<string, string> }> };
-    for (const t of d.results ?? []) out.set(t.id, t.properties);
-  }
-  return out;
-}
-
 /**
- * Il nome di ogni proprietario, per id.
+ * Consulenze e no show della finestra, giorno per giorno, dai DUE lati.
  *
- * ANCHE QUELLI ARCHIVIATI, in una seconda chiamata: chi ha lasciato l'azienda
- * sparisce dall'elenco normale ma resta scritto sulle trattative di allora, e
- * senza questo nello storico comparirebbe un numero al posto di un nome.
+ * TUTTO DAL DATABASE, in una lettura sola. `setter_id` e' il setter di allora,
+ * congelato alla data dell'evento: e' la stessa colonna che legge
+ * /api/setter-trattative per la tabella Setter. Il proprietario sta in
+ * `trattativa.proprietario_id`, quindi nemmeno per quello serve chiamare
+ * HubSpot - la versione precedente leggeva 500 trattative a blocchi di 100
+ * per sapere una cosa che era gia' in casa.
  */
-async function proprietari(token: string): Promise<Map<string, string>> {
-  const m = new Map<string, string>();
-  for (const archiviati of [false, true]) {
-    let after: string | undefined;
-    do {
-      const u = `${HUBSPOT}/crm/v3/owners?limit=100&archived=${archiviati}${after ? `&after=${after}` : ""}`;
-      const r = await fetch(u, { headers: { Authorization: `Bearer ${token}` } });
-      if (!r.ok) break;
-      const d = (await r.json()) as {
-        results?: Array<{ id: string; firstName?: string; lastName?: string; email?: string }>;
-        paging?: { next?: { after?: string } };
-      };
-      for (const o of d.results ?? []) {
-        const nome = `${o.firstName ?? ""} ${o.lastName ?? ""}`.trim() || (o.email ?? "");
-        if (nome && !m.has(String(o.id))) m.set(String(o.id), nome + (archiviati ? " (archiviato)" : ""));
-      }
-      after = d.paging?.next?.after;
-    } while (after);
-  }
-  return m;
-}
-
-/**
- * Svolte e no show di una finestra, con il proprietario di ogni trattativa.
- *
- * Una lettura sola del database per tutta la finestra, non una al giorno.
- */
-async function consulenzeConProprietario(token: string, da: string, a: string) {
+async function consulenze(da: string, a: string) {
   const db = getDb();
-  const [svolte, disertate] = await Promise.all([
-    db.query<{ deal_id: string; giorno: string; prima: boolean }>(
-      `SELECT deal_id::text AS deal_id,
-              to_char((svolta_ts AT TIME ZONE 'Europe/Rome')::date, 'YYYY-MM-DD') AS giorno,
-              (ripianificata_al IS NULL) AS prima
-         FROM trattativa
-        WHERE svolta_ts >= ($1::date::timestamp AT TIME ZONE 'Europe/Rome')
-          AND svolta_ts <  (($2::date + INTERVAL '1 day')::timestamp AT TIME ZONE 'Europe/Rome')`,
-      [da, a]
-    ),
-    db.query<{ deal_id: string; giorno: string }>(
-      `SELECT n.deal_id::text AS deal_id,
-              to_char((n.ts AT TIME ZONE 'Europe/Rome')::date, 'YYYY-MM-DD') AS giorno
-         FROM no_show n
-        WHERE n.ts >= ($1::date::timestamp AT TIME ZONE 'Europe/Rome')
-          AND n.ts <  (($2::date + INTERVAL '1 day')::timestamp AT TIME ZONE 'Europe/Rome')`,
-      [da, a]
-    )
-  ]);
+  const dentro = (colonna: string) =>
+    `${colonna} >= ($1::date::timestamp AT TIME ZONE 'Europe/Rome')
+     AND ${colonna} <  (($2::date + INTERVAL '1 day')::timestamp AT TIME ZONE 'Europe/Rome')`;
+  const giorno = (colonna: string) =>
+    `to_char((${colonna} AT TIME ZONE 'Europe/Rome')::date, 'YYYY-MM-DD')`;
 
-  const ids = [
-    ...new Set([...svolte.rows.map((r) => r.deal_id), ...disertate.rows.map((r) => r.deal_id)])
-  ];
-  const dett = await trattativePerId(token, ids, ["hubspot_owner_id", "setter"]);
-  return { svolte: svolte.rows, disertate: disertate.rows, dett };
+  const [svolteSetter, svolteProprietario, noShowSetter, noShowProprietario, fuori] =
+    await Promise.all([
+      db.query<{ giorno: string; id: string; n: string; prime: string }>(
+        `SELECT ${giorno("t.svolta_ts")} AS giorno, t.setter_id::text AS id,
+                COUNT(*)::text AS n,
+                COUNT(*) FILTER (WHERE t.ripianificata_al IS NULL)::text AS prime
+           FROM trattativa t
+          WHERE ${dentro("t.svolta_ts")} AND t.setter_id IS NOT NULL
+          GROUP BY 1, 2`,
+        [da, a]
+      ),
+      db.query<{ giorno: string; id: string; n: string }>(
+        `SELECT ${giorno("t.svolta_ts")} AS giorno, t.proprietario_id::text AS id,
+                COUNT(*)::text AS n
+           FROM trattativa t
+          WHERE ${dentro("t.svolta_ts")} AND t.proprietario_id IS NOT NULL
+          GROUP BY 1, 2`,
+        [da, a]
+      ),
+      db.query<{ giorno: string; id: string; n: string }>(
+        `SELECT ${giorno("n.ts")} AS giorno, n.setter_id::text AS id, COUNT(*)::text AS n
+           FROM no_show n
+          WHERE ${dentro("n.ts")} AND n.setter_id IS NOT NULL
+          GROUP BY 1, 2`,
+        [da, a]
+      ),
+      // La tabella `no_show` il proprietario non ce l'ha: si prende dalla
+      // trattativa a cui l'evento appartiene.
+      db.query<{ giorno: string; id: string; n: string }>(
+        `SELECT ${giorno("n.ts")} AS giorno, t.proprietario_id::text AS id, COUNT(*)::text AS n
+           FROM no_show n
+           JOIN trattativa t ON t.deal_id = n.deal_id
+          WHERE ${dentro("n.ts")} AND t.proprietario_id IS NOT NULL
+          GROUP BY 1, 2`,
+        [da, a]
+      ),
+      // LE CONSULENZE CHE SUL CRM NON ESISTONO: call registrate senza nessun
+      // appuntamento. Non hanno trattativa, quindi non hanno setter:
+      // appartengono all'advisor e basta, e la tabella Advisor le somma alla
+      // colonna del foglio.
+      db.query<{ giorno: string; id: string; n: string }>(
+        `SELECT ${giorno("f.inizio_ts")} AS giorno, f.advisor_id::text AS id, COUNT(*)::text AS n
+           FROM consulenza_fuori_crm f
+          WHERE ${dentro("f.inizio_ts")} AND f.advisor_id IS NOT NULL
+          GROUP BY 1, 2`,
+        [da, a]
+      )
+    ]);
+
+  return {
+    svolteSetter: svolteSetter.rows,
+    svolteProprietario: svolteProprietario.rows,
+    noShowSetter: noShowSetter.rows,
+    noShowProprietario: noShowProprietario.rows,
+    fuori: fuori.rows
+  };
 }
+
+/** La data del foglio, normalizzata: dentro ci sono tutte e due le scritture. */
+function dataFoglio(v: string): string {
+  const s = (v ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const m = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/.exec(s);
+  return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : s;
+}
+
+const numeroFoglio = (v: unknown) => {
+  const n = Number(String(v ?? "").replace(/[^\d.-]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+};
 
 /**
  * Il calcolo vero e proprio, da un giorno all'altro, estremi compresi.
@@ -228,20 +248,19 @@ export async function calcolaFinestra(
 
   const nomi = await proprietari(token);
 
-  // Una struttura sola: giorno -> persona -> voci.
   const per: Record<string, Record<string, Voci>> = {};
-  const voce = (giorno: string, chi: string): Voci => {
-    if (!chi) return vuote(); // senza persona il numero non ha dove andare
-    per[giorno] ??= {};
-    per[giorno][chi] ??= vuote();
-    return per[giorno][chi];
-  };
   for (const g of giorni) per[g] = {};
+  const voce = (giorno: string, chi: string): Voci => {
+    const id = (chi ?? "").trim();
+    if (!id || !per[giorno]) return vuote(); // senza persona il numero non ha dove andare
+    per[giorno][id] ??= vuote();
+    return per[giorno][id];
+  };
 
   const estremiDa = estremiRoma(da).da;
   const estremiA = estremiRoma(a).a;
 
-  // 1. APPUNTAMENTI FISSATI, al setter.
+  // 1. APPUNTAMENTI FISSATI, a chi li ha fissati.
   const fissate = await sfoglia(
     token,
     "deals",
@@ -256,7 +275,9 @@ export async function calcolaFinestra(
   for (const t of fissate) {
     const g = giornoRoma(t.properties.createdate);
     if (!per[g]) continue;
-    voce(g, (t.properties.setter ?? "").trim()).fissati += 1;
+    const chi =
+      (t.properties.setter ?? "").trim() || (t.properties.hubspot_owner_id ?? "").trim();
+    voce(g, chi).appuntamenti += 1;
   }
   racconta(`  trattative nate nella finestra: ${fissate.length}`);
 
@@ -275,7 +296,7 @@ export async function calcolaFinestra(
         { propertyName: campo, operator: "GTE", value: String(largoDa) },
         { propertyName: campo, operator: "LT", value: String(largoA) }
       ],
-      ["dealstage", "data_appuntamento", "data_e_ora_appuntamento", "hubspot_owner_id", "setter"],
+      ["dealstage", "data_appuntamento", "data_e_ora_appuntamento", "hubspot_owner_id"],
       400
     );
     for (const t of righe) if (!perId.has(t.id)) perId.set(t.id, t.properties);
@@ -283,76 +304,62 @@ export async function calcolaFinestra(
   for (const [, p] of perId) {
     const g = giornoRoma(p.data_e_ora_appuntamento || p.data_appuntamento);
     if (!per[g]) continue;
-    const chi = (p.hubspot_owner_id ?? "").trim();
-    const v = voce(g, chi);
+    const v = voce(g, (p.hubspot_owner_id ?? "").trim());
     v.inProgramma += 1;
     if ((p.dealstage ?? "").trim() === FASE.daSvolgere) v.nonRegistrati += 1;
   }
   racconta(`  consulenze in programma nella finestra: ${perId.size}`);
 
-  // 3. SVOLTE E NO SHOW, dal database, con il proprietario da HubSpot.
-  const c = await consulenzeConProprietario(token, da, a);
-  for (const r of c.svolte) {
-    const chi = (c.dett.get(r.deal_id)?.hubspot_owner_id ?? "").trim();
-    if (!per[r.giorno]) continue;
-    const v = voce(r.giorno, chi);
-    v.svolti += 1;
-    if (r.prima) v.svoltiPrimi += 1;
+  // 3. CONSULENZE E NO SHOW, dal database, dai due lati.
+  const c = await consulenze(da, a);
+  for (const r of c.svolteSetter) {
+    const v = voce(r.giorno, r.id);
+    v.svolteComeSetter += Number(r.n) || 0;
+    v.svolteComeSetterPrime += Number(r.prime) || 0;
   }
-  for (const r of c.disertate) {
-    const chi = (c.dett.get(r.deal_id)?.hubspot_owner_id ?? "").trim();
-    if (!per[r.giorno]) continue;
-    voce(r.giorno, chi).noShow += 1;
-  }
-  racconta(`  svolte: ${c.svolte.length}   no show: ${c.disertate.length}`);
-
-  // 4. BOOM: chiusure, venduto, storni, rate.
-  const boom = await sfoglia(
-    token,
-    BOOM,
-    [
-      { propertyName: "data_di_pagamento", operator: "GTE", value: String(estremiDa) },
-      { propertyName: "data_di_pagamento", operator: "LT", value: String(estremiA) }
-    ],
-    [
-      "data_di_pagamento",
-      "importo",
-      "prodotto",
-      "tipologia_di_incasso",
-      "tipo_di_vendita",
-      "boom_stage",
-      "hubspot_owner_id",
-      "setter"
-    ],
-    400
+  for (const r of c.svolteProprietario) voce(r.giorno, r.id).svolteComeProprietario += Number(r.n) || 0;
+  for (const r of c.noShowSetter) voce(r.giorno, r.id).noShowComeSetter += Number(r.n) || 0;
+  for (const r of c.noShowProprietario) voce(r.giorno, r.id).noShowComeProprietario += Number(r.n) || 0;
+  for (const r of c.fuori) voce(r.giorno, r.id).fuoriCrm += Number(r.n) || 0;
+  racconta(
+    `  consulenze: ${c.svolteSetter.length} righe per setter, ${c.svolteProprietario.length} per proprietario;` +
+      ` no show: ${c.noShowSetter.length} / ${c.noShowProprietario.length}; fuori CRM: ${c.fuori.length}`
   );
-  for (const b of boom) {
-    const g = giornoRoma(b.properties.data_di_pagamento);
-    if (!per[g]) continue;
-    const importo = Number(b.properties.importo) || 0;
-    const tipologia = (b.properties.tipologia_di_incasso ?? "").trim();
-    const stornato = (b.properties.boom_stage ?? "").trim() === RIMBORSO;
-    const chi = (b.properties.hubspot_owner_id ?? "").trim();
-    const chiSetter = (b.properties.setter ?? "").trim();
 
-    if (CHIUSURE.has(tipologia)) {
-      const v = voce(g, chi);
-      v.chiusure += 1;
-      v.venduto += importo;
-      if (stornato) {
-        v.storni += 1;
-        v.vendutoStornato += importo;
-      }
-      if (chiSetter) {
-        const s = voce(g, chiSetter);
-        s.chiusureComeSetter += 1;
-        s.vendutoComeSetter += importo;
-      }
-    } else if (tipologia === "Rata") {
-      voce(g, chi).rate += importo;
+  // 4. IL FOGLIO OPERATORI: assegnati, chiamate, connessioni, consulenze.
+  //
+  // UNA LETTURA SOLA PER TUTTA LA FINESTRA: il foglio e' una fotografia presa
+  // a fine giornata, rileggerlo per ogni giorno darebbe sempre le stesse righe.
+  //
+  // SI AGGANCIA PER NOME, perche' il foglio di id non ne ha. Verificato il 5
+  // novembre 2026: tutte e 26 le persone delle squadre si agganciano, e resta
+  // fuori una riga sola - "Nora D'Ascanio (Secondario)", 15 chiamate in un
+  // mese - che la Dashboard ignora allo stesso modo.
+  try {
+    const righe = await fetchCsv(
+      `https://docs.google.com/spreadsheets/d/${FOGLIO_OPERATORI}/export?format=csv&gid=${GID_OPERATORI}`,
+      { next: { revalidate: 0 } }
+    );
+    let agganciate = 0;
+    for (const r of righe) {
+      const g = dataFoglio((r["Data"] ?? "").toString());
+      if (!per[g]) continue;
+      const id = nomi.perNome.get(chiaveNome((r["Operatore"] ?? "").toString()));
+      if (!id) continue;
+      agganciate++;
+      const v = voce(g, id);
+      v.assegnati += numeroFoglio(r["Assegnati"]);
+      // Le due grafie convivono nel foglio, come in src/lib/analytics.ts.
+      v.chiamate += numeroFoglio(r["Chiamati"] || r["Chiamate"]);
+      v.connessioni += numeroFoglio(r["Connessi"] || r["Connessioni"]);
+      v.consulenzeFoglio += numeroFoglio(r["Consulenze"]);
     }
+    racconta(`  righe del foglio Operatori agganciate: ${agganciate}`);
+  } catch (e) {
+    // SENZA FOGLIO SI VA AVANTI LO STESSO: tre colonne vuote sono meglio di
+    // nessuna pagina, e il resto dei numeri non dipende da lui.
+    racconta(`  foglio Operatori non letto: ${e instanceof Error ? e.message : String(e)}`);
   }
-  racconta(`  boom nella finestra: ${boom.length}`);
 
   return {
     generato: new Date().toISOString(),
@@ -360,7 +367,7 @@ export async function calcolaFinestra(
     nomi: Object.fromEntries(
       [...new Set(giorni.flatMap((g) => Object.keys(per[g] ?? {})))].map((id) => [
         id,
-        nomi.get(id) ?? `(proprietario ${id})`
+        nomi.perId.get(id) ?? `(proprietario ${id})`
       ])
     ),
     giorni: per

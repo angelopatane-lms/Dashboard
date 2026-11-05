@@ -56,7 +56,11 @@ const DATI = path.join(CARTELLA, "dati");
       console.log(`\n${g}`);
       for (const [id, v] of righe) {
         console.log(
-          `   ${(uscita.nomi[id] ?? id).padEnd(24)} fiss ${String(v.fissati).padStart(3)}  prog ${String(v.inProgramma).padStart(3)}  svolti ${String(v.svolti).padStart(3)}  noshow ${String(v.noShow).padStart(3)}  chius ${String(v.chiusure).padStart(2)}  vend ${v.venduto.toFixed(0).padStart(7)}${v.storni ? `  STORNI ${v.storni}` : ""}`
+          `   ${(uscita.nomi[id] ?? id).padEnd(24)}` +
+            ` ass ${String(v.assegnati).padStart(4)}  chiam ${String(v.chiamate).padStart(4)}  conn ${String(v.connessioni).padStart(3)}` +
+            `  app ${String(v.appuntamenti).padStart(3)}  prog ${String(v.inProgramma).padStart(3)}` +
+            `  cons[adv] ${String(v.consulenzeFoglio + v.fuoriCrm).padStart(3)}  cons[set] ${String(v.svolteComeSetter).padStart(3)}` +
+            `  noshow ${String(v.noShowComeProprietario).padStart(3)}/${String(v.noShowComeSetter).padStart(3)}`
         );
       }
     }
