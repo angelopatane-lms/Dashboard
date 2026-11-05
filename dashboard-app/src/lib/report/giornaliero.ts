@@ -461,16 +461,25 @@ export async function reportDelGiorno(opzioni: {
   const rateCandidate = incassi.filter((b) => tipoIncasso(b) === "Rata" && chiusuraPer.has(chiave(b)));
   // Programma NUOVO: nessun Boom di quel contatto per quel programma prima di
   // oggi. Altrimenti la chiusura di oggi non e' il primo pagamento.
-  const giaPagati = new Set<string>();
+  //
+  // L'EDIZIONE CONTA. Il nome del prodotto non la porta: "ICMD Gold" e' lo
+  // stesso per la 13 e per la 14, l'edizione sta nel suo campo. Chi aveva
+  // gia' un biglietto della 13 e oggi compra la 14 compra un programma nuovo.
+  // Un'edizione vuota su uno dei due non separa niente.
+  const edizione = (b: (typeof incassi)[number]) => (b.properties.edizione ?? "").trim();
+  const prima: typeof incassi = [];
   const contattiCandidati = [...new Set(rateCandidate.map((b) => b.properties.id_contatto_associato.trim()))];
   for (let i = 0; i < contattiCandidati.length; i += 100) {
-    const prima = await sfoglia(token, BOOM, [
+    prima.push(...await sfoglia(token, BOOM, [
       { propertyName: "id_contatto_associato", operator: "IN", values: contattiCandidati.slice(i, i + 100) },
       { propertyName: "data_di_pagamento", operator: "LT", value: String(da) }
-    ], ["prodotto", "id_contatto_associato"]);
-    for (const b of prima) giaPagati.add(chiave(b));
+    ], ["prodotto", "id_contatto_associato", "edizione"]));
   }
-  const rateDiVendita = rateCandidate.filter((b) => !giaPagati.has(chiave(b)));
+  const giaPagato = (r: (typeof incassi)[number]) => {
+    const ed = edizione(chiusuraPer.get(chiave(r))!);
+    return prima.some((b) => chiave(b) === chiave(r) && (!ed || !edizione(b) || edizione(b) === ed));
+  };
+  const rateDiVendita = rateCandidate.filter((b) => !giaPagato(b));
   const rateVere = incassi.filter((b) => tipoIncasso(b) === "Rata" && !rateDiVendita.includes(b));
   // La rata segue la riga della sua chiusura, cosi' i numeri si sommano a vista.
   const conRate = [...chiusure, ...rateDiVendita];
