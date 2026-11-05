@@ -437,11 +437,45 @@ export async function reportDelGiorno(opzioni: {
   const incassi = await sfoglia(token, BOOM, [
     { propertyName: "data_di_pagamento", operator: "GTE", value: String(da) },
     { propertyName: "data_di_pagamento", operator: "LT", value: String(a) }
-  ], ["prodotto", "tipologia_di_incasso", "tipo_di_vendita", "importo", "edizione"]);
+  ], ["prodotto", "tipologia_di_incasso", "tipo_di_vendita", "importo", "edizione", "id_contatto_associato"]);
 
   const chiusure = incassi.filter((b) => CHIUSURE.has((b.properties.tipologia_di_incasso ?? "").trim()));
   const somma = (righe: typeof incassi) =>
     righe.reduce((s, b) => s + (Number(b.properties.importo) || 0), 0);
+
+  // LE RATE DEL GIORNO DEL PRIMO PAGAMENTO SONO VENDITA, non rate (deciso da
+  // Angelo il 5 novembre 2026, lo vuole il CEO). Se un contatto paga un
+  // programma nuovo con un Acconto e una Rata lo stesso giorno, quei soldi
+  // sono la vendita: vanno nella riga della chiusura, telefonica o altra.
+  // Rata vera e' solo quella pagata dal giorno dopo il primo pagamento. Una
+  // Rata senza chiusura nello stesso giorno resta rata, anche se non ci sono
+  // pagamenti prima (storico mancante: non dovrebbe succedere). Le CHIUSURE
+  // non cambiano: la rata non aggiunge una vendita, si somma a quella che c'e'.
+  const tipoIncasso = (b: (typeof incassi)[number]) => (b.properties.tipologia_di_incasso ?? "").trim();
+  const chiave = (b: (typeof incassi)[number]) =>
+    `${(b.properties.id_contatto_associato ?? "").trim()}|${(b.properties.prodotto ?? "").trim()}`;
+  const chiusuraPer = new Map<string, (typeof incassi)[number]>();
+  for (const b of chiusure) {
+    if ((b.properties.id_contatto_associato ?? "").trim()) chiusuraPer.set(chiave(b), b);
+  }
+  const rateCandidate = incassi.filter((b) => tipoIncasso(b) === "Rata" && chiusuraPer.has(chiave(b)));
+  // Programma NUOVO: nessun Boom di quel contatto per quel programma prima di
+  // oggi. Altrimenti la chiusura di oggi non e' il primo pagamento.
+  const giaPagati = new Set<string>();
+  const contattiCandidati = [...new Set(rateCandidate.map((b) => b.properties.id_contatto_associato.trim()))];
+  for (let i = 0; i < contattiCandidati.length; i += 100) {
+    const prima = await sfoglia(token, BOOM, [
+      { propertyName: "id_contatto_associato", operator: "IN", values: contattiCandidati.slice(i, i + 100) },
+      { propertyName: "data_di_pagamento", operator: "LT", value: String(da) }
+    ], ["prodotto", "id_contatto_associato"]);
+    for (const b of prima) giaPagati.add(chiave(b));
+  }
+  const rateDiVendita = rateCandidate.filter((b) => !giaPagati.has(chiave(b)));
+  const rateVere = incassi.filter((b) => tipoIncasso(b) === "Rata" && !rateDiVendita.includes(b));
+  // La rata segue la riga della sua chiusura, cosi' i numeri si sommano a vista.
+  const conRate = [...chiusure, ...rateDiVendita];
+  const tipoVendita = (b: (typeof incassi)[number]) =>
+    (tipoIncasso(b) === "Rata" ? chiusuraPer.get(chiave(b))! : b).properties.tipo_di_vendita?.trim() ?? "";
 
   // LE TRE RIGHE DEI SOLDI NON SONO TRE ADDENDI, e per questo il 20 ottobre
   // 2026 il totale sembrava sbagliato: 5.000 telefoniche + 1.700 rate non
@@ -451,15 +485,9 @@ export async function reportDelGiorno(opzioni: {
   // compare solo nei giorni in cui resta davvero qualcosa fuori: cosi' i
   // numeri si sommano a vista e nei giorni tutti telefonici il report e'
   // identico a prima.
-  const telefoniche = chiusure.filter(
-    (b) => (b.properties.tipo_di_vendita ?? "").trim() === "Telefonica"
-  );
-  const altre = chiusure.filter(
-    (b) => (b.properties.tipo_di_vendita ?? "").trim() !== "Telefonica"
-  );
-  const altreVenditeTipi = [
-    ...new Set(altre.map((b) => (b.properties.tipo_di_vendita ?? "").trim() || "senza tipo"))
-  ];
+  const telefoniche = conRate.filter((b) => tipoVendita(b) === "Telefonica");
+  const altre = conRate.filter((b) => tipoVendita(b) !== "Telefonica");
+  const altreVenditeTipi = [...new Set(altre.map((b) => tipoVendita(b) || "senza tipo"))];
 
   // 4. IL CUMULATO DEI BIGLIETTI ICMD PAGANTI: la base piu' quelli nuovi.
   //
@@ -530,7 +558,7 @@ export async function reportDelGiorno(opzioni: {
     venditeTelefoniche: somma(telefoniche),
     altreVendite: somma(altre),
     altreVenditeTipi,
-    totaleRate: somma(incassi.filter((b) => (b.properties.tipologia_di_incasso ?? "").trim() === "Rata")),
+    totaleRate: somma(rateVere),
     totaleIncasso: somma(incassi),
     totali: blocco(c.svolteTutte, c.noShowTutti, fermi.length, chiusure),
     primoApp: blocco(c.svoltePrime, c.noShowPrimi, fermiPrimi.length, chiusure),
