@@ -43,28 +43,30 @@ import { getDb } from "@/lib/db";
  * rimandarlo a mano quando qualcosa e' andato storto.
  */
 /**
- * Il canale di destinazione, scritto qui e non solo fra le variabili.
+ * A CHI VA IL REPORT, in ordine.
  *
- * UN ID DI CANALE NON E' UN SEGRETO, e non doveva stare fra le variabili
- * d'ambiente senza una scorta: il 17 e il 18 ottobre 2026 il report non e'
- * arrivato perche' REPORT_SLACK_A non era stata salvata in produzione, e la
- * rotta rispondeva 503 prima ancora di provarci. Una chiave va protetta, un id
- * di canale va scritto nel codice - cosi' non puo' mancare.
+ * DAL 6 NOVEMBRE 2026 NON VA PIU' SUL CANALE dell'ufficio (`C07K733QWBS`), ma
+ * in privato ad Angelo e a Salvatore Scibetta: chiesto da Angelo, che del
+ * canale ha bisogno per delle prove. Il canale non riceve piu' niente da
+ * questa rotta; l'id resta scritto qui perche' rimetterlo in elenco sia una
+ * riga e non una ricerca.
  *
- * La variabile resta e ha la precedenza: serve a spostare il report altrove
- * senza ripubblicare.
+ * I DESTINATARI STANNO NEL CODICE, non fra le variabili d'ambiente. Un id di
+ * canale o di utente non e' un segreto, e il 17 e il 18 ottobre 2026 il report
+ * non e' arrivato proprio perche' `REPORT_SLACK_A` non era stata salvata in
+ * produzione e la rotta rispondeva 503 prima ancora di provarci. Per lo stesso
+ * motivo quella variabile adesso NON si guarda piu': se e' rimasta impostata
+ * su Vercel non puo' far tornare il report dove non deve andare.
+ *
+ * IL PRIMO COMANDA, gli altri seguono. Se il primo non parte la giornata si
+ * libera e la seconda sveglia riprova; se non parte uno degli altri la
+ * giornata resta presa - liberarla rimanderebbe il report a chi l'ha gia'
+ * ricevuto - e l'esito finisce nella colonna `copia_privata`.
  */
-const CANALE = "C07K733QWBS";
-
-/**
- * Chi riceve lo stesso report in privato, oltre al canale. Dal 21 ottobre 2026
- * Salvatore Scibetta, chiesto da Angelo.
- *
- * IL CANALE COMANDA, i privati seguono: se un privato non parte la giornata
- * resta presa, perche' liberarla farebbe ripartire il report anche nel canale
- * con la seconda sveglia, e l'ufficio lo riceverebbe due volte.
- */
-const ANCHE_A = ["U05GRL80N85"];
+const DESTINATARI = [
+  "U05JM17H5BL", // Angelo Patane'
+  "U05GRL80N85" // Salvatore Scibetta
+];
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -89,7 +91,7 @@ export async function GET(req: NextRequest) {
 
   const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
   const slack = process.env.SLACK_BOT_TOKEN;
-  const a = process.env.REPORT_SLACK_A || CANALE;
+  const [primo, ...altri] = DESTINATARI;
   if (!token || !slack) {
     const manca = [
       !token && "HUBSPOT_PRIVATE_APP_TOKEN",
@@ -144,22 +146,49 @@ export async function GET(req: NextRequest) {
       bigliettiBaseAl: process.env.REPORT_BIGLIETTI_BASE_AL || undefined
     });
     const testo = messaggio(r);
-    const esito = await mandaSlack(testo, slack, a);
+    const esito = await mandaSlack(testo, slack, primo);
     if (!esito.ok) {
       console.error("[report-giornaliero] Slack:", esito.error);
       // SI RESTITUISCE LA GIORNATA: se Slack ha rifiutato, il report non e'
-      // arrivato, e la seconda sveglia deve poter riprovare invece di trovare
-      // la riga occupata da un tentativo fallito.
+      // arrivato a nessuno, e la seconda sveglia deve poter riprovare invece
+      // di trovare la riga occupata da un tentativo fallito.
       await db.query(`DELETE FROM report_inviato WHERE giorno = $1::date`, [data]);
       return NextResponse.json({ error: `Slack: ${esito.error}` }, { status: 502 });
     }
-    const privati: Record<string, string> = {};
-    for (const u of ANCHE_A) {
+    const consegne: Record<string, string> = { [primo]: "ok" };
+    for (const u of altri) {
       const p = await mandaSlack(testo, slack, u).catch((e) => ({ ok: false, error: String(e) }));
-      privati[u] = p.ok ? "ok" : `non mandato: ${p.error}`;
-      if (!p.ok) console.error(`[report-giornaliero] privato a ${u}:`, p.error);
+      consegne[u] = p.ok ? "ok" : `non mandato: ${p.error}`;
+      if (!p.ok) console.error(`[report-giornaliero] copia a ${u}:`, p.error);
     }
-    return NextResponse.json({ ok: true, giorno: data, privati });
+
+    /**
+     * COM'E' ANDATA OGNI CONSEGNA, scritto accanto alla riga del giorno.
+     *
+     * La riga da sola dice solo che il PRIMO destinatario ha ricevuto: se
+     * Slack lo rifiuta, poche righe sopra la riga viene cancellata. Gli altri
+     * sono best-effort, e fino a oggi un loro fallimento non lasciava nessuna
+     * traccia leggibile - restava nei log di Vercel, dove non guarda nessuno.
+     *
+     * NON SI SCRIVE SU SLACK: il report e' il report, questo e' un dato di
+     * controllo e vive nel database.
+     *
+     * IN UN SUO try, e non e' un dettaglio: se questa scrittura fallisse
+     * dentro il try grande, il catch cancellerebbe la riga del giorno e la
+     * seconda sveglia manderebbe il report una SECONDA VOLTA a chi l'ha gia'
+     * ricevuto. Un esito non registrato e' un fastidio, un report doppio e' un
+     * danno.
+     */
+    await db
+      .query(`UPDATE report_inviato SET copia_privata = $2 WHERE giorno = $1::date`, [
+        data,
+        Object.entries(consegne)
+          .map(([u, esito]) => `${u}: ${esito}`)
+          .join(" · ")
+      ])
+      .catch((e) => console.error("[report-giornaliero] esito delle consegne non scritto:", e));
+
+    return NextResponse.json({ ok: true, giorno: data, consegne });
   } catch (e) {
     console.error("[report-giornaliero]", e);
     await db.query(`DELETE FROM report_inviato WHERE giorno = $1::date`, [data]).catch(() => {});
