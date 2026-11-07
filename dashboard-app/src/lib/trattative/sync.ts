@@ -110,6 +110,13 @@ function valoreAl(storico: Voce[], istante: number): string {
 /**
  * Data della prima consulenza svolta, o null se non e' mai avvenuta.
  *
+ * SOLO LA PRIMA, E E' VOLUTO. Una trattativa puo' produrre piu' consulenze -
+ * ripianificata e svolta di nuovo, oppure una seconda call di chiusura: in
+ * ottobre 2026 erano 18 trattative, per 24 consulenze oltre la prima, e una
+ * sola ne aveva cinque. Di quelle si conta SOLO LA PRIMA: deciso da Angelo il
+ * 7 novembre 2026. Chi un domani trovasse questo "si ferma al primo
+ * passaggio" e lo scambiasse per una svista non lo corregga: e' la regola.
+ *
  * PERCHE' NON SI USA LA PROPRIETA' fase_precedente: e' mantenuta dal workflow
  * "Sergente", creato il 1 agosto 2026, quindi per le trattative precedenti e'
  * semplicemente vuota (misurato: 0% di cronologia da gennaio a luglio, 90% da
