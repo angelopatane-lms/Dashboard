@@ -30,7 +30,17 @@
  *                         trattative su 871 in trenta giorni, e buttarle via
  *                         faceva sparire 2 appuntamenti a Tiffany Armel.
  *
- *   consulenze            DUE NUMERI DIVERSI, uno per tabella.
+ *   consulenze            DUE NUMERI DIVERSI, uno per lato, DALLA STESSA
+ *                         FONTE: lo storico dei passaggi di fase. Al setter
+ *                         quelle nate dai suoi appuntamenti, a chi vende
+ *                         quelle che ha tenuto (`svolteComeProprietario`).
+ *                         Dal 7 novembre 2026: prima il lato advisor leggeva
+ *                         il foglio piu' le call senza appuntamento, e quella
+ *                         somma gonfiava la colonna - a Mattia Primo 16
+ *                         invece di 9 fra l'1 e il 6 novembre. `consulenzeFoglio`
+ *                         e `fuoriCrm` restano nella fotografia perche' servono
+ *                         ai confronti, ma non sono piu' la fonte di nessuna
+ *                         colonna. Qui sotto com'era, e perche':
  *                         Tabella Setter: le consulenze nate dai suoi
  *                         appuntamenti, dal database per `setter_id`, come
  *                         /api/setter-trattative. Contarle al proprietario

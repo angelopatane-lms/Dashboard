@@ -154,10 +154,16 @@ export default function DashboardEnterprise({
   // denominatore di "% Chiusura" sulla sua pagina. Nel foglio Operatori quel
   // campo e' zero per chi fa solo il setter.
   const [svolteSetter, setSvolteSetter] = useState<Record<string, number> | null>(null);
-  // Le consulenze che sul CRM non esistono - call registrate senza nessun
-  // appuntamento - per advisor. Si sommano alla colonna Consulenze, che arriva
-  // dal foglio Operatori e per forza di cose non le conosce: l'agenda le
-  // mostrava e la tabella no.
+  /**
+   * Le consulenze tenute da ogni ADVISOR, dallo storico dei passaggi di fase:
+   * la stessa fonte dei setter, letta dal lato di chi la consulenza l'ha
+   * tenuta. Dal 7 novembre 2026 e' questa la colonna Consulenze della tabella
+   * Advisor; il foglio Operatori resta il ripiego se la lettura non risponde.
+   */
+  const [svolteProprietario, setSvolteProprietario] = useState<Record<string, number> | null>(null);
+  // Le call registrate senza nessun appuntamento, per advisor. NON si sommano
+  // piu' alla colonna Consulenze (lo facevano finche' quella colonna veniva dal
+  // foglio): restano perche' l'agenda le mostra e l'esportazione le riporta.
   const [fuoriCrm, setFuoriCrm] = useState<Record<string, number> | null>(null);
   // Appuntamenti e Consulenze di chi lavora solo al telefono, ricavati dagli
   // Stati Lead: i quattro advisor del low ticket non fissano videochiamate,
@@ -219,6 +225,7 @@ export default function DashboardEnterprise({
       .then((data: {
         perSetter?: Record<string, number>;
         svoltePerSetter?: Record<string, number>;
+        svoltePerProprietario?: Record<string, number>;
         fuoriCrmPerAdvisor?: Record<string, number>;
         error?: string;
       }) => {
@@ -229,6 +236,7 @@ export default function DashboardEnterprise({
         }
         setNoShowSetter(data.perSetter ?? {});
         setSvolteSetter(data.svoltePerSetter ?? {});
+        setSvolteProprietario(data.svoltePerProprietario ?? {});
         setFuoriCrm(data.fuoriCrmPerAdvisor ?? {});
       })
       .catch(console.error);
@@ -1313,7 +1321,7 @@ export default function DashboardEnterprise({
                   Caricamento dei dati in corso...
                 </div>
               ) : (
-              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeFuoriCrm={fuoriCrm ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} sottoTeamPerPersona={sottoTeamPerPersona} kpiChatter={kpiChatter ?? undefined} avvisoChatter={avvisoChatter} esportaHref={soloTabella ? null : `/api/esporta/operatori?from=${filters.from ?? defaultFrom}&to=${filters.to ?? defaultTo}&ruolo=${operatorLabel ?? "Advisor"}`} esportaPeriodo={periodoScritto} />
+              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeAdvisor={svolteProprietario ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} sottoTeamPerPersona={sottoTeamPerPersona} kpiChatter={kpiChatter ?? undefined} avvisoChatter={avvisoChatter} esportaHref={soloTabella ? null : `/api/esporta/operatori?from=${filters.from ?? defaultFrom}&to=${filters.to ?? defaultTo}&ruolo=${operatorLabel ?? "Advisor"}`} esportaPeriodo={periodoScritto} />
               )}
             </Card>
           </div>

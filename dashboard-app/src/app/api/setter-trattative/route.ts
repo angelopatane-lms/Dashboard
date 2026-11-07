@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const db = getDb();
-    const [disertati, svolte, fuoriCrm] = await Promise.all([
+    const [disertati, svolte, svolteProprietario, fuoriCrm] = await Promise.all([
       db.query<{ setter: string; n: string }>(
         `SELECT p.nome AS setter, COUNT(*)::text AS n
            FROM no_show n
@@ -100,6 +100,36 @@ export async function GET(req: NextRequest) {
         `SELECT p.nome AS setter, COUNT(*)::text AS n
            FROM trattativa t
            JOIN proprietario p ON p.id = t.setter_id
+           LEFT JOIN campagna c ON c.id = t.campagna_id
+          WHERE t.svolta_ts >= $1::date
+            AND t.svolta_ts < ($2::date + INTERVAL '1 day')
+            AND ($3 = '' OR lower(c.nome) LIKE '%' || $3 || '%')
+          GROUP BY 1`,
+        [from, to, frammento]
+      ),
+      /**
+       * LE CONSULENZE DI UN ADVISOR, dalla stessa fonte dei setter.
+       *
+       * E' la query qui sopra con `proprietario_id` al posto di `setter_id`:
+       * chi ha TENUTO la consulenza invece di chi l'ha procurata. Lo stesso
+       * `svolta_ts`, ricostruito dallo storico dei passaggi di fase.
+       *
+       * PERCHE' DAL 7 NOVEMBRE 2026 SOSTITUISCE IL FOGLIO. La colonna
+       * Consulenze della tabella Advisor veniva dal foglio Operatori piu' le
+       * call registrate senza appuntamento. Misurato su quattro mesi, il CRM
+       * vede PIU' consulenze del foglio - agosto +15%, settembre +6%, ottobre
+       * +11%, novembre +10% - e su diciassette advisor a ottobre nessuno ne
+       * perdeva nemmeno una. Il timore del 9 ottobre, "passando al CRM si
+       * cancellano consulenze vere" (Roberto Esposito 2 invece di 11), oggi
+       * non si verifica piu' su nessuno: lo stesso Esposito fa 13 contro 14.
+       *
+       * Il foglio resta il ripiego quando questa lettura non risponde: vedi
+       * effConsulenze() in OperatorStatsTable.
+       */
+      db.query<{ advisor: string; n: string }>(
+        `SELECT p.nome AS advisor, COUNT(*)::text AS n
+           FROM trattativa t
+           JOIN proprietario p ON p.id = t.proprietario_id
            LEFT JOIN campagna c ON c.id = t.campagna_id
           WHERE t.svolta_ts >= $1::date
             AND t.svolta_ts < ($2::date + INTERVAL '1 day')
@@ -137,11 +167,18 @@ export async function GET(req: NextRequest) {
     const svoltePerSetter: Record<string, number> = {};
     for (const r of svolte.rows) svoltePerSetter[chiave(r.setter)] = Number(r.n);
 
+    const svoltePerProprietario: Record<string, number> = {};
+    for (const r of svolteProprietario.rows) svoltePerProprietario[chiave(r.advisor)] = Number(r.n);
+
     const fuoriCrmPerAdvisor: Record<string, number> = {};
     for (const r of fuoriCrm.rows) fuoriCrmPerAdvisor[chiave(r.advisor)] = Number(r.n);
 
     return NextResponse.json(
-      { perSetter, svoltePerSetter, fuoriCrmPerAdvisor },
+      // `fuoriCrmPerAdvisor` NON si somma piu' alle consulenze dal 7 novembre
+      // 2026 - vedi effConsulenze() - ma continua a viaggiare perche' l'agenda
+      // le mostra e l'esportazione le riporta: una call registrata senza
+      // appuntamento resta una cosa che un team leader vuole vedere.
+      { perSetter, svoltePerSetter, svoltePerProprietario, fuoriCrmPerAdvisor },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (err) {

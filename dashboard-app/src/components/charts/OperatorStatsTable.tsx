@@ -373,7 +373,7 @@ export default function OperatorStatsTable({
   hubspotOverrides,
   noShowOverrides,
   svolteOverrides,
-  consulenzeFuoriCrm,
+  consulenzeAdvisor,
   meseObiettivo,
   onSalvaObiettivo,
   onApriTeam,
@@ -415,15 +415,16 @@ export default function OperatorStatsTable({
    */
   svolteOverrides?: Record<string, number>;
   /**
-   * Le consulenze che sul CRM non esistono: call registrate senza nessun
-   * appuntamento, contate per advisor.
+   * Le consulenze TENUTE da ogni advisor, dallo storico dei passaggi di fase.
    *
-   * Si sommano alla colonna Consulenze, che arriva dal foglio Operatori e per
-   * forza di cose non le conosce - senza appuntamento non c'e' niente da
-   * contare. Finivano in agenda e non qui, e le due pagine davano numeri
-   * diversi sullo stesso giorno.
+   * E' la stessa fonte di `svolteOverrides`, letta dall'altro lato: li' chi ha
+   * procurato l'appuntamento, qui chi ha tenuto la consulenza. Dal 7 novembre
+   * 2026 e' questa la colonna Consulenze della tabella Advisor.
+   *
+   * Assente (il database non ha risposto) si torna al foglio: una colonna
+   * ferma al valore vecchio e' meglio di una colonna a zero.
    */
-  consulenzeFuoriCrm?: Record<string, number>;
+  consulenzeAdvisor?: Record<string, number>;
   /**
    * Appuntamenti e Consulenze di chi lavora solo al telefono, dagli Stati Lead.
    *
@@ -571,34 +572,41 @@ export default function OperatorStatsTable({
   // il vecchio numero invece di azzerarsi, e per i mesi in cui il foglio era
   // ancora buono i due valori sono confrontabili.
   const effNoShow = (r: OperatorSummary) => noShowOverrides?.[normKey(r.operatore)] ?? r.noShow;
-  // Sulla pagina Setter il denominatore sono le consulenze che i SUOI
-  // appuntamenti hanno prodotto; su quella Advisor restano le sue, dal foglio.
-  // LE CONSULENZE DI UN ADVISOR: quelle del foglio piu' quelle che sul CRM non
-  // esistono. Sulla pagina Setter non si sommano: li' la colonna conta un'altra
-  // cosa, e una call senza appuntamento non ha un setter a cui attribuirla.
   /**
-   * CHI LAVORA AL TELEFONO: IL MAGGIORE FRA LE DUE FONTI, non la sostituzione.
+   * LE CONSULENZE DI UN ADVISOR: dallo storico dei passaggi di fase, non piu'
+   * dal foglio Operatori. Deciso il 7 novembre 2026, misurato prima.
    *
-   * PERCHE' NON SI SOMMA. Le due fonti si sovrappongono - misurato fra il 20 e
-   * il 55% delle consulenze - ma la sovrapposizione non si puo' togliere: il
-   * foglio Operatori e' aggregato per (data, operatore, campagna) e non porta
-   * nessun id di contatto, quindi non c'e' niente su cui deduplicare. Sommare
-   * conterebbe due volte le stesse consulenze senza che si veda.
+   * COM'ERA: foglio Operatori PIU' le call registrate senza appuntamento. Due
+   * aggiunte che nascevano dallo stesso difetto - il foglio lo compila una
+   * persona, e quello che non ci finisce per la tabella non e' mai successo -
+   * e che insieme gonfiavano la colonna: a Mattia Primo, dal 1 al 6 novembre,
+   * mostrava 16 consulenze mentre lui ne dichiarava 9 e il CRM 10. Sette erano
+   * registrazioni "fuori CRM", e almeno quattro riunioni interne: un collega,
+   * un "Non assegnato", due call di quindici minuti nella sua stanza.
    *
-   * PERCHE' NON SI SOSTITUISCE PIU'. Fino al 9 ottobre 2026 il numero ricavato
-   * dal CRM prendeva il posto dell'altro. Andava bene finche' erano i quattro
-   * che trattative non ne hanno; allargando al team, a Roberto Esposito sarebbe
-   * rimasta 2 al posto di 11 - cioe' nove consulenze cancellate.
+   * PERCHE' ADESSO SI PUO'. Il 9 ottobre 2026 lo stesso cambio era stato
+   * respinto: a Roberto Esposito restavano 2 consulenze invece di 11. Rifatta
+   * la misura su quattro mesi, il CRM vede PIU' del foglio ogni mese - agosto
+   * +15%, settembre +6%, ottobre +11%, novembre +10% - e su diciassette
+   * advisor a ottobre nessuno perdeva nemmeno una consulenza: dodici ne
+   * guadagnavano, cinque restavano uguali. Esposito oggi fa 13 contro 14.
    *
-   * IL MAGGIORE NON SBAGLIA IN NESSUNA DELLE DUE DIREZIONI PERICOLOSE: non
-   * raddoppia mai e non toglie mai niente. Resta un numero per difetto quando
-   * ciascuna fonte vede cose che l'altra non ha, e va bene cosi': fra un
-   * conteggio prudente e uno gonfiato, il primo si corregge, il secondo no.
-   * Per i quattro di sempre il foglio vale zero, quindi vince il CRM e i loro
-   * numeri restano quelli di prima.
+   * CHI CI GUADAGNA DI PIU' e' chi nel foglio non veniva registrato: Asia
+   * Cuccu passava da 0 a 4, Roberta Scicchitano da 63 a 68.
+   *
+   * IL FOGLIO RESTA IL RIPIEGO: se la lettura dal database non risponde, la
+   * colonna mostra il numero vecchio invece di azzerarsi.
+   *
+   * CHI LAVORA AL TELEFONO: IL MAGGIORE FRA LE DUE FONTI, e questa parte non
+   * cambia. Quattro advisor seguono il low ticket senza fissare
+   * videochiamate: nessuna trattativa, quindi il CRM li darebbe a zero, e il
+   * loro numero vero sta negli Stati Lead. Il maggiore non raddoppia mai e non
+   * toglie mai niente.
    */
   const effConsulenze = (r: OperatorSummary) => {
-    const base = r.consulenze + (isSetterView ? 0 : consulenzeFuoriCrm?.[normKey(r.operatore)] ?? 0);
+    const base = isSetterView
+      ? r.consulenze
+      : consulenzeAdvisor?.[normKey(r.operatore)] ?? r.consulenze;
     const tel = telefonici?.[normKey(r.operatore)];
     if (tel && !isSetterView) return Math.max(base, tel.consulenze);
     return base;
@@ -665,7 +673,7 @@ export default function OperatorStatsTable({
       chiusure: precomputedTotals?.chiusure ?? base.chiusure,
       boom: precomputedTotals?.boom ?? base.boom
     };
-  }, [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, consulenzeFuoriCrm, telefonici, precomputedTotals, obiettivi, sottoTeamPerPersona]);
+  }, [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, consulenzeAdvisor, telefonici, precomputedTotals, obiettivi, sottoTeamPerPersona]);
 
   const maxValues = useMemo(
     () => ({
