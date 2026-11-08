@@ -17,15 +17,20 @@
  *                       filtro sulla categoria darebbe zero icmd tutti i
  *                       giorni, e il totale ht li ingoierebbe senza dirlo.
  *
- *   appuntamenti fissati  valgono SOLO quelli di chi, QUEL GIORNO, stava
- *                       nella squadra Setter - telefonici o chatter. Gli altri
+ *   appuntamenti fissati  le trattative nate quel giorno nella pipeline
+ *                       "Appuntamenti (High Ticket)", e solo quelle: valgono
+ *                       SOLO I PRIMI APPUNTAMENTI, quindi non quelle gia'
+ *                       passate dalla fase Ripianificata, che sono appuntamenti
+ *                       spostati e non nuovi. E valgono SOLO quelli di chi, QUEL
+ *                       GIORNO, stava nella squadra Setter - telefonici o
+ *                       chatter. Gli altri
  *                       non si contano affatto, nemmeno nel totale: dentro il
  *                       conteggio finivano stanze Zoom interne, slot bloccati a
  *                       mano dagli advisor e le consulenze che gli advisor si
  *                       fissano da se'. Deciso l'8 novembre 2026. La squadra e'
  *                       quella del giorno e non quella di stamattina, perche'
  *                       chi e' uscito ieri ha lavorato fino a ieri: vedi
- *                       ../utenti/squadraAl.ts.
+ *                       ../utenti/squadraAl.ts. Deciso l'8 novembre 2026.
  *
  *   primo appuntamento  la trattativa che non e' MAI passata dalla fase
  *                       Ripianificata. Le ripianificate restano nei totali e
@@ -58,7 +63,7 @@ import { squadreAl, squadraDiProprietario } from "@/lib/utenti/squadraAl";
 const HUBSPOT = "https://api.hubapi.com";
 const BOOM = "2-130365112";
 
-/** La pipeline degli appuntamenti: tutto il report vive qui dentro. */
+/** La pipeline "Appuntamenti (High Ticket)": tutto il report vive qui dentro. */
 export const PIPELINE_HT = "433643709";
 
 /** Le fasi che servono, per id. Gli id non cambiano, le etichette si'. */
@@ -405,12 +410,19 @@ export async function reportDelGiorno(opzioni: {
   const bigliettiBase = opzioni.bigliettiBase ?? BIGLIETTI_BASE;
   const bigliettiBaseAl = opzioni.bigliettiBaseAl ?? BIGLIETTI_BASE_AL;
 
-  // 1. GLI APPUNTAMENTI FISSATI IERI: trattative nate ieri nella pipeline.
-  const fissate = await sfoglia(token, "deals", [
+  // 1. GLI APPUNTAMENTI FISSATI IERI: trattative nate ieri nella pipeline
+  //    "Appuntamenti (High Ticket)", e SOLO I PRIMI APPUNTAMENTI.
+  //
+  //    VALE SOLO IL PRIMO, deciso l'8 novembre 2026: una trattativa che e' gia'
+  //    passata dalla fase Ripianificata non e' un appuntamento fissato, e'
+  //    quello di prima spostato. E' la stessa definizione del blocco "DA 1 APP"
+  //    piu' in basso, cosi' le due parti del report misurano la stessa cosa.
+  const tutteLeNate = await sfoglia(token, "deals", [
     { propertyName: "pipeline", operator: "EQ", value: PIPELINE_HT },
     { propertyName: "createdate", operator: "GTE", value: String(da) },
     { propertyName: "createdate", operator: "LT", value: String(a) }
-  ], ["setter", "hubspot_owner_id", "createdate"]);
+  ], ["setter", "hubspot_owner_id", "createdate", `hs_v2_date_entered_${FASE.ripianificata}`]);
+  const fissate = tutteLeNate.filter((t) => !eRipianificata(t.properties));
 
   // 2. LE CONSULENZE IN PROGRAMMA IERI, qualunque sia la loro fase adesso.
   //
@@ -599,6 +611,10 @@ export async function reportDelGiorno(opzioni: {
     }
     if (squadra.sotto.toLowerCase().includes("chatter")) appChatter += 1;
     else appSetter += 1;
+  }
+  const spostate = tutteLeNate.length - fissate.length;
+  if (spostate) {
+    console.info(`[report ${data}] appuntamenti spostati (gia' passati da Ripianificata), non contati: ${spostate}`);
   }
   if (scartati.size) {
     // NON NEL REPORT, MA NON IN SILENZIO: se un giorno sparisse un setter vero
