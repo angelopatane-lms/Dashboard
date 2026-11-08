@@ -17,6 +17,16 @@
  *                       filtro sulla categoria darebbe zero icmd tutti i
  *                       giorni, e il totale ht li ingoierebbe senza dirlo.
  *
+ *   appuntamenti fissati  valgono SOLO quelli di chi, QUEL GIORNO, stava
+ *                       nella squadra Setter - telefonici o chatter. Gli altri
+ *                       non si contano affatto, nemmeno nel totale: dentro il
+ *                       conteggio finivano stanze Zoom interne, slot bloccati a
+ *                       mano dagli advisor e le consulenze che gli advisor si
+ *                       fissano da se'. Deciso l'8 novembre 2026. La squadra e'
+ *                       quella del giorno e non quella di stamattina, perche'
+ *                       chi e' uscito ieri ha lavorato fino a ieri: vedi
+ *                       ../utenti/squadraAl.ts.
+ *
  *   primo appuntamento  la trattativa che non e' MAI passata dalla fase
  *                       Ripianificata. Le ripianificate restano nei totali e
  *                       spariscono solo dal blocco "DA 1 APP".
@@ -42,6 +52,8 @@
 
 import { getDb } from "@/lib/db";
 import { fetchCsv } from "@/lib/csv";
+import { chiaveNome } from "@/lib/nomi";
+import { squadreAl, squadraDiProprietario } from "@/lib/utenti/squadraAl";
 
 const HUBSPOT = "https://api.hubapi.com";
 const BOOM = "2-130365112";
@@ -519,34 +531,83 @@ export async function reportDelGiorno(opzioni: {
   );
   const conEdizione = pagantiIcmd.filter((b) => (b.properties.edizione ?? "").trim());
 
-  // 5. SETTER CONTRO CHATTER, dal sotto-team di chi ha fissato.
-  const sotto = opzioni.sottoTeam ?? {};
-  const nomePerId = new Map<string, string>();
-  if (Object.keys(sotto).length) {
-    const r = await fetch(`${HUBSPOT}/crm/v3/owners?limit=100&archived=false`, {
+  // 5. CHI HA FISSATO, E SE QUEL GIORNO ERA DELLA SQUADRA SETTER.
+  //
+  // LA REGOLA, decisa l'8 novembre 2026: si contano SOLO gli appuntamenti
+  // fissati da chi quel giorno stava nella squadra Setter - telefonici o
+  // chatter. Chi non c'era non finisce in un'altra riga: non si conta affatto,
+  // nemmeno nel totale.
+  //
+  // PERCHE'. Il report del 7 novembre diceva 18 appuntamenti, 17 ai setter.
+  // Dentro quel numero c'erano due stanze Zoom interne e uno slot bloccato a
+  // mano da un advisor - "Chiuso Io Per Altro .impegno", un contatto finto che
+  // da solo aveva raccolto 11 trattative in un mese - e due consulenze che gli
+  // advisor si erano fissate da se'. La riga dei setter non era gonfiata da un
+  // errore di conto: contava gente che setter non e'.
+  //
+  // E IL RIPIEGO ERA ROVESCIATO. Quando il nome non si risolveva, la riga
+  // precedente faceva `else appSetter += 1`: chi non si riconosceva veniva
+  // messo fra i setter. Cosi' un account archiviato da un anno - Armando
+  // Perrone, su cui girano ancora dei link di prenotazione - entrava nel
+  // conteggio proprio perche' non lo si sapeva leggere.
+  //
+  // LA SQUADRA E' QUELLA DEL GIORNO, non quella di stamattina: vedi
+  // ./squadraAl.ts. Chi e' uscito ieri ha lavorato fino a ieri.
+  const squadre = await squadreAl(data);
+  const proprietari = new Map<string, { nome: string; userId?: string }>();
+  // TUTTI, ANCHE GLI ARCHIVIATI: chi e' uscito di recente va riconosciuto, e
+  // per lui l'API non da' l'id utente ma il nome, che basta a cercarlo nella
+  // storia.
+  for (const archiviati of [false, true]) {
+    const r = await fetch(`${HUBSPOT}/crm/v3/owners?limit=500&archived=${archiviati}`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store"
     });
-    if (r.ok) {
-      const d = (await r.json()) as { results?: Array<{ id: string; firstName?: string; lastName?: string }> };
-      for (const o of d.results ?? []) {
-        nomePerId.set(String(o.id), `${o.firstName ?? ""} ${o.lastName ?? ""}`.trim().toLowerCase());
-      }
+    if (!r.ok) continue;
+    const d = (await r.json()) as {
+      results?: Array<{ id: string; firstName?: string; lastName?: string; userId?: number | string }>;
+    };
+    for (const o of d.results ?? []) {
+      proprietari.set(String(o.id), {
+        nome: `${o.firstName ?? ""} ${o.lastName ?? ""}`.trim(),
+        userId: o.userId ? String(o.userId) : undefined
+      });
     }
   }
+
   let appSetter = 0;
   let appChatter = 0;
   let appSenzaSetter = 0;
+  /** Chi e' stato scartato e quante volte: non va nel report, va nei log. */
+  const scartati = new Map<string, number>();
   for (const t of fissate) {
     const id = (t.properties.setter ?? "").trim();
-    if (!id) {
-      appSenzaSetter += 1;
+    const chi = id ? proprietari.get(id) : undefined;
+    if (!squadre) {
+      // SENZA LA STORIA SI FA COME PRIMA, perche' scartare tutti darebbe un
+      // report a zero e nessuno saprebbe che e' il database a non rispondere.
+      if (!id) appSenzaSetter += 1;
+      else if (((opzioni.sottoTeam ?? {})[chiaveNome(chi?.nome ?? "")] ?? "").toLowerCase().includes("chatter")) appChatter += 1;
+      else appSetter += 1;
       continue;
     }
-    const nome = nomePerId.get(id) ?? "";
-    const team = (sotto[nome] ?? "").toLowerCase();
-    if (team === "chatter") appChatter += 1;
+    const squadra = id ? squadraDiProprietario(squadre, { id, userId: chi?.userId, nome: chi?.nome }) : null;
+    if (!squadra || chiaveNome(squadra.principale) !== chiaveNome("Setter")) {
+      const etichetta = chi?.nome || (id ? `id ${id}` : "senza setter");
+      scartati.set(etichetta, (scartati.get(etichetta) ?? 0) + 1);
+      continue;
+    }
+    if (squadra.sotto.toLowerCase().includes("chatter")) appChatter += 1;
     else appSetter += 1;
+  }
+  if (scartati.size) {
+    // NON NEL REPORT, MA NON IN SILENZIO: se un giorno sparisse un setter vero
+    // - appena assunto e non ancora in squadra su HubSpot - questa riga nei log
+    //  del cron e' il solo posto dove si vedrebbe.
+    console.info(
+      `[report ${data}] fuori dalla squadra Setter, non contati: ` +
+        [...scartati].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(", ")
+    );
   }
 
   // Gli esiti non registrati restano su HubSpot: nel database una consulenza
@@ -562,7 +623,9 @@ export async function reportDelGiorno(opzioni: {
   // trattativa: si tengono i totali, come faceva il report a mano.
   return {
     giorno: data,
-    appFixedTotali: fissate.length,
+    // IL TOTALE E' LA SOMMA DELLE DUE RIGHE, non il numero delle trattative
+    // nate: quelle fuori squadra non si contano da nessuna parte.
+    appFixedTotali: appSetter + appChatter + appSenzaSetter,
     appSetter,
     appChatter,
     appSenzaSetter,
