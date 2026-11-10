@@ -25,6 +25,10 @@
  *   R-AD                 Boom del mese di calendario con proprietario nel team
  *                        Advisor: e' il totale BOOM della tabella Advisor
  *                        (ottobre 2026: 286.477,92, uguale al centesimo).
+ *                        DAL 10/11/2026 SENZA I BOOM D.A. (Dipendenti
+ *                        Artificiali), su richiesta del CEO: da allora AC sta
+ *                        sotto il totale BOOM della Dashboard di quanto
+ *                        incassato sui D.A., che lo script stampa a parte.
  *
  * I BOOM SI DIVIDONO IN TRE, e la somma torna con AC e AD:
  *   evento principale    prodotto con "ICMD"                         Z, AA
@@ -174,9 +178,18 @@ async function proprietari(token: string): Promise<Map<string, string>> {
     eventi: { inc: 0, fat: 0, n: 0 },
     icmd: { inc: 0, fat: 0, n: 0 }
   };
+  let da_esclusi = 0;
   for (const b of righe) {
     if (!advisor.has((nomi.get(b.hubspot_owner_id ?? "") ?? "").toLowerCase())) continue;
     const prodotto = b.prodotto ?? "";
+    // DIPENDENTI ARTIFICIALI FUORI, dal 10/11/2026 su richiesta del CEO: come
+    // in kpi-settimanale.ts ("D.A.", "D.A. Singolo", "D.A. PMI"...). Per
+    // questo AC non coincide piu' col totale BOOM della tabella Advisor: sta
+    // sotto di quanto incassato sui Boom D.A. nel mese.
+    if (/^\s*d\.?\s*a\.?(\s|$)/i.test(prodotto)) {
+      if (INCASSI.includes((b.tipologia_di_incasso ?? "").trim())) da_esclusi += Number(b.importo) || 0;
+      continue;
+    }
     const parte = /icmd/i.test(prodotto)
       ? parti.icmd
       : /academy|life/i.test(prodotto) && !/one to one/i.test(prodotto)
@@ -241,6 +254,7 @@ async function proprietari(token: string): Promise<Map<string, string>> {
   console.log(`  Boom: ${ita(da)} - ${ita(a)}`);
   console.log(`  Settimane sommate: ${lunedi.map((x) => `${ita(x)}-${ita(piuGiorni(x, 6))}`).join(", ")}\n`);
   for (const [col, nome, valore] of celle) console.log(`  ${col.padEnd(3)} ${nome.padEnd(36)} ${valore}`);
+  console.log(`\n  Esclusi i Boom D.A. degli Advisor: ${n(da_esclusi)} di incassato (AC + questo = totale BOOM della Dashboard)`);
   if (chiamate === null) console.log("\n  G, I, J, K, N vuote: mancano i totali della Dashboard (--chiamate ecc.)");
   console.log("\n--- RIGA INTERA, da incollare in B (colonne separate da tabulazione) ---");
   console.log(celle.map(([, , v]) => v).join("\t"));

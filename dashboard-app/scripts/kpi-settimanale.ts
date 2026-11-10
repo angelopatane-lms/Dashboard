@@ -29,6 +29,9 @@
  * IL PERIMETRO E' SEMPRE "SENZA ICMD". Il foglio misura il funnel High Ticket e
  * ha colonne ICMD separate (Spesa ICMD, Lead ICMD, CPL ICMD): e' la struttura
  * stessa del foglio a dirlo, non una nostra ipotesi.
+ *
+ * DAL 10/11/2026 ANCHE "SENZA DIPENDENTI ARTIFICIALI", su richiesta del CEO:
+ * vedi RE_DA_PRODOTTO e RE_DA_CAMPAGNA.
  */
 import "./env";
 import { getDb } from "../src/lib/db";
@@ -89,7 +92,7 @@ async function campagneConSpesa(db: ReturnType<typeof getDb>, da: string, a: str
   let euro = 0;
   for (const r of spesa) {
     const n = r.campagna.trim().toLowerCase();
-    if (n.includes("icmd")) continue;
+    if (n.includes("icmd") || RE_DA_CAMPAGNA.test(n)) continue;
     euro += r.spesa;
     if (r.spesa <= 0) continue;
     let id = perNome.get(n);
@@ -144,6 +147,76 @@ async function boom(token: string, da: string, a: string) {
   return righe;
 }
 
+/**
+ * QUANDO OGNI TRATTATIVA E' ENTRATA IN RIPIANIFICATA, dalla cronologia delle
+ * fasi su HubSpot: deal_id -> istanti (ms) di ingresso. Chi non c'e' mai
+ * passata non compare.
+ *
+ * NON SI PUO' USARE `trattativa.ripianificata_al`: e' pieno solo finche' la
+ * trattativa E' in Ripianificata, e si svuota appena la consulenza nuova si
+ * tiene. Sulle vendite, tutte gia' vinte, non scartava mai niente. Misurato
+ * sulla settimana 45 (2-8/11/2026): dei 68 primi appuntamenti ne escludeva 6,
+ * la cronologia dice 17. Ci si e' accorti il 10/11/2026 perche' CR 1 APP
+ * era uscito al 21%.
+ *
+ * Tutte le pipeline: "Ripianificata" esiste in piu' d'una, con id diversi.
+ */
+async function ingressiRipianificata(token: string, dealIds: string[]) {
+  const H = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  const p = await fetch(`${HUBSPOT}/crm/v3/pipelines/deals`, { headers: H });
+  if (!p.ok) throw new Error(`HubSpot ${p.status} sulle pipeline`);
+  const pipeline = (await p.json()) as { results: Array<{ stages: Array<{ id: string; label: string }> }> };
+  const fasi = new Set(
+    pipeline.results.flatMap((x) => x.stages).filter((s) => /ripianific/i.test(s.label)).map((s) => s.id)
+  );
+  if (!fasi.size) throw new Error("Nessuna fase Ripianificata nelle pipeline HubSpot");
+
+  const out = new Map<string, number[]>();
+  const ids = [...new Set(dealIds.filter(Boolean))];
+  for (let i = 0; i < ids.length; i += 50) {
+    const r = await fetch(`${HUBSPOT}/crm/v3/objects/deals/batch/read`, {
+      method: "POST",
+      headers: H,
+      body: JSON.stringify({
+        inputs: ids.slice(i, i + 50).map((id) => ({ id })),
+        propertiesWithHistory: ["dealstage"]
+      })
+    });
+    // 207 = alcune trattative cancellate su HubSpot: le altre arrivano lo stesso.
+    if (!r.ok && r.status !== 207) throw new Error(`HubSpot ${r.status} sulla cronologia delle fasi`);
+    const d = (await r.json()) as {
+      results?: Array<{ id: string; propertiesWithHistory?: { dealstage?: Array<{ value: string; timestamp: string }> } }>;
+    };
+    for (const x of d.results ?? []) {
+      const quando = (x.propertiesWithHistory?.dealstage ?? [])
+        .filter((h) => fasi.has(h.value))
+        .map((h) => new Date(h.timestamp).getTime());
+      if (quando.length) out.set(x.id, quando);
+    }
+  }
+  return out;
+}
+
+/**
+ * DIPENDENTI ARTIFICIALI FUORI DA TUTTO IL CONTO, come ICMD: lo ha chiesto il
+ * CEO (riferito da Angelo il 10/11/2026). Fuori la spesa, i lead, le risposte
+ * e gli appuntamenti delle sue campagne, e i Boom del prodotto.
+ *
+ * Il prodotto sui Boom e' una lista chiusa: "D.A.", "D.A. Singolo",
+ * "D.A. Microimprese", "D.A. PMI", "D.A. Enterprise". "Vendite Artificiali"
+ * e' un altro prodotto e resta dentro.
+ *
+ * Le campagne non hanno un prefisso unico: oggi sono lms_dipart_* (2.140 euro
+ * nella settimana 45), prima lms_imprenditoria_*_dipendenti_artificiali e
+ * lms_imprenditoria_{quiz,video,guida}_dipendenti. Restano dentro
+ * "da_dipendente_a_imprenditore" (MBE Management) e "marketing_artificiale"
+ * (MBE Marketing).
+ */
+const RE_DA_PRODOTTO = /^\s*d\.?\s*a\.?(\s|$)/i;
+const RE_DA_CAMPAGNA = /dipart|dipendenti_artificiali|imprenditoria_.*dipendenti/i;
+const SQL_DA_PRODOTTO = `'^\\s*[dD]\\.?\\s*[aA]\\.?(\\s|$)'`;
+const SQL_DA_CAMPAGNA = `'dipart|dipendenti_artificiali|imprenditoria_.*dipendenti'`;
+
 const EVENTI = `(SELECT lower(nome) FROM utente_team_adesso WHERE team_nome = 'Eventi')`;
 const PROGRAMMI = `(SELECT lower(nome) FROM utente_team_adesso WHERE team_nome = 'Programmi')`;
 
@@ -163,7 +236,7 @@ const PROGRAMMI = `(SELECT lower(nome) FROM utente_team_adesso WHERE team_nome =
     costruisciQuery(leggiVariante(null)),
     [da, a]
   );
-  const senzaIcmd = lead.rows.filter((r) => !/icmd/i.test(r.campagna));
+  const senzaIcmd = lead.rows.filter((r) => !/icmd/i.test(r.campagna) && !RE_DA_CAMPAGNA.test(r.campagna));
   const leadTotali = senzaIcmd.reduce((s, r) => s + Number(r.lead_generati), 0);
   const leadUnici = senzaIcmd.reduce((s, r) => s + Number(r.lead_unici), 0);
 
@@ -178,7 +251,7 @@ const PROGRAMMI = `(SELECT lower(nome) FROM utente_team_adesso WHERE team_nome =
     [da, a]
   );
   const risposte = ch.rows
-    .filter((r) => !/icmd/i.test(r.campagna))
+    .filter((r) => !/icmd/i.test(r.campagna) && !RE_DA_CAMPAGNA.test(r.campagna))
     .reduce((s, r) => s + Number(r.connessioni), 0);
 
   // APPUNTAMENTI, SVOLTI E VENDITE DA PRIMO APPUNTAMENTO.
@@ -194,24 +267,33 @@ const PROGRAMMI = `(SELECT lower(nome) FROM utente_team_adesso WHERE team_nome =
           LEFT JOIN proprietario p ON p.id::text = t.proprietario_id::text
           WHERE t.creata_ts >= $1::date AND t.creata_ts < ($2::date + INTERVAL '1 day')
             AND t.campagna_id = ANY($3::int[])
-            AND (p.nome IS NULL OR lower(p.nome) NOT IN ${EVENTI}))::text AS appuntamenti,
-        (SELECT COUNT(*) FROM (
-            SELECT DISTINCT ON (contact_id) contact_id, svolta_ts, proprietario_id, ripianificata_al
-            FROM trattativa
-            WHERE svolta_ts IS NOT NULL
-            ORDER BY contact_id, svolta_ts
-          ) prima
-          JOIN proprietario p ON p.id::text = prima.proprietario_id::text
-          WHERE prima.svolta_ts >= $1::date AND prima.svolta_ts < ($2::date + INTERVAL '1 day')
-            AND prima.ripianificata_al IS NULL AND lower(p.nome) IN ${PROGRAMMI})::text AS svolti`,
+            AND (p.nome IS NULL OR lower(p.nome) NOT IN ${EVENTI}))::text AS appuntamenti`,
       [da, a, ids]
     )
   ).rows[0];
   const appuntamenti = Number(t.appuntamenti);
-  const svolti1 = Number(t.svolti);
+
+  // SVOLTI DA 1° APP: i contatti la cui prima consulenza in assoluto cade in
+  // settimana, con un advisor Programmi, su una trattativa MAI passata da
+  // Ripianificata (cronologia HubSpot, vedi ingressiRipianificata).
+  const prime = await db.query<{ deal_id: string }>(
+    `SELECT prima.deal_id::text AS deal_id FROM (
+        SELECT DISTINCT ON (contact_id) contact_id, deal_id, svolta_ts, proprietario_id, campagna_id, prodotto
+        FROM trattativa
+        WHERE svolta_ts IS NOT NULL
+        ORDER BY contact_id, svolta_ts
+      ) prima
+      JOIN proprietario p ON p.id::text = prima.proprietario_id::text
+      LEFT JOIN campagna c ON c.id = prima.campagna_id
+      WHERE prima.svolta_ts >= $1::date AND prima.svolta_ts < ($2::date + INTERVAL '1 day')
+        AND lower(p.nome) IN ${PROGRAMMI}
+        AND COALESCE(c.nome, '') !~* ${SQL_DA_CAMPAGNA}
+        AND COALESCE(prima.prodotto, '') !~ ${SQL_DA_PRODOTTO}`,
+    [da, a]
+  );
 
   // SOLDI.
-  const righe = await boom(token, da, a);
+  const righe = (await boom(token, da, a)).filter((b) => !RE_DA_PRODOTTO.test(b.properties.prodotto ?? ""));
   const noIcmd = righe.filter((b) => !/icmd/i.test(b.properties.prodotto ?? ""));
   const chiusure = noIcmd.filter((b) => CHIUSURE.has((b.properties.tipologia_di_incasso ?? "").trim()));
   const rate = noIcmd.filter((b) => (b.properties.tipologia_di_incasso ?? "").trim() === "Rata");
@@ -243,28 +325,52 @@ const PROGRAMMI = `(SELECT lower(nome) FROM utente_team_adesso WHERE team_nome =
   // settimana 44 davano 19 contro 15 vendite, perche' dentro c'erano rate di
   // vendite vecchie, trattative vinte senza nessun pagamento e lo stesso
   // contatto due volte.
-  const v1 = await db.query<{ n: string }>(
-    `SELECT COUNT(DISTINCT COALESCE(td.contact_id::text, b.contatto))::text AS n
+  //
+  // DAL 10 NOVEMBRE 2026 "nessuna ripianificata" si legge dalla cronologia
+  // delle fasi su HubSpot: nessuna trattativa del contatto deve essere entrata
+  // in Ripianificata prima della fine del giorno del pagamento. Prima si usava
+  // ripianificata_al, che sulle trattative vinte e' sempre vuoto.
+  const v1 = await db.query<{ contatto: string; fine: string; deals: string[] }>(
+    `SELECT DISTINCT ON (c.contatto) c.contatto,
+            ((b.pagato::timestamptz AT TIME ZONE 'Europe/Rome')::date + INTERVAL '1 day')
+              AT TIME ZONE 'Europe/Rome' AS fine,
+            (SELECT array_agg(t.deal_id::text) FROM trattativa t WHERE t.contact_id::text = c.contatto) AS deals
      FROM unnest($1::text[], $2::text[], $3::text[], $4::text[]) AS b(deal, contatto, owner, pagato)
      LEFT JOIN trattativa td ON td.deal_id::text = b.deal
+     CROSS JOIN LATERAL (SELECT COALESCE(td.contact_id::text, b.contatto) AS contatto) c
      JOIN proprietario p ON p.id::text = b.owner
      WHERE lower(p.nome) IN ${PROGRAMMI}
        AND (SELECT COUNT(*) FROM trattativa t
-            WHERE t.contact_id::text = COALESCE(td.contact_id::text, b.contatto)
+            WHERE t.contact_id::text = c.contatto
               AND t.svolta_ts IS NOT NULL
               AND t.svolta_ts < (b.pagato::timestamptz AT TIME ZONE 'Europe/Rome')::date + INTERVAL '1 day') = 1
-       AND NOT EXISTS (SELECT 1 FROM trattativa t
-            WHERE t.contact_id::text = COALESCE(td.contact_id::text, b.contatto)
-              AND t.ripianificata_al IS NOT NULL
-              AND t.ripianificata_al < (b.pagato::timestamptz AT TIME ZONE 'Europe/Rome')::date + INTERVAL '1 day')`,
+       -- LA CONSULENZA DEV'ESSERE DELLA STESSA SETTIMANA (deciso da Angelo il
+       -- 10/11/2026): AS = AR / AQ, e AQ conta le prime consulenze della
+       -- settimana. Senza questo filtro nella 45 entravano 2 vendite su 12 nate
+       -- da consulenze di ottobre, che stanno sopra la frazione ma non sotto.
+       AND EXISTS (SELECT 1 FROM trattativa t
+            WHERE t.contact_id::text = c.contatto
+              AND t.svolta_ts >= $5::date AND t.svolta_ts < ($6::date + INTERVAL '1 day'))
+     ORDER BY c.contatto, b.pagato`,
     [
       chiusure.map((b) => (b.properties.id_trattativa ?? "").trim()),
       chiusure.map((b) => (b.properties.id_contatto_associato ?? "").trim()),
       chiusure.map((b) => b.properties.hubspot_owner_id ?? ""),
-      chiusure.map((b) => b.properties.data_di_pagamento)
+      chiusure.map((b) => b.properties.data_di_pagamento),
+      da,
+      a
     ]
   );
-  const vendite1 = Number(v1.rows[0].n);
+
+  const ripianificate = await ingressiRipianificata(token, [
+    ...prime.rows.map((r) => r.deal_id),
+    ...v1.rows.flatMap((r) => r.deals ?? [])
+  ]);
+  const svolti1 = prime.rows.filter((r) => !ripianificate.has(r.deal_id)).length;
+  const vendite1 = v1.rows.filter((r) => {
+    const fine = new Date(r.fine).getTime();
+    return !(r.deals ?? []).some((d) => (ripianificate.get(d) ?? []).some((ts) => ts < fine));
+  }).length;
 
   // I NUMERI COME LI VUOLE IL FOGLIO: virgola decimale e NESSUN separatore di
   // migliaia, che in un incollaggio trasformerebbe il numero in testo.
