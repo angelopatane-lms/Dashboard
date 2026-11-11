@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { ieriRoma } from "@/lib/report/giornaliero";
 import { calcolaBoom } from "@/lib/squadre/boom";
 import { piuGiorni } from "@/lib/squadre/finestra";
-import { proprietari } from "@/lib/squadre/proprietari";
 
 /**
  * I Boom di una finestra, adesso.
@@ -45,8 +44,16 @@ export async function GET(req: NextRequest) {
   const da = q.get("da") ?? piuGiorni(a, -(quanti - 1));
 
   try {
-    const nomi = await proprietari(token);
-    const uscita = await calcolaBoom(token, da, a, nomi.perId, (r) => console.log("[squadre/boom]", r));
+    // SENZA L'ELENCO DEI PROPRIETARI, dall'11 novembre 2026.
+    //
+    // Serviva solo a mettere un nome accanto a ogni id dentro la risposta, e
+    // quel dizionario non lo ha mai letto nessuno: il progetto Squadre i nomi
+    // ce li ha gia' nel suo squadre.json, e dalla risposta prende soltanto
+    // `giorni`, `letto` ed `errore`. Costava una dozzina di chiamate a
+    // HubSpot a ogni apertura di pagina - cinquecento proprietari letti a
+    // pagine da cento - ed e' quello che ha fatto scattare il 429 che
+    // lasciava vuote chiusure, venduto e storni.
+    const uscita = await calcolaBoom(token, da, a, new Map(), (r) => console.log("[squadre/boom]", r));
     return NextResponse.json(uscita, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     const perche = e instanceof Error ? e.message : String(e);

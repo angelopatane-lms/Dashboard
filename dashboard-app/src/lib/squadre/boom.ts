@@ -192,7 +192,12 @@ export async function calcolaBoom(
   return {
     letto: new Date().toISOString(),
     finestra: { da, a },
-    nomi: Object.fromEntries([...usati].map((id) => [id, nomi.get(id) ?? `(proprietario ${id})`])),
+    // SENZA L'ANAGRAFICA SI LASCIA VUOTO invece di riempire di
+    // "(proprietario 12345)": chi chiama senza passarla non vuole i nomi, e
+    // un dizionario di segnaposto si legge come un guasto.
+    nomi: nomi.size
+      ? Object.fromEntries([...usati].map((id) => [id, nomi.get(id) ?? `(proprietario ${id})`]))
+      : {},
     giorni
   };
 }

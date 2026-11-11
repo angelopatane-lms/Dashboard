@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ieriRoma } from "@/lib/report/giornaliero";
-import { piuGiorni } from "@/lib/squadre/finestra";
-import { latenzaDalFoglio, utentiDalFoglio } from "@/lib/squadre/finestra";
+import { dalFoglio, piuGiorni } from "@/lib/squadre/finestra";
 
 /**
  * QUELLO CHE SANNO I FOGLI, LETTO ADESSO: il tempo di risposta dal foglio
@@ -39,21 +38,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ errore: "chiave non valida" }, { status: 403 });
   }
 
-  const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
-  if (!token) {
-    return NextResponse.json({ errore: "HUBSPOT_PRIVATE_APP_TOKEN non impostata" }, { status: 500 });
-  }
-
+  // NIENTE TOKEN DI HUBSPOT: qui si leggono due fogli e basta. E' la
+  // differenza che rende questa rotta sicura da chiamare a ogni apertura di
+  // pagina, accanto a quella dei Boom che HubSpot lo interroga per davvero.
   const q = req.nextUrl.searchParams;
   const a = q.get("a") ?? ieriRoma();
   const quanti = Math.min(Math.max(Number(q.get("giorni") ?? 45), 1), 400);
   const da = q.get("da") ?? piuGiorni(a, -(quanti - 1));
 
   try {
-    // I DUE FOGLI INSIEME, in parallelo: sono due letture indipendenti e una
-    // attesa sola. Quello degli operatori dice come si e' lavorato, quello
-    // degli utenti dice chi c'e' - e tutti e due invecchiano in fretta.
-    const [giorni, utenti] = await Promise.all([latenzaDalFoglio(token, da, a), utentiDalFoglio()]);
+    const { giorni, utenti } = await dalFoglio(da, a);
     return NextResponse.json(
       { generato: new Date().toISOString(), finestra: { da, a }, giorni, utenti },
       { headers: { "Cache-Control": "no-store" } }

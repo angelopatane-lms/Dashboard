@@ -283,61 +283,63 @@ const numeroFoglio = (v: unknown) => {
 };
 
 /**
- * CHI E' NEL FOGLIO UTENTI ADESSO: gli id HubSpot, e basta.
+ * QUELLO CHE SANNO I DUE FOGLI, senza toccare HubSpot: chi lavora oggi e
+ * quanto si e' fatto aspettare, giorno per giorno.
  *
- * E' una fotografia del presente, e per questo si legge al momento invece di
- * viaggiare dentro quella della notte. L'11 novembre 2026, il giorno in cui
- * le pagine delle squadre hanno cominciato a togliere chi non c'e' piu', chi
- * guardava vedeva ancora Ilaria Pisanu in elenco: era uscita dal foglio in
- * mattinata, ma la fotografia era delle 9:33 e l'elenco dentro era vuoto.
- * Una regola che dipende da quanto e' fresca una copia non e' una regola, e'
- * una coincidenza.
+ * NIENTE ELENCO DEI PROPRIETARI, ed e' il punto. Il foglio Operatori scrive
+ * le persone col nome e basta, e per attaccare quei numeri a qualcuno serve
+ * il suo id HubSpot: la prima versione lo chiedeva a HubSpot, che vuol dire
+ * leggere cinquecento proprietari a pagine da cento, una dozzina di
+ * richieste - a ogni apertura di pagina, accanto a quelle dei Boom. Il
+ * risultato e' stato un 429 e tre colonne vuote sulla pagina.
+ *
+ * Ma l'id di chi lavora sta gia' nell'altro foglio, "Hubspot User List",
+ * colonna "Hubspot ID": e' lo stesso numero, lo tiene aggiornato una
+ * persona, e lo stiamo leggendo comunque per sapere chi c'e'. Due letture di
+ * foglio, zero chiamate a HubSpot, un secondo e mezzo.
+ *
+ * CHI NON E' PIU' NEL FOGLIO NON SI AGGANCIA, e va bene cosi': e' la stessa
+ * persona che le pagine delle squadre tolgono dalle tabelle. Il suo tempo di
+ * risposta non interessa piu' nessuno.
  */
-export async function utentiDalFoglio(): Promise<string[]> {
-  const righe = await fetchCsv(
-    `https://docs.google.com/spreadsheets/d/${FOGLIO_UTENTI}/export?format=csv&gid=${GID_UTENTI}`,
-    { next: { revalidate: 0 } }
-  );
-  const utenti: string[] = [];
-  for (const r of righe) {
-    const id = (r["Hubspot ID"] ?? "").toString().trim();
-    if (id) utenti.push(id);
-  }
-  return utenti;
-}
+export type DalFoglio = {
+  /** Gli id HubSpot di chi e' nel foglio utenti adesso. */
+  utenti: string[];
+  /** giorno -> id -> minuti sommati e giornate misurate. */
+  giorni: Record<string, Record<string, { latenzaMinuti: number; latenzaGiorni: number }>>;
+};
 
-/**
- * SOLO IL TEMPO DI RISPOSTA, dal foglio Operatori: la colonna Latenza,
- * giorno per giorno e persona per persona, senza toccare HubSpot ne' il
- * database.
- *
- * E' UN PEZZO DI `calcolaFinestra` CHE SI PUO' CHIEDERE DA SOLO, perche' la
- * fotografia della notte lo porta con un giorno di ritardo e chi guarda la
- * pagina vuole sapere com'e' andata oggi. Vedi /api/squadre/foglio.
- *
- * DUE NUMERI E NON UNA MEDIA, come nella fotografia: somma dei minuti e
- * numero di giornate misurate. Chi li riceve divide al livello che gli
- * serve, e le medie non si mediano fra loro.
- *
- * LE RIGHE SENZA MISURA NON CONTANO: zero minuti non vuol dire "ha risposto
- * subito", vuol dire che nessuno l'ha misurato.
- */
-export async function latenzaDalFoglio(
-  token: string,
-  da: string,
-  a: string
-): Promise<Record<string, Record<string, { latenzaMinuti: number; latenzaGiorni: number }>>> {
-  const nomi = await proprietari(token);
-  const righe = await fetchCsv(
-    `https://docs.google.com/spreadsheets/d/${FOGLIO_OPERATORI}/export?format=csv&gid=${GID_OPERATORI}`,
-    { next: { revalidate: 0 } }
-  );
+export async function dalFoglio(da: string, a: string): Promise<DalFoglio> {
+  // I DUE FOGLI IN PARALLELO: sono due letture indipendenti e una attesa sola.
+  const [righeUtenti, righeOperatori] = await Promise.all([
+    fetchCsv(
+      `https://docs.google.com/spreadsheets/d/${FOGLIO_UTENTI}/export?format=csv&gid=${GID_UTENTI}`,
+      { next: { revalidate: 0 } }
+    ),
+    fetchCsv(
+      `https://docs.google.com/spreadsheets/d/${FOGLIO_OPERATORI}/export?format=csv&gid=${GID_OPERATORI}`,
+      { next: { revalidate: 0 } }
+    )
+  ]);
+
+  const utenti: string[] = [];
+  const perNome = new Map<string, string>();
+  for (const r of righeUtenti) {
+    const id = (r["Hubspot ID"] ?? "").toString().trim();
+    if (!id) continue;
+    utenti.push(id);
+    const nome = chiaveNome((r["User"] ?? "").toString());
+    if (nome && !perNome.has(nome)) perNome.set(nome, id);
+  }
+
   const giorni: Record<string, Record<string, { latenzaMinuti: number; latenzaGiorni: number }>> = {};
-  for (const r of righe) {
+  for (const r of righeOperatori) {
     const g = dataFoglio((r["Data"] ?? "").toString());
     if (!g || g < da || g > a) continue;
-    const id = nomi.perNome.get(chiaveNome((r["Operatore"] ?? "").toString()));
+    const id = perNome.get(chiaveNome((r["Operatore"] ?? "").toString()));
     if (!id) continue;
+    // LE RIGHE SENZA MISURA NON CONTANO: zero minuti non vuol dire "ha
+    // risposto subito", vuol dire che nessuno l'ha misurato.
     const minuti = numeroFoglio(r["Latenza"]);
     if (minuti <= 0) continue;
     const perGiorno = giorni[g] ?? (giorni[g] = {});
@@ -345,7 +347,8 @@ export async function latenzaDalFoglio(
     v.latenzaMinuti += minuti;
     v.latenzaGiorni += 1;
   }
-  return giorni;
+
+  return { utenti, giorni };
 }
 
 /**
