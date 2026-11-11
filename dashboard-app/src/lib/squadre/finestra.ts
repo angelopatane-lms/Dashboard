@@ -77,6 +77,18 @@ import { proprietari } from "@/lib/squadre/proprietari";
 /** Il foglio Operatori: assegnati, chiamate, connessioni e consulenze. */
 const FOGLIO_OPERATORI = "1wHpVsYwB_5PKGSYYfD0W2pYa7U_3yWI1Re10T3jGgnM";
 const GID_OPERATORI = "245526930";
+/**
+ * IL PARZIALE DEL GIORNO IN CORSO, l'altro tab dello stesso foglio.
+ *
+ * Lo storico e' una fotografia scattata a fine giornata: il giorno in corso
+ * dentro non c'e' ancora, e fino all'11 novembre 2026 le squadre guardate con
+ * la data di oggi mostravano assegnati, chiamate e connessioni a zero. La
+ * Dashboard principale questo tab lo legge gia' - vedi GID_OPERATORI_OGGI in
+ * src/app/advisor/page.tsx - e porta i numeri dell'ora, non quelli di domani:
+ * misurato l'11 novembre, 97 righe con 850 assegnati e 530 chiamate quando lo
+ * storico non ne aveva nessuna.
+ */
+const GID_OPERATORI_OGGI = "2032731939";
 
 /**
  * Il foglio "Hubspot User List": l'elenco di chi lavora, oggi.
@@ -456,11 +468,31 @@ export async function calcolaFinestra(
   // novembre 2026: tutte e 26 le persone delle squadre si agganciano, e resta
   // fuori una riga sola - "Nora D'Ascanio (Secondario)", 15 chiamate in un
   // mese - che la Dashboard ignora allo stesso modo.
+  /** I giorni per cui il foglio ha dato almeno una riga: gli altri li copre il
+   *  database, qui sotto. */
+  const giorniConFoglio = new Set<string>();
   try {
-    const righe = await fetchCsv(
-      `https://docs.google.com/spreadsheets/d/${FOGLIO_OPERATORI}/export?format=csv&gid=${GID_OPERATORI}`,
-      { next: { revalidate: 0 } }
+    // I DUE TAB INSIEME: lo storico per i giorni chiusi, il parziale per
+    // quello in corso. Il parziale contiene solo oggi, quindi le righe non si
+    // sovrappongono mai - e se per qualche ragione si sovrapponessero, il
+    // controllo `giaDalFoglio` qui sotto impedisce di contare due volte.
+    const [storico, parziale] = await Promise.all([
+      fetchCsv(
+        `https://docs.google.com/spreadsheets/d/${FOGLIO_OPERATORI}/export?format=csv&gid=${GID_OPERATORI}`,
+        { next: { revalidate: 0 } }
+      ),
+      fetchCsv(
+        `https://docs.google.com/spreadsheets/d/${FOGLIO_OPERATORI}/export?format=csv&gid=${GID_OPERATORI_OGGI}`,
+        { next: { revalidate: 0 } }
+      ).catch(() => [] as Record<string, unknown>[])
+    ]);
+    const giorniStorico = new Set(
+      storico.map((r) => dataFoglio((r["Data"] ?? "").toString())).filter(Boolean)
     );
+    const righe = [
+      ...storico,
+      ...parziale.filter((r) => !giorniStorico.has(dataFoglio((r["Data"] ?? "").toString())))
+    ];
     let agganciate = 0;
     for (const r of righe) {
       const g = dataFoglio((r["Data"] ?? "").toString());
@@ -468,6 +500,7 @@ export async function calcolaFinestra(
       const id = nomi.perNome.get(chiaveNome((r["Operatore"] ?? "").toString()));
       if (!id) continue;
       agganciate++;
+      giorniConFoglio.add(g);
       const v = voce(g, id);
       v.assegnati += numeroFoglio(r["Assegnati"]);
       // Le due grafie convivono nel foglio, come in src/lib/analytics.ts.
@@ -482,11 +515,55 @@ export async function calcolaFinestra(
         v.latenzaGiorni += 1;
       }
     }
-    racconta(`  righe del foglio Operatori agganciate: ${agganciate}`);
+    racconta(
+      `  righe del foglio Operatori agganciate: ${agganciate}` +
+        ` (storico ${storico.length}, parziale di oggi ${parziale.length})`
+    );
   } catch (e) {
     // SENZA FOGLIO SI VA AVANTI LO STESSO: tre colonne vuote sono meglio di
     // nessuna pagina, e il resto dei numeri non dipende da lui.
     racconta(`  foglio Operatori non letto: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  // 4-bis. LA RETE SOTTO IL FOGLIO: chiamate e connessioni dal database.
+  //
+  // Il foglio Operatori lo riempie uno script che non e' nostro, e quando non
+  // parte perde il giorno e non lo recupera mai: il 10 novembre 2026 non aveva
+  // nessuna riga, e nelle squadre quel martedi' risultava senza una chiamata.
+  // Le stesse chiamate pero' le ha il database, per contatto e proprietario, e
+  // sono le stesse cifre: il 9 novembre il foglio diceva 1194 chiamate e 341
+  // connessioni, il database 1189 e 342.
+  //
+  // SOLO DOVE IL FOGLIO TACE, mai accanto: due fonti sommate sullo stesso
+  // giorno lo conterebbero due volte, e la differenza sarebbe invisibile.
+  // Assegnati e tempo di risposta restano scoperti - quelli il database non li
+  // ha - e questo si vede in pagina, che e' meglio di un numero inventato.
+  const senzaFoglio = giorni.filter((g) => !giorniConFoglio.has(g));
+  if (senzaFoglio.length) {
+    try {
+      const db = getDb();
+      const { rows } = await db.query<{ giorno: string; id: string; n: string; conn: string }>(
+        `SELECT to_char(ts, 'YYYY-MM-DD') AS giorno,
+                proprietario_id::text AS id,
+                COUNT(*)::text AS n,
+                COUNT(*) FILTER (WHERE connessa)::text AS conn
+           FROM chiamata
+          WHERE to_char(ts, 'YYYY-MM-DD') = ANY($1::text[])
+            AND proprietario_id IS NOT NULL
+          GROUP BY 1, 2`,
+        [senzaFoglio]
+      );
+      for (const r of rows) {
+        const v = voce(r.giorno, r.id);
+        v.chiamate += Number(r.n) || 0;
+        v.connessioni += Number(r.conn) || 0;
+      }
+      racconta(
+        `  giorni senza foglio: ${senzaFoglio.join(", ")} - chiamate prese dal database (${rows.length} righe)`
+      );
+    } catch (e) {
+      racconta(`  rete del database non disponibile: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   // 5. CHI C'E' ADESSO, dal foglio utenti. Una colonna sola - "Hubspot ID" -

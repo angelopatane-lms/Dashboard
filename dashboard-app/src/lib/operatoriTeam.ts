@@ -3,6 +3,7 @@ import { toDateIso } from "@/lib/metrics";
 import { chiaveNome } from "@/lib/nomi";
 import { appartenenze } from "@/lib/utenti/appartenenze";
 import { periodiSquadra, squadraAdesso, teamDelGiorno, type Tratto } from "@/lib/utenti/periodiTeam";
+import { NON_OPERATORI_PROPRIETARIO, nonOperatorePerNome } from "@/lib/utenti/nonOperatori";
 
 /**
  * Chi appartiene a un team: il foglio dice chi e' un operatore, HubSpot dice
@@ -139,7 +140,11 @@ export async function operatoriDelTeam(team: string): Promise<OperatoriTeam | nu
       return Boolean(quale) && chiaveNome(quale) === atteso;
     };
 
-    const soloLoro = righe.filter(suo);
+    // GLI ACCOUNT DI PROVA FUORI, prima di ogni altra cosa: non sono persone
+    // che lavorano, e i loro numeri non sono numeri. Vedi ./utenti/nonOperatori.ts.
+    const soloLoro = righe
+      .filter(suo)
+      .filter((r) => !NON_OPERATORI_PROPRIETARIO.has((r["Hubspot ID"] ?? "").toString().trim()));
     const chiavi = new Set(soloLoro.map((r) => chiaveNome((r["User"] ?? "").toString())).filter(Boolean));
     const oggiRoma = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
 
@@ -148,6 +153,10 @@ export async function operatoriDelTeam(team: string): Promise<OperatoriTeam | nu
       ammetteRiga: (operatore: string, data: string) => {
         const k = chiaveNome(operatore);
         if (!k) return false;
+        // ANCHE LE RIGHE PASSATE: la fotografia dei team dice "Advisor" per
+        // ogni giorno di quell'account, quindi senza questo controllo le
+        // righe di prova rientrerebbero dalla porta dello storico.
+        if (nonOperatorePerNome(operatore)) return false;
         // Senza la storia si fa come prima: l'elenco di oggi su tutto.
         if (!periodi) return chiavi.has(k);
         // Il foglio di oggi non porta la data: quella riga e' di oggi.
@@ -162,6 +171,9 @@ export async function operatoriDelTeam(team: string): Promise<OperatoriTeam | nu
       fuoriOggi: (operatore: string) => {
         const k = chiaveNome(operatore);
         if (!k || chiavi.has(k)) return false;
+        // Non e' "uscito dalla squadra": non c'e' mai stato nessuno. Senza
+        // questo, la riga tornerebbe in fondo alla tabella scritta in grigio.
+        if (nonOperatorePerNome(operatore)) return false;
         if (!periodi) return true;
         const quale = squadraAdesso(periodi, k);
         if (quale === null) return true;

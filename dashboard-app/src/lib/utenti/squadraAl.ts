@@ -1,5 +1,6 @@
 import { getDb } from "@/lib/db";
 import { chiaveNome } from "@/lib/nomi";
+import { NON_OPERATORI_UTENTE } from "./nonOperatori";
 
 /**
  * In che squadra stava ciascuno IN UN GIORNO PASSATO, non adesso.
@@ -90,6 +91,10 @@ export async function squadreAl(giorno: string): Promise<SquadreAl | null> {
     const nomeDi = new Map<string, string>();
     for (const r of adesso) {
       if (!r.user_id) continue;
+      // Gli account di prova non stanno in nessuna squadra, ne' oggi ne' in un
+      // giorno passato: chi chiede "di che squadra era" riceve "non lo
+      // conosciamo", che e' la risposta vera. Vedi ./nonOperatori.ts.
+      if (NON_OPERATORI_UTENTE.has(r.user_id)) continue;
       if (r.nome) nomeDi.set(r.user_id, r.nome);
       if (!r.team_nome) continue;
       dentro.add(`${r.user_id}|${r.genere}|${r.team_nome}`);
@@ -98,6 +103,7 @@ export async function squadreAl(giorno: string): Promise<SquadreAl | null> {
     // IL RIAVVOLGIMENTO, dal movimento piu' recente al piu' vecchio.
     for (const m of movimenti) {
       if (!m.user_id || !m.team_nome) continue;
+      if (NON_OPERATORI_UTENTE.has(m.user_id)) continue;
       if (m.nome && !nomeDi.has(m.user_id)) nomeDi.set(m.user_id, m.nome);
       const chiave = `${m.user_id}|${m.genere}|${m.team_nome}`;
       if (m.azione === "aggiunto") dentro.delete(chiave);
