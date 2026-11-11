@@ -39,6 +39,10 @@
     {
       "path": "/api/cron/report-giornaliero",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/recessi",
+      "schedule": "40 2 * * *"
     }
   ]
 }
