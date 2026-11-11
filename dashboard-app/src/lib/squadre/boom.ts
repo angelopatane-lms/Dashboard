@@ -32,7 +32,8 @@ const RIMBORSO = "recessed";
 
 export type Soldi = {
   chiusure: number;
-  /** L'importo delle sole chiusure: e' il "venduto" delle pagine. */
+  /** L'incassato del periodo - chiusure, rate e upgrade - che al netto degli
+   *  storni e' il "venduto netto" delle pagine. Vedi il commento nel calcolo. */
   venduto: number;
   /** Chiusure piu' rate piu' upgrade: e' la colonna Boom della Dashboard. */
   boom: number;
@@ -174,17 +175,39 @@ export async function calcolaBoom(
     ] as const) {
       const v = lato(g, chi, quale);
       if (!v) continue;
+      /**
+       * IL VENDUTO E' L'INCASSATO, MENO GLI STORNI. Deciso l'11 novembre 2026.
+       *
+       * Prima erano soltanto Acconto e Quota unica: rate e upgrade restavano
+       * fuori. Due conseguenze, tutte e due sbagliate. La prima: un contratto
+       * da 5.000 euro con 1.000 di acconto entrava per 1.000, e gli altri
+       * 4.000 non comparivano in nessun mese, perche' arrivavano come rate.
+       * La seconda: la colonna Boom della Dashboard quelle rate le conta, e
+       * la stessa persona nello stesso periodo aveva due cifre diverse sulle
+       * due pagine, senza che nulla lo dicesse.
+       *
+       * Adesso il venduto netto delle squadre e' la colonna Boom della
+       * Dashboard meno i recessi: una parola, un numero, in tutte e due le
+       * pagine.
+       *
+       * LE CHIUSURE RESTANO IL CONTEGGIO DELLE VENDITE NUOVE - Acconto e
+       * Quota unica - perche' quello e' il numero di trattative chiuse, e una
+       * rata non e' una vendita in piu'. E' la ragione per cui il rapporto
+       * "conversione" continua a tornare.
+       */
       if (CHIUSURE_TIPOLOGIE.has(tipologia)) {
         v.chiusure += 1;
-        v.venduto += importo;
-        if (stornato) {
-          v.storni += 1;
-          v.vendutoStornato += importo;
-        }
+        if (stornato) v.storni += 1;
       } else if (tipologia === "Rata") {
         v.rate += importo;
       }
-      if (BOOM_TIPOLOGIE.has(tipologia)) v.boom += importo;
+      if (BOOM_TIPOLOGIE.has(tipologia)) {
+        v.boom += importo;
+        v.venduto += importo;
+        // Lo storno toglie quello che aveva aggiunto, qualunque tipologia sia:
+        // un rimborso su una rata e' denaro uscito come gli altri.
+        if (stornato) v.vendutoStornato += importo;
+      }
     }
   }
 
