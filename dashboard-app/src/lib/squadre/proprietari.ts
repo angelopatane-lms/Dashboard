@@ -24,7 +24,28 @@ export type Proprietari = {
   perNome: Map<string, string>;
 };
 
+/**
+ * TENUTI DA PARTE DIECI MINUTI, perche' sono la stessa risposta per tutti e
+ * costano una dozzina di chiamate a HubSpot.
+ *
+ * L'elenco dei proprietari si legge a pagine da cento, due volte - i vivi e
+ * gli archiviati - e sono oltre cinquecento: una dozzina di richieste. Finche'
+ * lo chiedeva solo la rotta dei Boom era il prezzo di una pagina; da quando lo
+ * chiede anche quella dei fogli, ogni apertura ne fa due giri in parallelo, e
+ * due persone che aprono insieme ne fanno quattro. HubSpot conta le richieste
+ * in finestre di dieci secondi, e quando dice basta risponde 429: la rotta
+ * sbotta, la pagina mostra "non sono stati letti" al posto degli incassi.
+ *
+ * Dieci minuti sono tanti per un contatore e pochi per un'anagrafica: un
+ * proprietario nuovo compare al massimo dieci minuti dopo, e nel frattempo il
+ * suo nome - non i suoi numeri - sarebbe l'unica cosa mancante.
+ */
+let ricordo: { quando: number; dati: Proprietari } | null = null;
+const DURATA = 10 * 60 * 1000;
+
 export async function proprietari(token: string): Promise<Proprietari> {
+  if (ricordo && Date.now() - ricordo.quando < DURATA) return ricordo.dati;
+
   const perId = new Map<string, string>();
   const perNome = new Map<string, string>();
   for (const archiviati of [false, true]) {
@@ -49,5 +70,9 @@ export async function proprietari(token: string): Promise<Proprietari> {
       after = d.paging?.next?.after;
     } while (after);
   }
-  return { perId, perNome };
+  // NON SI TIENE UNA RISPOSTA VUOTA: se HubSpot ha detto di no, meglio
+  // riprovare alla prossima apertura che servire dieci minuti di niente.
+  const dati = { perId, perNome };
+  if (perId.size) ricordo = { quando: Date.now(), dati };
+  return dati;
 }
