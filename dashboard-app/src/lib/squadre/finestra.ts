@@ -78,6 +78,24 @@ import { proprietari } from "@/lib/squadre/proprietari";
 const FOGLIO_OPERATORI = "1wHpVsYwB_5PKGSYYfD0W2pYa7U_3yWI1Re10T3jGgnM";
 const GID_OPERATORI = "245526930";
 
+/**
+ * Il foglio "Hubspot User List": l'elenco di chi lavora, oggi.
+ *
+ * SERVE A FAR SPARIRE CHI NON C'E' PIU' dalle pagine delle squadre. La mappa
+ * persona -> squadra viene dalle slide di ottobre ed e' ferma li': chi esce
+ * dall'azienda resta scritto in una squadra per sempre, e la sua riga continua
+ * a comparire a zero in fondo alla tabella. Il foglio invece lo tiene
+ * aggiornato una persona, ed e' la stessa fonte che decide chi e' un operatore
+ * sulla Dashboard.
+ *
+ * NON E' IN CONTRADDIZIONE col fatto che la Dashboard tenga il passato di chi
+ * e' uscito: li' la domanda e' "quel giorno chi ha lavorato", e la risposta
+ * non cambia perche' uno se ne va. Qui la domanda e' "come va la squadra
+ * adesso", e di uno che non c'e' piu' non si puo' dire come va.
+ */
+const FOGLIO_UTENTI = "1XKvzK20x9DkIyJVHBNTYUHxV21kmrdWH0AshNkkgLHQ";
+const GID_UTENTI = "0";
+
 /** Un giorno piu' o meno n, senza farsi ingannare dall'ora legale. */
 export const piuGiorni = (d: string, n: number) =>
   new Date(new Date(`${d}T12:00:00Z`).getTime() + n * 86400000).toISOString().slice(0, 10);
@@ -104,6 +122,20 @@ export type Voci = {
   assegnati: number;
   chiamate: number;
   connessioni: number;
+  /**
+   * IL TEMPO DI RISPOSTA, in due numeri invece che in una media.
+   *
+   * `latenzaMinuti` e' la somma dei minuti, `latenzaGiorni` quante righe del
+   * foglio l'hanno misurata. La media si fa dividendo, e si puo' fare a
+   * qualunque livello - una persona, una squadra, un mese - senza che le
+   * medie si medino fra loro: la media di due medie non e' la media, e chi ha
+   * lavorato un giorno peserebbe come chi ha lavorato venti.
+   *
+   * Le righe senza misura (zero o vuoto) non contano nel denominatore: zero
+   * minuti non vuol dire "ha risposto subito", vuol dire "non si sa".
+   */
+  latenzaMinuti: number;
+  latenzaGiorni: number;
   /** Appuntamenti fissati: sempre a chi ha fissato, in tutte e due le tabelle. */
   appuntamenti: number;
   /** Tabella Setter: consulenze nate dai suoi appuntamenti, e suoi no show. */
@@ -125,6 +157,13 @@ export type Finestra = {
   finestra: { da: string; a: string };
   nomi: Record<string, string>;
   giorni: Record<string, Record<string, Voci>>;
+  /**
+   * Gli id HubSpot di chi e' nel foglio utenti ADESSO, non in questa finestra:
+   * e' una fotografia del presente dentro una risposta che parla del passato.
+   * Chi la legge toglie dalle squadre chi non c'e' piu'. Vuoto quando il
+   * foglio non si e' letto, e allora non si toglie nessuno.
+   */
+  utenti: string[];
 };
 
 export type Storico = {
@@ -133,12 +172,15 @@ export type Storico = {
   ultimoGiorno: string;
   nomi: Record<string, string>;
   giorni: Record<string, Record<string, Voci>>;
+  utenti?: string[];
 };
 
 const vuote = (): Voci => ({
   assegnati: 0,
   chiamate: 0,
   connessioni: 0,
+  latenzaMinuti: 0,
+  latenzaGiorni: 0,
   appuntamenti: 0,
   svolteComeSetter: 0,
   svolteComeSetterPrime: 0,
@@ -363,6 +405,13 @@ export async function calcolaFinestra(
       v.chiamate += numeroFoglio(r["Chiamati"] || r["Chiamate"]);
       v.connessioni += numeroFoglio(r["Connessi"] || r["Connessioni"]);
       v.consulenzeFoglio += numeroFoglio(r["Consulenze"]);
+      // La stessa colonna che la Dashboard chiama Latenza e mostra come
+      // "Reattivita'": vedi reattivitaMediaMin in src/lib/metrics.ts.
+      const latenza = numeroFoglio(r["Latenza"]);
+      if (latenza > 0) {
+        v.latenzaMinuti += latenza;
+        v.latenzaGiorni += 1;
+      }
     }
     racconta(`  righe del foglio Operatori agganciate: ${agganciate}`);
   } catch (e) {
@@ -371,9 +420,30 @@ export async function calcolaFinestra(
     racconta(`  foglio Operatori non letto: ${e instanceof Error ? e.message : String(e)}`);
   }
 
+  // 5. CHI C'E' ADESSO, dal foglio utenti. Una colonna sola - "Hubspot ID" -
+  //    che e' la stessa chiave con cui le squadre sono scritte.
+  const utenti: string[] = [];
+  try {
+    const righe = await fetchCsv(
+      `https://docs.google.com/spreadsheets/d/${FOGLIO_UTENTI}/export?format=csv&gid=${GID_UTENTI}`,
+      { next: { revalidate: 0 } }
+    );
+    for (const r of righe) {
+      const id = (r["Hubspot ID"] ?? "").toString().trim();
+      if (id) utenti.push(id);
+    }
+    racconta(`  utenti nel foglio: ${utenti.length}`);
+  } catch (e) {
+    // SENZA FOGLIO NON SI TOGLIE NESSUNO: un elenco vuoto farebbe sparire
+    // tutte le squadre in una volta, che e' il danno peggiore del danno che
+    // stiamo evitando.
+    racconta(`  foglio utenti non letto: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
   return {
     generato: new Date().toISOString(),
     finestra: { da, a },
+    utenti,
     nomi: Object.fromEntries(
       [...new Set(giorni.flatMap((g) => Object.keys(per[g] ?? {})))].map((id) => [
         id,
@@ -399,6 +469,10 @@ export function fondi(vecchio: Partial<Storico>, nuovo: Finestra): Storico {
     primoGiorno: Object.keys(giorni).sort()[0],
     ultimoGiorno: nuovo.finestra.a,
     nomi: { ...(vecchio.nomi ?? {}), ...nuovo.nomi },
+    // L'ELENCO NON SI FONDE, SI SOSTITUISCE: dice chi c'e' adesso, e tenere
+    // anche quelli di ieri vorrebbe dire non togliere mai nessuno. Se la
+    // lettura e' fallita si tiene quello di prima, che e' vecchio di un giro.
+    utenti: nuovo.utenti.length ? nuovo.utenti : vecchio.utenti ?? [],
     giorni
   };
 }
