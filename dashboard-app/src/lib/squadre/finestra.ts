@@ -314,16 +314,24 @@ const numeroFoglio = (v: unknown) => {
  * persona che le pagine delle squadre tolgono dalle tabelle. Il suo tempo di
  * risposta non interessa piu' nessuno.
  */
+export type VociFoglio = {
+  latenzaMinuti: number;
+  latenzaGiorni: number;
+  assegnati: number;
+  chiamate: number;
+  connessioni: number;
+};
+
 export type DalFoglio = {
   /** Gli id HubSpot di chi e' nel foglio utenti adesso. */
   utenti: string[];
-  /** giorno -> id -> minuti sommati e giornate misurate. */
-  giorni: Record<string, Record<string, { latenzaMinuti: number; latenzaGiorni: number }>>;
+  /** giorno -> id -> quello che il foglio dice di lui quel giorno. */
+  giorni: Record<string, Record<string, VociFoglio>>;
 };
 
 export async function dalFoglio(da: string, a: string): Promise<DalFoglio> {
   // I DUE FOGLI IN PARALLELO: sono due letture indipendenti e una attesa sola.
-  const [righeUtenti, righeOperatori] = await Promise.all([
+  const [righeUtenti, storico, parziale] = await Promise.all([
     fetchCsv(
       `https://docs.google.com/spreadsheets/d/${FOGLIO_UTENTI}/export?format=csv&gid=${GID_UTENTI}`,
       { next: { revalidate: 0 } }
@@ -331,8 +339,22 @@ export async function dalFoglio(da: string, a: string): Promise<DalFoglio> {
     fetchCsv(
       `https://docs.google.com/spreadsheets/d/${FOGLIO_OPERATORI}/export?format=csv&gid=${GID_OPERATORI}`,
       { next: { revalidate: 0 } }
-    )
+    ),
+    // IL GIORNO IN CORSO STA NELL'ALTRO TAB, e qui serve piu' che altrove:
+    // questa lettura e' quella che la pagina fa a ogni apertura, mentre lo
+    // storico arriva dall'archivio riscritto una volta all'ora.
+    fetchCsv(
+      `https://docs.google.com/spreadsheets/d/${FOGLIO_OPERATORI}/export?format=csv&gid=${GID_OPERATORI_OGGI}`,
+      { next: { revalidate: 0 } }
+    ).catch(() => [] as Record<string, unknown>[])
   ]);
+  const giorniStorico = new Set(
+    storico.map((r) => dataFoglio((r["Data"] ?? "").toString())).filter(Boolean)
+  );
+  const righeOperatori = [
+    ...storico,
+    ...parziale.filter((r) => !giorniStorico.has(dataFoglio((r["Data"] ?? "").toString())))
+  ];
 
   const utenti: string[] = [];
   const perNome = new Map<string, string>();
@@ -344,20 +366,27 @@ export async function dalFoglio(da: string, a: string): Promise<DalFoglio> {
     if (nome && !perNome.has(nome)) perNome.set(nome, id);
   }
 
-  const giorni: Record<string, Record<string, { latenzaMinuti: number; latenzaGiorni: number }>> = {};
+  const giorni: Record<string, Record<string, VociFoglio>> = {};
   for (const r of righeOperatori) {
     const g = dataFoglio((r["Data"] ?? "").toString());
     if (!g || g < da || g > a) continue;
     const id = perNome.get(chiaveNome((r["Operatore"] ?? "").toString()));
     if (!id) continue;
+    const perGiorno = giorni[g] ?? (giorni[g] = {});
+    const v =
+      perGiorno[id] ??
+      (perGiorno[id] = { latenzaMinuti: 0, latenzaGiorni: 0, assegnati: 0, chiamate: 0, connessioni: 0 });
+    v.assegnati += numeroFoglio(r["Assegnati"]);
+    // Le due grafie convivono nel foglio, come in src/lib/analytics.ts.
+    v.chiamate += numeroFoglio(r["Chiamati"] || r["Chiamate"]);
+    v.connessioni += numeroFoglio(r["Connessi"] || r["Connessioni"]);
     // LE RIGHE SENZA MISURA NON CONTANO: zero minuti non vuol dire "ha
     // risposto subito", vuol dire che nessuno l'ha misurato.
     const minuti = numeroFoglio(r["Latenza"]);
-    if (minuti <= 0) continue;
-    const perGiorno = giorni[g] ?? (giorni[g] = {});
-    const v = perGiorno[id] ?? (perGiorno[id] = { latenzaMinuti: 0, latenzaGiorni: 0 });
-    v.latenzaMinuti += minuti;
-    v.latenzaGiorni += 1;
+    if (minuti > 0) {
+      v.latenzaMinuti += minuti;
+      v.latenzaGiorni += 1;
+    }
   }
 
   return { utenti, giorni };
