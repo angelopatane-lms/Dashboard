@@ -1,8 +1,7 @@
-import { fetchCsv } from "@/lib/csv";
+import { fetchCsv, type CsvRow } from "@/lib/csv";
 import { uniqueValues } from "@/lib/metrics";
 import AdvisorSetterDashboardClient from "@/components/client/AdvisorSetterDashboardClient";
 import Container from "@/components/ui/Container";
-import { chiaveNome } from "@/lib/nomi";
 import { operatoriDelTeam } from "@/lib/operatoriTeam";
 import { assegnatiOggiInArchivio, conAssegnatiDiOggi } from "@/lib/assegnatiOggi";
 
@@ -52,15 +51,24 @@ export default async function Page() {
   // pubblica: due letture separate erano libere di divergere, ed e' gia'
   // successo - vedi src/lib/operatoriTeam.ts.
   const team = await operatoriDelTeam("Advisor");
-  const allowedOperatorSet = team?.chiavi ?? null;
   const advisorNomi = team?.nomi ?? null;
 
-  const operatoriRowsFiltered = allowedOperatorSet
-    ? operatoriRows.filter((r) => allowedOperatorSet!.has(chiaveNome((r["Operatore"] ?? "").toString())))
-    : operatoriRows;
-  const operatoriRowsOggiFiltered = allowedOperatorSet
-    ? righeOggi.filter((r) => allowedOperatorSet!.has(chiaveNome((r["Operatore"] ?? "").toString())))
-    : righeOggi;
+  // SI CHIEDE "QUEL GIORNO ERA ADVISOR?", non "lo e' adesso".
+  //
+  // Il filtro guardava l'elenco di oggi anche sulle righe di mesi fa, e il
+  // giorno in cui qualcuno esce dall'azienda il suo passato spariva con lui -
+  // dalla tabella, dalle card in alto e dalle campagne, che si calcolano su
+  // queste stesse righe. Vedi src/lib/utenti/periodiTeam.ts.
+  const ammessa = (r: CsvRow) => team!.ammetteRiga(r["Operatore"] ?? "", r["Data"] ?? "");
+  const operatoriRowsFiltered = team ? operatoriRows.filter(ammessa) : operatoriRows;
+  const operatoriRowsOggiFiltered = team ? righeOggi.filter(ammessa) : righeOggi;
+
+  // Chi in tabella oggi advisor non e' piu': la sua riga resta al suo posto,
+  // nella sezione che aveva allora, ma scritta in grigio.
+  const fuoriSquadra = team
+    ? [...new Set([...operatoriRowsFiltered, ...operatoriRowsOggiFiltered].map((r) => (r["Operatore"] ?? "").trim()))]
+        .filter((n) => n && team.fuoriOggi(n))
+    : null;
 
   // I menu si costruiscono su storico E oggi: una campagna partita stamattina
   // sta solo nel foglio di oggi, e prendendo lo storico soltanto non compariva
@@ -92,6 +100,9 @@ export default async function Page() {
         operatorLabel="Advisor"
         operatoriAmmessi={advisorNomi}
         sottoTeamPerPersona={team?.sottoTeam}
+        sottoTeamStoria={team?.sottoTeamStoria}
+        periodiNelTeam={team?.periodiNelTeam}
+        fuoriSquadra={fuoriSquadra}
         gestioneTeam
       />
     </Container>

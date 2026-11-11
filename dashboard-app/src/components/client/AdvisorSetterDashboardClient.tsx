@@ -8,6 +8,9 @@ export default function AdvisorSetterDashboardClient({
   campaigns,
   operatorLabel,
   operatoriAmmessi,
+  fuoriSquadra,
+  sottoTeamStoria,
+  periodiNelTeam,
   gestioneTeam,
   sottoTeamPerPersona,
 }: {
@@ -17,6 +20,10 @@ export default function AdvisorSetterDashboardClient({
   campaigns: string[];
   operatorLabel?: string;
   operatoriAmmessi?: string[] | null;
+  /** Chi in questa squadra oggi non c'e' piu': le sue righe vanno in fondo. */
+  fuoriSquadra?: string[] | null;
+  sottoTeamStoria?: Record<string, { da: number | null; a: number; team: string }[]>;
+  periodiNelTeam?: Record<string, { da: number | null; a: number }[]>;
   gestioneTeam?: boolean;
   sottoTeamPerPersona?: Record<string, string>;
 }) {
@@ -28,6 +35,9 @@ export default function AdvisorSetterDashboardClient({
       campaigns={campaigns}
       operatorLabel={operatorLabel}
       operatoriAmmessi={operatoriAmmessi}
+      fuoriSquadra={fuoriSquadra}
+      sottoTeamStoria={sottoTeamStoria}
+      periodiNelTeam={periodiNelTeam}
       gestioneTeam={gestioneTeam}
       sottoTeamPerPersona={sottoTeamPerPersona}
       hideCampagne

@@ -1,8 +1,7 @@
-import { fetchCsv } from "@/lib/csv";
+import { fetchCsv, type CsvRow } from "@/lib/csv";
 import { uniqueValues } from "@/lib/metrics";
 import AdvisorSetterDashboardClient from "@/components/client/AdvisorSetterDashboardClient";
 import Container from "@/components/ui/Container";
-import { chiaveNome } from "@/lib/nomi";
 import { operatoriDelTeam } from "@/lib/operatoriTeam";
 import { assegnatiOggiInArchivio, conAssegnatiDiOggi } from "@/lib/assegnatiOggi";
 
@@ -51,14 +50,19 @@ export default async function Page() {
   // L'elenco dei Setter sta in una funzione sola, condivisa con la pagina
   // pubblica: vedi src/lib/operatoriTeam.ts.
   const team = await operatoriDelTeam("Setter");
-  const allowedOperatorSet = team?.chiavi ?? null;
 
-  const operatoriRowsFiltered = allowedOperatorSet
-    ? operatoriRows.filter((r) => allowedOperatorSet!.has(chiaveNome((r["Operatore"] ?? "").toString())))
-    : operatoriRows;
-  const operatoriRowsOggiFiltered = allowedOperatorSet
-    ? righeOggi.filter((r) => allowedOperatorSet!.has(chiaveNome((r["Operatore"] ?? "").toString())))
-    : righeOggi;
+  // SI CHIEDE "QUEL GIORNO ERA SETTER?", non "lo e' adesso": chi e' uscito
+  // deve continuare a vedersi nei mesi in cui ha lavorato. Vedi
+  // src/lib/utenti/periodiTeam.ts.
+  const ammessa = (r: CsvRow) => team!.ammetteRiga(r["Operatore"] ?? "", r["Data"] ?? "");
+  const operatoriRowsFiltered = team ? operatoriRows.filter(ammessa) : operatoriRows;
+  const operatoriRowsOggiFiltered = team ? righeOggi.filter(ammessa) : righeOggi;
+
+  // Chi in tabella oggi setter non e' piu': riga al suo posto, ma in grigio.
+  const fuoriSquadra = team
+    ? [...new Set([...operatoriRowsFiltered, ...operatoriRowsOggiFiltered].map((r) => (r["Operatore"] ?? "").trim()))]
+        .filter((n) => n && team.fuoriOggi(n))
+    : null;
 
   // I menu si costruiscono su storico E oggi: una campagna partita stamattina
   // sta solo nel foglio di oggi, e prendendo lo storico soltanto non compariva
@@ -83,6 +87,9 @@ export default async function Page() {
         // appuntamenti dove la tabella ne contava 306.
         operatoriAmmessi={team?.nomi ?? null}
         sottoTeamPerPersona={team?.sottoTeam}
+        sottoTeamStoria={team?.sottoTeamStoria}
+        periodiNelTeam={team?.periodiNelTeam}
+        fuoriSquadra={fuoriSquadra}
         gestioneTeam
       />
     </Container>

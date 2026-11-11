@@ -378,6 +378,7 @@ export default function OperatorStatsTable({
   onSalvaObiettivo,
   onApriTeam,
   sottoTeamPerPersona,
+  fuoriSquadra,
   kpiChatter,
   avvisoChatter,
   esportaHref,
@@ -468,6 +469,15 @@ export default function OperatorStatsTable({
    * l'appartenenza vera su HubSpot.
    */
   sottoTeamPerPersona?: Record<string, string>;
+  /**
+   * Chi in questa squadra oggi non c'e' piu', per nome normalizzato.
+   *
+   * La riga resta al suo posto - nella sezione che quella persona aveva in
+   * quel periodo, vedi src/lib/utenti/periodiTeam.ts - ma scritta in grigio
+   * chiaro: il lavoro va contato dov'e' stato fatto, e chi legge deve poter
+   * vedere a colpo d'occhio chi in azienda non c'e' piu'.
+   */
+  fuoriSquadra?: Set<string>;
   /**
    * I numeri dei chatter da Sales Copilot, per nome nostro normalizzato.
    *
@@ -906,6 +916,22 @@ export default function OperatorStatsTable({
     );
   });
 
+  /**
+   * DENTRO OGNI SEZIONE, CHI OGGI NON C'E' PIU' VA IN FONDO.
+   *
+   * La riga resta nel sotto-team che quella persona aveva in quel periodo -
+   * li' il lavoro e' stato fatto - ma sotto a chi c'e' ancora: chi legge la
+   * tabella guarda prima la squadra di adesso, e un nome uscito in mezzo alla
+   * classifica la interrompe. L'ordine fra di loro resta quello della colonna
+   * su cui si e' ordinato.
+   */
+  const uscitiInFondo = (lista: typeof righe) => {
+    if (!fuoriSquadra?.size) return lista;
+    const dentro = lista.filter((r) => !fuoriSquadra.has(normKey(r.operatore)));
+    const fuori = lista.filter((r) => fuoriSquadra.has(normKey(r.operatore)));
+    return fuori.length ? [...dentro, ...fuori] : lista;
+  };
+
   const gruppi: Array<{ etichetta: string | null; righe: typeof righe }> = (() => {
     if (!sottoTeamPerPersona) {
       return [
@@ -923,13 +949,46 @@ export default function OperatorStatsTable({
         righe: righe.filter((r) => sottoDi(r.operatore) === s)
       }))
     ].filter((g) => g.righe.length);
-    // IL PRIMO GRUPPO NON PORTA IL NOME. La tabella comincia da lui e non ha
-    // niente sopra da cui distinguersi: l'etichetta servirebbe solo a
-    // ripetere, sotto l'intestazione, una parola che nessuno sta cercando. Dal
-    // secondo in poi invece il nome e' quello che spiega perche' le righe si
-    // interrompono e ricominciano - una linea muta, li', e' un indovinello.
-    return tutti.map((g, i) => (i === 0 ? { ...g, etichetta: null } : g));
+    /**
+     * CHI E' USCITO E NON HA SOTTO-TEAM VA IN CODA AL PRIMO GRUPPO, insieme
+     * agli altri, invece di stare in un blocco suo.
+     *
+     * Sabina Noia e' advisor fino al 9 ottobre 2026 e nei sotto-team compare
+     * solo come Telefonici, dall'8 ottobre a mezzogiorno - la prima volta che
+     * l'osservatore li ha guardati, diciotto ore prima che passasse ai Setter.
+     * Per i suoi giorni da advisor, quindi, HubSpot non dice niente. Lasciarla
+     * senza sezione la metteva da sola sopra PROGRAMMI, con una riga sbiadita
+     * e nessuna intestazione ad aprire la tabella; mandarla in fondo la
+     * incollava sotto EVENTI, e sembrava del Team Eventi. Nessuna delle due e'
+     * una risposta: la risposta e' che era un'advisor come gli altri, e sta
+     * con loro.
+     *
+     * SOLO PER CHI E' USCITO. Chi c'e' ancora e un sotto-team non ce l'ha e'
+     * un caso diverso - va sistemato su HubSpot, e finche' resta cosi' deve
+     * vedersi, non sparire dentro un gruppo che non e' il suo.
+     */
+    const senzaNome = tutti[0]?.etichetta === null ? tutti[0] : null;
+    const primoGruppo = tutti.find((g) => g.etichetta);
+    if (senzaNome && primoGruppo && fuoriSquadra?.size) {
+      const orfani = senzaNome.righe.filter((r) => fuoriSquadra.has(normKey(r.operatore)));
+      if (orfani.length) {
+        senzaNome.righe = senzaNome.righe.filter((r) => !fuoriSquadra.has(normKey(r.operatore)));
+        // NON IN CODA: AL SUO POSTO NELL'ORDINAMENTO. Attaccata in fondo,
+        // Sabina Noia finiva dietro a Tiffany Armel che ha zero assegnati,
+        // mentre con i suoi 53 va subito dopo Vincenzo Meglioli. Chi arriva
+        // da un altro gruppo non porta con se' una posizione propria: si
+        // rilegge l'ordine della tabella, che e' quello della colonna su cui
+        // si e' ordinato, e gli usciti scalano in fondo mantenendolo.
+        const dentroIlPrimo = new Set(
+          [...primoGruppo.righe, ...orfani].map((r) => normKey(r.operatore))
+        );
+        primoGruppo.righe = righe.filter((r) => dentroIlPrimo.has(normKey(r.operatore)));
+      }
+    }
+    return tutti.filter((g) => g.righe.length);
   })();
+
+  for (const g of gruppi) g.righe = uscitiInFondo(g.righe);
 
   const ordinate = gruppi.flatMap((g) => g.righe);
 
@@ -1091,6 +1150,12 @@ export default function OperatorStatsTable({
             // gli appuntamenti, quindi dipende dal caricamento delle trattative
             // e non da quello degli incassi.
             const pc = tassoPresa(effConsulenzeChiusura(r), effAppuntamenti(r));
+            /* CHI OGGI IN SQUADRA NON C'E' PIU' SI LEGGE IN GRIGIO CHIARO.
+               La riga resta dov'era - nella sezione che aveva in quel
+               periodo - perche' il lavoro va contato dove e' stato fatto;
+               il colore serve a non confonderlo con chi c'e' ancora quando
+               si guarda chi sta sotto obiettivo. */
+            const uscito = Boolean(fuoriSquadra?.has(normKey(r.operatore)));
             return (
               <Fragment key={r.operatore}>
               {/* LA SEPARAZIONE E' UNA LINEA, e porta il nome della sezione
@@ -1159,7 +1224,10 @@ export default function OperatorStatsTable({
                   )}
                 </tr>
               ) : null}
-              <tr className="group hover:bg-slate-50/70 transition-colors">
+              <tr
+                className={`group transition-colors hover:bg-slate-50/70${uscito ? " opacity-60" : ""}`}
+                title={uscito ? `${r.operatore} oggi non è più in questa squadra` : undefined}
+              >
                 <td
                   /* I MARGINI PASSANO AL PULSANTE quando il nome si puo'
                      cliccare: cosi' riempie la cella e il grigio copre tutta
@@ -1168,7 +1236,7 @@ export default function OperatorStatsTable({
                      attorno al testo con dei bordi bianchi intorno. Il p-0
                      serve: una cella di tabella nasce con un pixel di padding
                      per conto suo, e quel pixel restava bianco tutt'intorno. */
-                  className={`${BLOCCATA} ${LINEA_DESTRA} bg-white font-medium text-slate-800 whitespace-nowrap group-hover:bg-slate-50${onApriTeam ? " p-0" : " py-1.5 pr-4 pl-0"}`}
+                  className={`${BLOCCATA} ${LINEA_DESTRA} bg-white font-medium whitespace-nowrap group-hover:bg-slate-50 ${uscito ? "text-slate-400 italic" : "text-slate-800"}${onApriTeam ? " p-0" : " py-1.5 pr-4 pl-0"}`}
                   style={{ left: 0 }}
                 >
                   {/* IL NOME SI CLICCA SOLO DOVE SERVE: la finestra dei team

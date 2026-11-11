@@ -74,6 +74,9 @@ export default function DashboardEnterprise({
   useHubspot,
   operatorLabel,
   operatoriAmmessi,
+  fuoriSquadra,
+  sottoTeamStoria,
+  periodiNelTeam,
   gestioneTeam,
   sottoTeamPerPersona,
 }: {
@@ -103,6 +106,22 @@ export default function DashboardEnterprise({
   /** Chi ha Team Principale "Advisor" fra gli utenti HubSpot, come chiave di
    *  nome. Null = elenco non disponibile, e allora non si filtra niente. */
   operatoriAmmessi?: string[] | null;
+  /** Chi in questa squadra oggi non c'e' piu': le sue righe vanno in fondo.
+   *  Lo decide la fotografia di HubSpot, non l'elenco del foglio: vedi
+   *  operatoriDelTeam().fuoriOggi. */
+  fuoriSquadra?: string[] | null;
+  /**
+   * La storia dei sotto-team: nome normalizzato -> tratti in millisecondi.
+   *
+   * SERVE A RIMETTERE OGNUNO NELLA SEZIONE CHE AVEVA IN QUEL PERIODO, invece
+   * che in quella di oggi. Vedi src/lib/utenti/periodiTeam.ts.
+   */
+  sottoTeamStoria?: Record<string, { da: number | null; a: number; team: string }[]>;
+  /**
+   * Le finestre in cui ognuno e' stato in QUESTA squadra: servono a scegliere
+   * la sezione guardando solo i giorni che contano. Vedi operatoriDelTeam.
+   */
+  periodiNelTeam?: Record<string, { da: number | null; a: number }[]>;
   /**
    * Rende cliccabili i nomi, per aprire i loro team su HubSpot.
    *
@@ -461,6 +480,72 @@ export default function DashboardEnterprise({
    * di prima: una pagina che non ha ricevuto la fotografia del team deve
    * mostrare meno persone, non inventarne.
    */
+  /**
+   * IL SOTTO-TEAM DI CIASCUNO NEL PERIODO GUARDATO, non quello di oggi.
+   *
+   * Le sezioni della tabella - Programmi, Eventi, Telefonici, Chatter -
+   * nascono da qui. Prendendo il sotto-team di adesso, chi ha cambiato
+   * finiva nella sezione sbagliata guardando un mese passato: Sabina Noia
+   * compariva fra i TELEFONICI anche a ottobre, quando faceva l'advisor,
+   * perche' Telefonici e' il suo gruppo di oggi da Setter. E chi e' uscito
+   * non aveva sezione affatto.
+   *
+   * SI GUARDANO SOLO I GIORNI IN CUI ERA IN QUESTA SQUADRA, non tutto il
+   * periodo, e la differenza non e' accademica. Sabina Noia e' stata advisor
+   * fino al 9 ottobre 2026 alle 05:54 e nei Telefonici risulta dall'8 ottobre
+   * a mezzogiorno: diciotto ore in comune su otto giorni da advisor. Pesando
+   * il mese intero, Telefonici copriva tre settimane - tutte da setter - e
+   * nella tabella Advisor nasceva una sezione TELEFONICI con lei sola dentro,
+   * cioe' una sezione che non c'entrava niente con la pagina che la mostrava.
+   *
+   * E CI VUOLE LA META' DEL TEMPO per farsi una sezione: fra i tratti che si
+   * sovrappongono vince quello piu' lungo, ma se nemmeno il piu' lungo arriva
+   * a metà dei giorni passati in squadra, la sezione non c'e' - quella persona
+   * sta col gruppo principale. Diciotto ore su otto giorni sono un'ombra, non
+   * un'appartenenza.
+   *
+   * CHI LA STORIA NON CONOSCE resta com'era: vale il sotto-team di oggi. E
+   * vale anche per i mesi prima dell'8 ottobre 2026, quando i sotto-team su
+   * HubSpot non esistevano ancora: se in quel periodo nessun tratto copre
+   * niente, non si cancella la sezione di oggi - non sapere non e' sapere che
+   * non c'era.
+   */
+  const sottoTeamDelPeriodo = useMemo(() => {
+    if (!sottoTeamStoria) return sottoTeamPerPersona;
+    const da = Date.parse(`${filters.from ?? defaultFrom}T00:00:00Z`);
+    const a = Date.parse(`${filters.to ?? defaultTo}T23:59:59Z`);
+    if (!Number.isFinite(da) || !Number.isFinite(a)) return sottoTeamPerPersona;
+    const nel: Record<string, string> = {};
+    for (const [chiave, tratti] of Object.entries(sottoTeamStoria)) {
+      // Le finestre in cui quella persona era in QUESTA squadra, ritagliate
+      // sul periodo guardato. Senza la sua storia vale tutto il periodo.
+      const inSquadra = (periodiNelTeam?.[chiave] ?? [{ da, a }])
+        .map((t) => ({ da: Math.max(t.da ?? -Infinity, da), a: Math.min(t.a, a) }))
+        .filter((t) => t.a > t.da);
+      const dentro = inSquadra.reduce((somma, t) => somma + (t.a - t.da), 0);
+      if (!dentro) continue; // in questo periodo non era in squadra
+      const coperto = new Map<string, number>();
+      for (const t of tratti) {
+        const quanto = inSquadra.reduce(
+          (somma, f) => somma + Math.max(0, Math.min(t.a, f.a) - Math.max(t.da ?? -Infinity, f.da)),
+          0
+        );
+        if (quanto) coperto.set(t.team, (coperto.get(t.team) ?? 0) + quanto);
+      }
+      if (!coperto.size) continue; // la storia dei sotto-team non arriva fin la'
+      let miglior = "";
+      let piu = 0;
+      for (const [team, quanto] of coperto) {
+        if (quanto > piu) {
+          piu = quanto;
+          miglior = team;
+        }
+      }
+      nel[chiave] = piu * 2 >= dentro ? miglior : "";
+    }
+    return { ...sottoTeamPerPersona, ...nel };
+  }, [sottoTeamStoria, periodiNelTeam, sottoTeamPerPersona, filters.from, filters.to, defaultFrom, defaultTo]);
+
   const operatorSummaryAll = useMemo(() => {
     let righe = aggregateByOperatore(operatoriNorm);
     if (!operatoriAmmessi?.length) return righe;
@@ -485,7 +570,7 @@ export default function DashboardEnterprise({
     // zeri, e una fila di zeri non dice "ha lavorato zero": dice "questa
     // persona non c'entra". Chi invece un sotto-team ce l'ha resta anche a
     // zero, perche' li' lo zero e' un'informazione: quel mese non ha chiuso.
-    const senzaSottoTeam = (n: string) => !(sottoTeamPerPersona?.[chiaveNome(n)] ?? "").trim();
+    const senzaSottoTeam = (n: string) => !(sottoTeamDelPeriodo?.[chiaveNome(n)] ?? "").trim();
     const vuota = (r: (typeof righe)[number]) =>
       !r.assegnati && !r.chiamate && !r.connessioni && !r.appuntamenti &&
       !r.consulenze && !r.chiusure && !r.boom && !r.noShow;
@@ -519,7 +604,7 @@ export default function DashboardEnterprise({
     kpiChatter,
     noShowSetter,
     svolteSetter,
-    sottoTeamPerPersona
+    sottoTeamDelPeriodo
   ]);
 
   /**
@@ -541,7 +626,7 @@ export default function DashboardEnterprise({
    * nel codice resta solo per quando la fotografia dei sotto-team non c'e'.
    */
   const secondoGruppo = vistaSetter
-    ? (nome: string) => eChatterCon(sottoTeamPerPersona?.[chiaveNome(nome)], nome)
+    ? (nome: string) => eChatterCon(sottoTeamDelPeriodo?.[chiaveNome(nome)], nome)
     : eAdvisorTelefonico;
 
   /**
@@ -559,17 +644,17 @@ export default function DashboardEnterprise({
    */
   const righeTeam = useMemo(() => {
     if (!filters.team) return operatorSummaryAll;
-    if (sottoTeamPerPersona) {
+    if (sottoTeamDelPeriodo) {
       const voluto = (NOME_SOTTO_TEAM[filters.team] ?? filters.team).toLowerCase();
       return operatorSummaryAll.filter(
-        (r) => (sottoTeamPerPersona[chiaveNome(r.operatore)] ?? "").toLowerCase() === voluto
+        (r) => (sottoTeamDelPeriodo[chiaveNome(r.operatore)] ?? "").toLowerCase() === voluto
       );
     }
     // I valori del secondo gruppo, uno per pagina: "eventi" sulla Advisor
     // (il Team Eventi) e "chatter" sulla Setter.
     const sotto = filters.team === "eventi" || filters.team === "chatter";
     return operatorSummaryAll.filter((r) => secondoGruppo(r.operatore) === sotto);
-  }, [operatorSummaryAll, filters.team, secondoGruppo, sottoTeamPerPersona]);
+  }, [operatorSummaryAll, filters.team, secondoGruppo, sottoTeamDelPeriodo]);
 
   /**
    * I numeri dei chatter da Sales Copilot: servono se in tabella c'e' almeno
@@ -719,6 +804,17 @@ export default function DashboardEnterprise({
     () => (operatoriAmmessi ? new Set(operatoriAmmessi.map(chiaveNome)) : null),
     [operatoriAmmessi]
   );
+  /**
+   * Chi in tabella oggi in squadra non c'e' piu', come insieme di chiavi.
+   *
+   * Lo decide la pagina, che ha davanti la fotografia di HubSpot: qui si
+   * normalizzano i nomi e basta. Vedi src/lib/utenti/periodiTeam.ts.
+   */
+  const fuoriSquadraSet = useMemo(
+    () => (fuoriSquadra?.length ? new Set(fuoriSquadra.map(chiaveNome)) : undefined),
+    [fuoriSquadra]
+  );
+
   const eventiAmmessi = useMemo(
     () => (ammessi ? eventiAgenda.filter((e) => ammessi.has(chiaveNome(e.operatore))) : eventiAgenda),
     [eventiAgenda, ammessi]
@@ -1321,7 +1417,7 @@ export default function DashboardEnterprise({
                   Caricamento dei dati in corso...
                 </div>
               ) : (
-              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeAdvisor={svolteProprietario ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} sottoTeamPerPersona={sottoTeamPerPersona} kpiChatter={kpiChatter ?? undefined} avvisoChatter={avvisoChatter} esportaHref={soloTabella ? null : `/api/esporta/operatori?from=${filters.from ?? defaultFrom}&to=${filters.to ?? defaultTo}&ruolo=${operatorLabel ?? "Advisor"}`} esportaPeriodo={periodoScritto} />
+              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeAdvisor={svolteProprietario ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} sottoTeamPerPersona={sottoTeamDelPeriodo} fuoriSquadra={fuoriSquadraSet} kpiChatter={kpiChatter ?? undefined} avvisoChatter={avvisoChatter} esportaHref={soloTabella ? null : `/api/esporta/operatori?from=${filters.from ?? defaultFrom}&to=${filters.to ?? defaultTo}&ruolo=${operatorLabel ?? "Advisor"}`} esportaPeriodo={periodoScritto} />
               )}
             </Card>
           </div>

@@ -2,7 +2,6 @@ import { fetchCsv } from "@/lib/csv";
 import { uniqueValues } from "@/lib/metrics";
 import DashboardEnterprise from "@/components/client/DashboardEnterprise";
 import Container from "@/components/ui/Container";
-import { chiaveNome } from "@/lib/nomi";
 import { operatoriDelTeam } from "@/lib/operatoriTeam";
 import { assegnatiOggiInArchivio, conAssegnatiDiOggi } from "@/lib/assegnatiOggi";
 
@@ -54,12 +53,19 @@ export default async function Page() {
   // GLI STESSI SETTER DELLA PAGINA INTERNA, dalla stessa funzione.
   const team = await operatoriDelTeam("Setter");
 
+  // "QUEL GIORNO ERA SETTER?", non "lo e' adesso": vedi
+  // src/lib/utenti/periodiTeam.ts.
   const filtra = (righe: Awaited<ReturnType<typeof fetchCsv>>) =>
-    team ? righe.filter((r) => team.chiavi.has(chiaveNome((r["Operatore"] ?? "").toString()))) : righe;
+    team ? righe.filter((r) => team.ammetteRiga(r["Operatore"] ?? "", r["Data"] ?? "")) : righe;
 
   const storico = filtra(operatoriRows);
   const oggi = filtra(righeOggi);
   const righeMenu = [...storico, ...oggi];
+
+  // Chi oggi in squadra non c'e' piu': la riga resta dov'era allora, in grigio.
+  const fuoriSquadra = team
+    ? [...new Set(righeMenu.map((r) => (r["Operatore"] ?? "").trim()))].filter((n) => n && team.fuoriOggi(n))
+    : null;
 
   return (
     <Container>
@@ -77,6 +83,9 @@ export default async function Page() {
         // mancava la riga dove metterli.
         operatoriAmmessi={team?.nomi ?? null}
         sottoTeamPerPersona={team?.sottoTeam}
+        sottoTeamStoria={team?.sottoTeamStoria}
+        periodiNelTeam={team?.periodiNelTeam}
+        fuoriSquadra={fuoriSquadra}
         soloTabella
         hideCampagne
         hideInsights
