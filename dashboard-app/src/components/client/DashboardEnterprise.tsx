@@ -180,6 +180,27 @@ export default function DashboardEnterprise({
    * Advisor; il foglio Operatori resta il ripiego se la lettura non risponde.
    */
   const [svolteProprietario, setSvolteProprietario] = useState<Record<string, number> | null>(null);
+  /**
+   * I KPI CHE NASCONO DA UN APPUNTAMENTO FISSATO DALL'ADVISOR STESSO.
+   *
+   * Un advisor del team Programmi riceve gli appuntamenti dai setter, e quelli
+   * che si procura da solo spariscono dentro il totale. Il pulsante li separa:
+   * quattro colonne - appuntamenti, consulenze, chiusure, Boom - e i tre tassi
+   * che ci stanno sopra, perche' un tasso deve seguire i numeri che divide.
+   *
+   * SI CARICA SOLO SE ACCESO: finche' nessuno chiede la seconda lettura, la
+   * pagina non spende ne' una query ne' una chiamata a HubSpot.
+   */
+  const [kpiPropri, setKpiPropri] = useState(false);
+  const [propri, setPropri] = useState<{
+    ricevuti: Record<string, number>;
+    appuntamenti: Record<string, number>;
+    consulenze: Record<string, number>;
+    chiusure: Record<string, number> | null;
+    boom: Record<string, number> | null;
+    incassoChiusure: Record<string, number> | null;
+  } | null>(null);
+  const [propriLoading, setPropriLoading] = useState(false);
   // Le call registrate senza nessun appuntamento, per advisor. NON si sommano
   // piu' alla colonna Consulenze (lo facevano finche' quella colonna veniva dal
   // foglio): restano perche' l'agenda le mostra e l'esportazione le riporta.
@@ -231,6 +252,47 @@ export default function DashboardEnterprise({
   // questa query invece dipende anche dalla campagna scelta, che quel controllo
   // non guarda. Ed e' una query al nostro database, non a HubSpot: costa
   // millisecondi, quindi non ha bisogno di quella cache.
+  // Il secondo modo di leggere la tabella, chiesto dal pulsante. Si rifa' a
+  // ogni cambio di periodo, perche' i numeri sono quelli del periodo scelto.
+  // SI CARICA SEMPRE SULLA PAGINA ADVISOR, non solo col pulsante acceso: gli
+  // appuntamenti RICEVUTI servono gia' alla vista normale, dove la colonna
+  // Appuntamenti mostrava solo quelli che l'advisor si era fissato da solo.
+  // I Boom invece costano una lettura di HubSpot e si chiedono solo quando il
+  // pulsante e' acceso: `boom=0` taglia quella parte.
+  const servonoPropri = !soloTabella || true;
+  useEffect(() => {
+    if (!servonoPropri || (operatorLabel ?? "Advisor") !== "Advisor") return;
+    const dal = filters.from ?? defaultFrom;
+    const al = filters.to ?? defaultTo;
+    let annullato = false;
+    setPropriLoading(true);
+    fetch(`/api/advisor-propri?from=${dal}&to=${al}${kpiPropri ? "" : "&boom=0"}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (annullato) return;
+        if (data.error) {
+          console.error("[advisor-propri]", data.error);
+          setPropri(null);
+          return;
+        }
+        setPropri({
+          ricevuti: data.ricevuti ?? {},
+          appuntamenti: data.appuntamenti ?? {},
+          consulenze: data.consulenze ?? {},
+          chiusure: data.chiusure ?? null,
+          boom: data.boom ?? null,
+          incassoChiusure: data.incassoChiusure ?? null
+        });
+      })
+      .catch(console.error)
+      .finally(() => {
+        if (!annullato) setPropriLoading(false);
+      });
+    return () => {
+      annullato = true;
+    };
+  }, [kpiPropri, servonoPropri, operatorLabel, filters.from, filters.to, defaultFrom, defaultTo]);
+
   useEffect(() => {
     const dal = filters.from ?? defaultFrom;
     const al = filters.to ?? defaultTo;
@@ -1411,13 +1473,46 @@ export default function DashboardEnterprise({
                 IL PERIODO E' QUELLO DEI FILTRI, non uno suo: due selettori di
                 date sulla stessa pagina sono due occasioni di guardare periodi
                 diversi credendo di guardarne uno. */}
+            {/* IL PULSANTE STA SOPRA LA TABELLA, A DESTRA, e porta scritto
+                quello che mostra adesso - non quello che farebbe premendolo.
+                Solo sulla pagina Advisor: sui setter la distinzione non esiste,
+                l'appuntamento lo fissano sempre loro.
+
+                CAMBIA DAVVERO SOLO IL TEAM PROGRAMMI: gli altri sotto-team i
+                setter non ce li hanno, quindi per loro i due numeri sono lo
+                stesso numero e la riga non si muove. */}
+            {!soloTabella && (operatorLabel ?? "Advisor") === "Advisor" && (
+              <div className="mb-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setKpiPropri((v) => !v)}
+                  aria-pressed={kpiPropri}
+                  className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+                    kpiPropri
+                      ? "border-sky-300 bg-sky-50 text-sky-800 hover:bg-sky-100"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                  }`}
+                  title={
+                    kpiPropri
+                      ? "Appuntamenti, consulenze, chiusure e Boom nati da un appuntamento che l'advisor si e' fissato da solo"
+                      : "Tutto il lavoro dell'advisor, compresi gli appuntamenti che gli ha procurato un setter"
+                  }
+                >
+                  {/* LA SCRITTA DICE COSA STAI GUARDANDO, non cosa succede
+                      premendo. E parla di AZIONI, non di colonne: le colonne
+                      che cambiano sono quattro piu' due tassi, e un elenco le
+                      direbbe sempre per difetto. */}
+                  {propriLoading ? "Conto..." : kpiPropri ? "Da azioni proprie" : "Da azioni del team"}
+                </button>
+              </div>
+            )}
             <Card>
               {useHubspot && (dealsLoading || boomLoading) ? (
                 <div className="flex h-64 items-center justify-center text-sm text-slate-500">
                   Caricamento dei dati in corso...
                 </div>
               ) : (
-              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeAdvisor={svolteProprietario ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} sottoTeamPerPersona={sottoTeamDelPeriodo} fuoriSquadra={fuoriSquadraSet} kpiChatter={kpiChatter ?? undefined} avvisoChatter={avvisoChatter} esportaHref={soloTabella ? null : `/api/esporta/operatori?from=${filters.from ?? defaultFrom}&to=${filters.to ?? defaultTo}&ruolo=${operatorLabel ?? "Advisor"}`} esportaPeriodo={periodoScritto} />
+              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeAdvisor={svolteProprietario ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} sottoTeamPerPersona={sottoTeamDelPeriodo} fuoriSquadra={fuoriSquadraSet} kpiChatter={kpiChatter ?? undefined} avvisoChatter={avvisoChatter} propri={propri} propriAccesi={kpiPropri} esportaHref={soloTabella ? null : `/api/esporta/operatori?from=${filters.from ?? defaultFrom}&to=${filters.to ?? defaultTo}&ruolo=${operatorLabel ?? "Advisor"}`} esportaPeriodo={periodoScritto} />
               )}
             </Card>
           </div>

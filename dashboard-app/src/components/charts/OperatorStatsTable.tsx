@@ -364,7 +364,18 @@ const INTESTAZIONI_NUMERI = [
   "% Chiusura",
   "Boom",
   "Obiettivo",
-  "Resa"
+  "Resa",
+  // I titoli della vista "Da azioni proprie": "Appuntamenti ADV" e
+  // "% Chiusura ADV" sono piu' lunghi degli originali, e senza metterli qui
+  // la colonna resterebbe stretta e il titolo andrebbe a capo premendo il
+  // pulsante. La larghezza si calcola una volta sola, per tutte le viste.
+  "App. ADV",
+  "App ADV %",
+  "Cons. ADV",
+  "Chius. ADV",
+  "Chius. ADV %",
+  "Boom ADV",
+  "Resa ADV"
 ];
 const LARGHEZZA_NUMERI = larghezzaColonnaNumeri(INTESTAZIONI_NUMERI);
 
@@ -373,6 +384,8 @@ export default function OperatorStatsTable({
   hubspotOverrides,
   noShowOverrides,
   svolteOverrides,
+  propri,
+  propriAccesi,
   consulenzeAdvisor,
   meseObiettivo,
   onSalvaObiettivo,
@@ -436,6 +449,33 @@ export default function OperatorStatsTable({
    * quelli soliti; per tutti gli altri non cambia niente.
    */
   telefonici?: Record<string, { appuntamenti: number; consulenze: number }>;
+  /**
+   * LA SECONDA LETTURA DELLA TABELLA: solo quello che nasce da un appuntamento
+   * fissato dall'advisor stesso. Null quando il pulsante e' su "KPI
+   * complessivi", ed e' il caso normale - allora qui non cambia niente.
+   *
+   * Quattro numeri e non tre, perche' i tassi devono seguirli: "% Consulenza"
+   * con le consulenze proprie sopra e tutti gli appuntamenti sotto direbbe una
+   * terza cosa, ne' il rendimento della filiera propria ne' il suo peso.
+   *
+   * I Boom possono mancare da soli (`boom: null`): arrivano da HubSpot mentre
+   * gli altri tre vengono dal database, e se HubSpot non risponde le altre
+   * colonne restano buone. Vedi src/app/api/advisor-propri/route.ts.
+   */
+  propri?: {
+    /** Gli appuntamenti che l'advisor ha in mano, da chiunque glieli abbia
+     *  procurati: e' la colonna Appuntamenti della vista normale. */
+    ricevuti: Record<string, number>;
+    appuntamenti: Record<string, number>;
+    consulenze: Record<string, number>;
+    chiusure: Record<string, number> | null;
+    boom: Record<string, number> | null;
+    /** L'incasso delle sole chiusure proprie: il numeratore della Resa. */
+    incassoChiusure?: Record<string, number> | null;
+  } | null;
+  /** Se il pulsante e' su "Da azioni proprie". Senza, `propri` serve solo a
+   *  dare la colonna Appuntamenti con quelli ricevuti. */
+  propriAccesi?: boolean;
   trattativeOverrides?: Record<string, number>;
   precomputedTotals?: { chiusure: number; boom: number };
   hubspotLoading?: boolean;
@@ -522,6 +562,49 @@ export default function OperatorStatsTable({
    * avesse modificato il codice.
    */
   const sottoDiNome = (nome: string) => sottoTeamPerPersona?.[normKey(nome)];
+
+  /* LE REGOLE DELLA VISTA STANNO QUI, prima di ogni funzione che le usa:
+     sono `const`, e una `const` letta prima della riga in cui e' scritta
+     non e' undefined, e' un errore che ferma la pagina. Successo il
+     11 novembre 2026: "Cannot access 'propriDi' before initialization",
+     schermata rossa al posto della tabella. */
+  const adv = Boolean(propri && propriAccesi && !isSetterView);
+  /**
+   * ASSEGNATI, CHIAMATE E CONNESSIONI SI SPENGONO NELLA VISTA DEL TEAM.
+   *
+   * Quelle tre colonne non hanno una versione "del team": nessun setter
+   * telefona al posto dell'advisor, quindi sono sempre e solo azioni sue, e
+   * restano identiche premendo il pulsante. Lasciarle accese, con la sfumatura
+   * azzurra come le altre, faceva sembrare che partecipassero al cambio.
+   *
+   * IN GRIGIO, NON NASCOSTE: i numeri sono veri e si leggono. Il colore dice
+   * "questa parte della riga non e' quella che stai guardando" - lo stesso
+   * linguaggio delle pagine delle squadre, dove le colonne che non riguardano
+   * i setter sono spente allo stesso modo.
+   *
+   * In "Da azioni proprie" tornano accese, perche' li' sono il motore di tutto
+   * il resto: le sue chiamate, le sue connessioni, gli appuntamenti che se ne
+   * e' ricavato, fino al Boom.
+   */
+  const spenteTre = Boolean(propri && !propriAccesi && !isSetterView);
+
+  /**
+   * LO SWITCH RIGUARDA SOLO IL TEAM PROGRAMMI.
+   *
+   * Gli altri sotto-team i setter non ce li hanno: ogni appuntamento se lo
+   * fissano da soli, quindi "complessivo" e "proprio" sono lo stesso numero e
+   * la riga non deve muoversi. Senza questo controllo peggio che fermi:
+   * andavano a zero, perche' il conto dei numeri propri chiede che sulla
+   * trattativa ci sia un setter scritto, e sulle loro spesso non c'e'.
+   *
+   * CHI NON HA SOTTO-TEAM resta fuori dallo switch, che e' la scelta prudente:
+   * mostrare quello che la riga mostrava prima, invece di un numero piu'
+   * piccolo che nessuno sa spiegare.
+   */
+  const SOTTO_TEAM_CON_SETTER = "programmi";
+  const haSetter = (r: OperatorSummary) =>
+    normKey(sottoDiNome(r.operatore) ?? "") === SOTTO_TEAM_CON_SETTER;
+  const propriDi = (r: OperatorSummary) => (haSetter(r) ? propri : null);
   const soloChatter =
     isSetterView && data.length > 0 && data.every((r) => eChatterCon(sottoDiNome(r.operatore), r.operatore));
   const titolo = (nome: string) => (soloChatter ? INTESTAZIONI_CHATTER[nome] ?? nome : nome);
@@ -613,7 +696,21 @@ export default function OperatorStatsTable({
    * loro numero vero sta negli Stati Lead. Il maggiore non raddoppia mai e non
    * toglie mai niente.
    */
+  /**
+   * LE QUATTRO COLONNE QUANDO IL PULSANTE E' SU "KPI PROPRI".
+   *
+   * Si innestano prima di tutto il resto - prima del ripiego sul foglio, prima
+   * del maggiore fra le due fonti dei telefonici - perche' qui la domanda e'
+   * un'altra: non "quanto ha fatto", ma "quanto ha fatto da appuntamenti suoi".
+   * Un numero preso da un'altra fonte risponderebbe alla prima domanda e
+   * verrebbe letto come risposta alla seconda.
+   *
+   * SENZA I BOOM si mostra zero e non il totale: un numero complessivo in mezzo
+   * a tre numeri propri sarebbe l'unico errore che non si vede. Succede solo se
+   * HubSpot non risponde, e allora anche le colonne complessive sono a trattino.
+   */
   const effConsulenze = (r: OperatorSummary) => {
+    if (propriDi(r) && propriAccesi && !isSetterView) return propri!.consulenze[normKey(r.operatore)] ?? 0;
     const base = isSetterView
       ? r.consulenze
       : consulenzeAdvisor?.[normKey(r.operatore)] ?? r.consulenze;
@@ -624,8 +721,14 @@ export default function OperatorStatsTable({
 
   const effConsulenzeChiusura = (r: OperatorSummary) =>
     isSetterView ? svolteOverrides?.[normKey(r.operatore)] ?? 0 : effConsulenze(r);
-  const effChiusure = (r: OperatorSummary) => hubspotOverrides?.[normKey(r.operatore)]?.chiusure ?? 0;
-  const effBoom = (r: OperatorSummary) => hubspotOverrides?.[normKey(r.operatore)]?.boom ?? 0;
+  const effChiusure = (r: OperatorSummary) =>
+    propriDi(r) && propriAccesi && !isSetterView
+      ? propri!.chiusure?.[normKey(r.operatore)] ?? 0
+      : hubspotOverrides?.[normKey(r.operatore)]?.chiusure ?? 0;
+  const effBoom = (r: OperatorSummary) =>
+    propriDi(r) && propriAccesi && !isSetterView
+      ? propri!.boom?.[normKey(r.operatore)] ?? 0
+      : hubspotOverrides?.[normKey(r.operatore)]?.boom ?? 0;
   /**
    * L-incasso delle sole CHIUSURE, che e il numeratore della Resa.
    *
@@ -635,12 +738,45 @@ export default function OperatorStatsTable({
    * un lavoro che non lo ha prodotto. Misurato su settembre: le rate sono il
    * 20% dell-incassato, e su una persona sola valevano 9.250 EUR su 21.750.
    */
+  /**
+   * LA RESA SEGUE LA VISTA, come tutto il resto della riga.
+   *
+   * E' incasso delle chiusure diviso le ore di consulenza: in "Da azioni
+   * proprie" sopra e sotto diventano quelli nati da appuntamenti suoi, e il
+   * numero risponde a "quanto rende un'ora quando il lavoro se lo procura da
+   * solo". Lasciarla complessiva avrebbe messo un ricavo di tutta la squadra
+   * sopra le ore della sola filiera propria: un euro all'ora piu' alto del
+   * vero, nella riga che dovrebbe dire il contrario.
+   */
   const effIncassoChiusure = (r: OperatorSummary) =>
-    hubspotOverrides?.[normKey(r.operatore)]?.incassoChiusure ?? 0;
+    propriDi(r) && propriAccesi && !isSetterView
+      ? propri!.incassoChiusure?.[normKey(r.operatore)] ?? 0
+      : hubspotOverrides?.[normKey(r.operatore)]?.incassoChiusure ?? 0;
   /** Stessa regola delle consulenze: il maggiore, mai la somma. Qui l'altra
    *  fonte sono le trattative, una per appuntamento, e chi lavora al telefono
    *  non ne ha - per loro vale il CRM, come prima. */
   const effAppuntamenti = (r: OperatorSummary) => {
+    /**
+     * DUE NUMERI DIVERSI, E NESSUNO DEI DUE E' QUELLO DI PRIMA.
+     *
+     * Fino all'11 novembre 2026 questa colonna, sulla pagina Advisor, mostrava
+     * gli appuntamenti che l'advisor aveva FISSATO: la sua fonte aggrega le
+     * trattative per setter. Su un advisor del team Programmi voleva dire
+     * quasi niente - Roberta Scicchitano risultava con 2 appuntamenti e 22
+     * consulenze nella stessa riga, mentre gliene erano stati procurati 42.
+     *
+     * Adesso: "Da azioni del team" mostra quelli che ha in mano, "Da azioni
+     * proprie" quelli che si e' fissato da solo. Sulla pagina Setter non
+     * cambia niente, li' la domanda e' sempre stata quella giusta.
+     */
+    if (propri && !isSetterView) {
+      const k = normKey(r.operatore);
+      // I RICEVUTI VALGONO PER TUTTI, anche fuori da Programmi: e' la colonna
+      // Appuntamenti che prima mostrava quelli fissati da se'. Solo la vista
+      // "proprie" si ferma a Programmi.
+      if (propriAccesi) return haSetter(r) ? propri.appuntamenti[k] ?? 0 : propri.ricevuti[k] ?? 0;
+      return propri.ricevuti[k] ?? 0;
+    }
     const base = trattativeOverrides?.[normKey(r.operatore)] ?? 0;
     const tel = telefonici?.[normKey(r.operatore)];
     if (tel && !isSetterView) return Math.max(base, tel.appuntamenti);
@@ -683,7 +819,7 @@ export default function OperatorStatsTable({
       chiusure: precomputedTotals?.chiusure ?? base.chiusure,
       boom: precomputedTotals?.boom ?? base.boom
     };
-  }, [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, consulenzeAdvisor, telefonici, precomputedTotals, obiettivi, sottoTeamPerPersona]);
+  }, [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, propri, propriAccesi, consulenzeAdvisor, telefonici, precomputedTotals, obiettivi, sottoTeamPerPersona]);
 
   const maxValues = useMemo(
     () => ({
@@ -708,7 +844,7 @@ export default function OperatorStatsTable({
       boom: Math.max(...data.map((r) => effBoom(r)), 1),
       resa: Math.max(...data.map((r) => resaOraria(effIncassoChiusure(r), effConsulenze(r)) ?? 0), 1)
     }),
-    [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, telefonici, soloChatter, kpiChatter, sottoTeamPerPersona]
+    [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, propri, propriAccesi, telefonici, soloChatter, kpiChatter, sottoTeamPerPersona]
   );
 
 
@@ -749,7 +885,7 @@ export default function OperatorStatsTable({
 
   const sorted = useMemo(
     () => [...data].sort((a, b) => effBoom(b) - effBoom(a) || effAppuntamenti(b) - effAppuntamenti(a)),
-    [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, telefonici]
+    [data, hubspotOverrides, trattativeOverrides, noShowOverrides, svolteOverrides, propri, propriAccesi, telefonici]
   );
 
   /**
@@ -759,6 +895,37 @@ export default function OperatorStatsTable({
    * che arriva da HubSpot - appuntamenti e chiusure sostituiti riga per riga -
    * e perche' una colonna cambia nome fra Advisor e Setter.
    */
+  /**
+   * LE INTESTAZIONI DICONO IN CHE VISTA SEI, con la sigla ADV.
+   *
+   * In "Da azioni proprie" le colonne che cambiano portano "ADV" - Appuntamenti
+   * ADV, Consulenze ADV, Boom ADV - perche' un numero piu' piccolo senza una
+   * spiegazione accanto si legge come un calo, non come un'altra domanda. Chi
+   * arriva sulla pagina gia' filtrata non ha visto nessuno premere il
+   * pulsante: l'intestazione e' l'unica cosa che glielo dice.
+   *
+   * L'OBIETTIVO NO: e' il traguardo del mese, lo stesso nelle due viste.
+   */
+  /**
+   * I TITOLI DELLA VISTA PROPRIA SONO ABBREVIATI, non allungati.
+   *
+   * "Appuntamenti ADV" e "% Chiusura ADV" erano piu' lunghi degli originali e
+   * allargavano le colonne premendo il pulsante: la tabella si muoveva sotto
+   * gli occhi di chi stava confrontando due righe. Accorciando la parola e
+   * mettendo il segno di percentuale in coda - APP. ADV, APP ADV %, CONS. ADV
+   * - i titoli stanno nello spazio di prima.
+   */
+  const SIGLE: Record<string, string> = {
+    Appuntamenti: "App. ADV",
+    "% Appuntamento": "App ADV %",
+    Consulenze: "Cons. ADV",
+    Chiusure: "Chius. ADV",
+    "% Chiusura": "Chius. ADV %",
+    Boom: "Boom ADV",
+    Resa: "Resa ADV"
+  };
+  const ADV = (nome: string) => (adv ? SIGLE[nome] ?? `${nome} ADV` : nome);
+
   const colonne: Array<{ label: string; valore: (r: OperatorSummary) => number | null }> = [
     // I primi tre titoli cambiano quando si guarda il solo gruppo chat: il
     // perche' sta in INTESTAZIONI_CHATTER. L'etichetta e' anche la chiave
@@ -781,13 +948,46 @@ export default function OperatorStatsTable({
       valore: (r) =>
         soloChatter || chatterRiga(r) ? chatterQualificati(r) : r.connessioni
     },
-    { label: "Appuntamenti", valore: (r) => effAppuntamenti(r) },
+    { label: ADV("Appuntamenti"), valore: (r) => effAppuntamenti(r) },
     {
-      label: "% Appuntamento",
-      valore: (r) => taglia(tassoPresa(effAppuntamenti(r), denominatoreTasso(r) ?? 0))
+      label: propri && !propriAccesi && !isSetterView ? "App ADV %" : ADV("% Appuntamento"),
+      /**
+       * LA COLONNA CAMBIA DOMANDA INSIEME ALLA VISTA.
+       *
+       * Vecchio commento, tenuto perche' spiega il perche':
+       *
+       * Nella vista "Da azioni del team" la colonna Appuntamenti conta anche
+       * quelli procurati dai setter, mentre le connessioni al denominatore
+       * sono solo le sue telefonate: Roberta Scicchitano verrebbe 42 su 17,
+       * cioe' il 247%. Una percentuale cosi' non e' un numero sbagliato di
+       * poco, e' un rapporto che non esiste.
+       *
+       * PROVVISORIO, in attesa di decidere cosa mettere al suo posto: la via
+       * allo studio e' cambiare domanda insieme alla vista - "% Autoprodotti",
+       * cioe' fissati da se' sul totale ricevuto - come gia' succede per i
+       * chatter, dove questa colonna cambia nome e denominatore.
+       */
+      /**
+       * DUE DOMANDE, UNA COLONNA. In "Da azioni del team" la cella dice
+       * quanta parte degli appuntamenti che l'advisor ha in mano se l'e'
+       * procurata da solo - Giacomo Chiaro 54%, Roberta Scicchitano 5% - e
+       * l'intestazione lo dichiara. In "Da azioni proprie" torna a essere il
+       * rendimento delle sue telefonate: appuntamenti suoi sulle connessioni.
+       *
+       * PRIMA QUI C'ERA UN TRATTINO, perche' il numeratore (gli appuntamenti
+       * ricevuti) e il denominatore (le sue chiamate) non si parlavano: 43 su
+       * 17 faceva 253%, che tagliato a cento compariva come un tranquillo
+       * "100,00%".
+       */
+      valore: (r) =>
+        propri && !propriAccesi && !isSetterView
+          ? haSetter(r)
+            ? taglia(tassoPresa(propri.appuntamenti[normKey(r.operatore)] ?? 0, effAppuntamenti(r)))
+            : null
+          : taglia(tassoPresa(effAppuntamenti(r), denominatoreTasso(r) ?? 0))
     },
     {
-      label: isSetterView ? "No Show" : "Consulenze",
+      label: isSetterView ? "No Show" : ADV("Consulenze"),
       valore: (r) => (isSetterView ? effNoShow(r) : effConsulenze(r))
     },
     // LE CONSULENZE DEL SETTER, e quante ne ha prodotte ogni appuntamento.
@@ -808,16 +1008,16 @@ export default function OperatorStatsTable({
           }
         ]
       : []),
-    { label: "Chiusure", valore: (r) => effChiusure(r) },
-    { label: "% Chiusura", valore: (r) => taglia(tassoChiusura(effChiusure(r), effConsulenzeChiusura(r))) },
-    { label: "Boom", valore: (r) => effBoom(r) }
+    { label: ADV("Chiusure"), valore: (r) => effChiusure(r) },
+    { label: ADV("% Chiusura"), valore: (r) => taglia(tassoChiusura(effChiusure(r), effConsulenzeChiusura(r))) },
+    { label: ADV("Boom"), valore: (r) => effBoom(r) }
   ];
 
   // LA RESA SOLO AGLI ADVISOR. E' incasso diviso ore di consulenza, e le ore in
   // stanza sono le loro: un setter non ne fa nessuna, quindi la colonna
   // dividerebbe per zero.
   if (!isSetterView) {
-    colonne.push({ label: "Resa", valore: (r) => resaOraria(effIncassoChiusure(r), effConsulenze(r)) });
+    colonne.push({ label: ADV("Resa"), valore: (r) => resaOraria(effIncassoChiusure(r), effConsulenze(r)) });
   }
 
   // L'OBIETTIVO STA SU ENTRAMBE LE PAGINE, E ULTIMO. E' il traguardo di Boom
@@ -1144,7 +1344,24 @@ export default function OperatorStatsTable({
             // veri in cima dicono gia' Messaggi e Qualificati, e ripeterli qui
             // sarebbe rumore.
             const sezioneChatter = !soloChatter && etichettaSezione === SOTTO_TEAM_CHATTER;
-            const tp = tassoPresa(effAppuntamenti(r), denominatoreTasso(r) ?? 0);
+            /**
+             * LA CELLA DEL TASSO NASCE QUI, non nella colonna la' sopra: li' il
+             * valore serve all'ordinamento, qui a quello che si legge. Il
+             * controllo va fatto in tutte e due, o la tabella si ordina su un
+             * numero che nessuno vede.
+             *
+             * NELLA VISTA DEL TEAM NON ESISTE: il numeratore sono gli
+             * appuntamenti che l'advisor ha in mano, il denominatore le sue
+             * telefonate. Scicchitano verrebbe 43 su 17, e siccome le
+             * percentuali qui si tagliano a cento, in pagina compariva un
+             * tranquillo "100,00%" al posto di un rapporto che non esiste.
+             */
+            const tp =
+              propri && !propriAccesi && !isSetterView
+                ? haSetter(r)
+                  ? tassoPresa(propri.appuntamenti[normKey(r.operatore)] ?? 0, effAppuntamenti(r))
+                  : null
+                : tassoPresa(effAppuntamenti(r), denominatoreTasso(r) ?? 0);
             const tc = tassoChiusura(effChiusure(r), effConsulenzeChiusura(r));
             // Quanti dei suoi appuntamenti si sono tenuti. Il denominatore sono
             // gli appuntamenti, quindi dipende dal caricamento delle trattative
@@ -1268,9 +1485,11 @@ export default function OperatorStatsTable({
                     sono ancora quelli del telefono e il numero di HubSpot e' la
                     risposta giusta alla domanda che pongono. */}
                 <td
-                  className="border-r border-white px-2 py-1.5 text-right tabular-nums"
+                  className={`border-r border-white px-2 py-1.5 text-right tabular-nums${spenteTre ? " text-slate-400" : ""}`}
                   style={{
-                    background: soloChatter
+                    background: spenteTre
+                      ? undefined
+                      : soloChatter
                       ? heatBg(chatterAssegnati(r) ?? 0, maxValues.assegnati)
                       : chatterRiga(r)
                         ? undefined
@@ -1303,9 +1522,11 @@ export default function OperatorStatsTable({
                   )}
                 </td>
                 <td
-                  className="border-r border-white px-2 py-1.5 text-right tabular-nums"
+                  className={`border-r border-white px-2 py-1.5 text-right tabular-nums${spenteTre ? " text-slate-400" : ""}`}
                   style={{
-                    background: soloChatter
+                    background: spenteTre
+                      ? undefined
+                      : soloChatter
                       ? heatBg(chatterMessaggi(r) ?? 0, maxValues.chiamate)
                       : chatterRiga(r)
                         ? undefined
@@ -1341,9 +1562,11 @@ export default function OperatorStatsTable({
                     "Qualificati" - perche' cambia anche il numero: vedi
                     INTESTAZIONI_CHATTER e CHATTER_QUALIFICATI. */}
                 <td
-                  className="border-r border-white px-2 py-1.5 text-right tabular-nums"
+                  className={`border-r border-white px-2 py-1.5 text-right tabular-nums${spenteTre ? " text-slate-400" : ""}`}
                   style={{
-                    background: soloChatter
+                    background: spenteTre
+                      ? undefined
+                      : soloChatter
                       ? heatBg(chatterQualificati(r) ?? 0, maxValues.connessioni)
                       : chatterRiga(r)
                         ? undefined
