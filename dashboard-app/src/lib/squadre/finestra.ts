@@ -283,6 +283,30 @@ const numeroFoglio = (v: unknown) => {
 };
 
 /**
+ * CHI E' NEL FOGLIO UTENTI ADESSO: gli id HubSpot, e basta.
+ *
+ * E' una fotografia del presente, e per questo si legge al momento invece di
+ * viaggiare dentro quella della notte. L'11 novembre 2026, il giorno in cui
+ * le pagine delle squadre hanno cominciato a togliere chi non c'e' piu', chi
+ * guardava vedeva ancora Ilaria Pisanu in elenco: era uscita dal foglio in
+ * mattinata, ma la fotografia era delle 9:33 e l'elenco dentro era vuoto.
+ * Una regola che dipende da quanto e' fresca una copia non e' una regola, e'
+ * una coincidenza.
+ */
+export async function utentiDalFoglio(): Promise<string[]> {
+  const righe = await fetchCsv(
+    `https://docs.google.com/spreadsheets/d/${FOGLIO_UTENTI}/export?format=csv&gid=${GID_UTENTI}`,
+    { next: { revalidate: 0 } }
+  );
+  const utenti: string[] = [];
+  for (const r of righe) {
+    const id = (r["Hubspot ID"] ?? "").toString().trim();
+    if (id) utenti.push(id);
+  }
+  return utenti;
+}
+
+/**
  * SOLO IL TEMPO DI RISPOSTA, dal foglio Operatori: la colonna Latenza,
  * giorno per giorno e persona per persona, senza toccare HubSpot ne' il
  * database.

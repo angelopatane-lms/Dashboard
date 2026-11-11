@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ieriRoma } from "@/lib/report/giornaliero";
 import { piuGiorni } from "@/lib/squadre/finestra";
-import { latenzaDalFoglio } from "@/lib/squadre/finestra";
+import { latenzaDalFoglio, utentiDalFoglio } from "@/lib/squadre/finestra";
 
 /**
- * IL TEMPO DI RISPOSTA, LETTO ADESSO: solo il foglio Operatori, niente
- * HubSpot e niente database.
+ * QUELLO CHE SANNO I FOGLI, LETTO ADESSO: il tempo di risposta dal foglio
+ * Operatori e l'elenco di chi lavora dal foglio utenti. Niente database.
  *
  * PERCHE' NON BASTA LA FOTOGRAFIA. Il tempo di risposta vive nella colonna
  * Latenza del foglio, e nella fotografia ci arriva col giro delle due di
@@ -50,9 +50,12 @@ export async function GET(req: NextRequest) {
   const da = q.get("da") ?? piuGiorni(a, -(quanti - 1));
 
   try {
-    const giorni = await latenzaDalFoglio(token, da, a);
+    // I DUE FOGLI INSIEME, in parallelo: sono due letture indipendenti e una
+    // attesa sola. Quello degli operatori dice come si e' lavorato, quello
+    // degli utenti dice chi c'e' - e tutti e due invecchiano in fretta.
+    const [giorni, utenti] = await Promise.all([latenzaDalFoglio(token, da, a), utentiDalFoglio()]);
     return NextResponse.json(
-      { generato: new Date().toISOString(), finestra: { da, a }, giorni },
+      { generato: new Date().toISOString(), finestra: { da, a }, giorni, utenti },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (e) {
