@@ -283,6 +283,48 @@ const numeroFoglio = (v: unknown) => {
 };
 
 /**
+ * SOLO IL TEMPO DI RISPOSTA, dal foglio Operatori: la colonna Latenza,
+ * giorno per giorno e persona per persona, senza toccare HubSpot ne' il
+ * database.
+ *
+ * E' UN PEZZO DI `calcolaFinestra` CHE SI PUO' CHIEDERE DA SOLO, perche' la
+ * fotografia della notte lo porta con un giorno di ritardo e chi guarda la
+ * pagina vuole sapere com'e' andata oggi. Vedi /api/squadre/foglio.
+ *
+ * DUE NUMERI E NON UNA MEDIA, come nella fotografia: somma dei minuti e
+ * numero di giornate misurate. Chi li riceve divide al livello che gli
+ * serve, e le medie non si mediano fra loro.
+ *
+ * LE RIGHE SENZA MISURA NON CONTANO: zero minuti non vuol dire "ha risposto
+ * subito", vuol dire che nessuno l'ha misurato.
+ */
+export async function latenzaDalFoglio(
+  token: string,
+  da: string,
+  a: string
+): Promise<Record<string, Record<string, { latenzaMinuti: number; latenzaGiorni: number }>>> {
+  const nomi = await proprietari(token);
+  const righe = await fetchCsv(
+    `https://docs.google.com/spreadsheets/d/${FOGLIO_OPERATORI}/export?format=csv&gid=${GID_OPERATORI}`,
+    { next: { revalidate: 0 } }
+  );
+  const giorni: Record<string, Record<string, { latenzaMinuti: number; latenzaGiorni: number }>> = {};
+  for (const r of righe) {
+    const g = dataFoglio((r["Data"] ?? "").toString());
+    if (!g || g < da || g > a) continue;
+    const id = nomi.perNome.get(chiaveNome((r["Operatore"] ?? "").toString()));
+    if (!id) continue;
+    const minuti = numeroFoglio(r["Latenza"]);
+    if (minuti <= 0) continue;
+    const perGiorno = giorni[g] ?? (giorni[g] = {});
+    const v = perGiorno[id] ?? (perGiorno[id] = { latenzaMinuti: 0, latenzaGiorni: 0 });
+    v.latenzaMinuti += minuti;
+    v.latenzaGiorni += 1;
+  }
+  return giorni;
+}
+
+/**
  * Il calcolo vero e proprio, da un giorno all'altro, estremi compresi.
  *
  * Non scrive niente e non sa dove finira' il risultato: lo script lo mette su
