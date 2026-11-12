@@ -12,7 +12,7 @@ import {
   aggregateByOperatore,
   normalizeOperatori
 } from "@/lib/analytics";
-import { formatFloat, formatInt, formatPct, formatEur } from "@/lib/format";
+import { formatDurata, formatFloat, formatInt, formatPct, formatEur } from "@/lib/format";
 import { PERIODO_DEFAULT, periodoScelto } from "@/lib/periodi";
 import { FiltersBar } from "@/components/Filters";
 import SectionTitle from "@/components/ui/SectionTitle";
@@ -428,6 +428,83 @@ export default function DashboardEnterprise({
         }, 1000);
       });
   }, [useHubspot, filters.from, filters.to, defaultFrom, defaultTo]);
+
+  /**
+   * IL TEMPO DI RISPOSTA DEL PERIODO, misurato da noi.
+   *
+   * Non viene dal foglio: la sua colonna "Latenza" contava anche le ore di
+   * notte come attesa e guardava la prima chiamata dell'operatore invece
+   * della prima chiamata a quel lead. Il conto giusto - ore lavorative,
+   * orologio che parte alle 7, mai chiamati messi da parte - sta in
+   * `lib/tempoRisposta/calcolo.ts`, e poggia sulla storia delle assegnazioni
+   * che il cron notturno travasa dalla scheda Tracking Eventi.
+   *
+   * LA STORIA PARTE DAL 29 OTTOBRE 2026: per i periodi precedenti la card
+   * non ha niente da mostrare e lo dice, invece di far finta di zero.
+   */
+  type RispostaPersona = {
+    nome: string;
+    lead: number;
+    medianaMin: number;
+    nonChiamati: number;
+  };
+  const [risposta, setRisposta] = useState<{
+    chiamati: number;
+    medianaMin: number;
+    maturi: number;
+    nonChiamati: number;
+    quotaNonChiamati: number;
+    perPersona?: RispostaPersona[];
+  } | null>(null);
+  const [rispostaCarica, setRispostaCarica] = useState(false);
+
+  useEffect(() => {
+    const dal = filters.from ?? defaultFrom;
+    const al = filters.to ?? defaultTo;
+    if (!dal || !al) return;
+    let vivo = true;
+    setRispostaCarica(true);
+    fetch(`/api/tempo-risposta?dal=${dal}&al=${al}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!vivo) return;
+        setRisposta(d && typeof d.medianaMin === "number" ? d : null);
+      })
+      .catch((e) => {
+        console.error("[tempo-risposta]", e);
+        if (vivo) setRisposta(null);
+      })
+      .finally(() => {
+        if (vivo) setRispostaCarica(false);
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [filters.from, filters.to, defaultFrom, defaultTo]);
+
+  /**
+   * Il tempo di risposta che la card mostra: quello di tutti, oppure quello
+   * della persona scelta nei filtri. Senza questo, aprire la pagina di un
+   * singolo advisor mostrerebbe la mediana dell'azienda sotto il suo nome.
+   *
+   * Per una persona sola i "mai chiamati" si rapportano ai suoi lead, non a
+   * quelli di tutti: maturi = chiamati + mai chiamati.
+   */
+  const rispostaMostrata = useMemo(() => {
+    if (!risposta) return null;
+    const scelto = (filters.operatore ?? "").trim();
+    if (!scelto) return risposta;
+    const sua = (risposta.perPersona ?? []).find((p) => chiaveNome(p.nome) === chiaveNome(scelto));
+    if (!sua) return { chiamati: 0, medianaMin: 0, maturi: 0, nonChiamati: 0, quotaNonChiamati: 0 };
+    const maturi = sua.lead + sua.nonChiamati;
+    return {
+      chiamati: sua.lead,
+      medianaMin: sua.medianaMin,
+      maturi,
+      nonChiamati: sua.nonChiamati,
+      quotaNonChiamati: maturi ? (sua.nonChiamati / maturi) * 100 : 0
+    };
+  }, [risposta, filters.operatore]);
 
   const includeToday = useMemo(() => {
     const from = filters.from ?? "";
@@ -1161,10 +1238,19 @@ export default function DashboardEnterprise({
     return presi ? disertati / presi : 0;
   }, [kpis, noShowDb, appuntamentiDb]);
 
+  /**
+   * La reattivita' e' la latenza girata in positivo: 100% se si risponde
+   * subito, 0% a cinque ore. Dal 12 novembre 2026 poggia sulla mediana
+   * misurata da noi e non piu' sulla colonna del foglio - due card vicine che
+   * misurano la stessa cosa non possono avere due fonti diverse. Il foglio
+   * resta il ripiego per i periodi prima del 29 ottobre, dove la storia
+   * delle assegnazioni non c'e'.
+   */
   const reactivityPct = useMemo(() => {
-    if (kpis.chiamate === 0) return 0;
-    return Math.max(0, Math.min(100, 100 * (1 - kpis.reattivitaMediaMin / 300)));
-  }, [kpis.chiamate, kpis.reattivitaMediaMin]);
+    const min = rispostaMostrata && rispostaMostrata.chiamati > 0 ? rispostaMostrata.medianaMin : kpis.reattivitaMediaMin;
+    if (!min) return 0;
+    return Math.max(0, Math.min(100, 100 * (1 - min / 300)));
+  }, [rispostaMostrata, kpis.reattivitaMediaMin]);
 
   const funnelStages = useMemo(
     () => [
@@ -1473,39 +1559,10 @@ export default function DashboardEnterprise({
                 IL PERIODO E' QUELLO DEI FILTRI, non uno suo: due selettori di
                 date sulla stessa pagina sono due occasioni di guardare periodi
                 diversi credendo di guardarne uno. */}
-            {/* IL PULSANTE STA SOPRA LA TABELLA, A DESTRA, e porta scritto
-                quello che mostra adesso - non quello che farebbe premendolo.
-                Solo sulla pagina Advisor: sui setter la distinzione non esiste,
-                l'appuntamento lo fissano sempre loro.
-
-                CAMBIA DAVVERO SOLO IL TEAM PROGRAMMI: gli altri sotto-team i
-                setter non ce li hanno, quindi per loro i due numeri sono lo
-                stesso numero e la riga non si muove. */}
-            {!soloTabella && (operatorLabel ?? "Advisor") === "Advisor" && (
-              <div className="mb-2 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setKpiPropri((v) => !v)}
-                  aria-pressed={kpiPropri}
-                  className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
-                    kpiPropri
-                      ? "border-sky-300 bg-sky-50 text-sky-800 hover:bg-sky-100"
-                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                  }`}
-                  title={
-                    kpiPropri
-                      ? "Appuntamenti, consulenze, chiusure e Boom nati da un appuntamento che l'advisor si e' fissato da solo"
-                      : "Tutto il lavoro dell'advisor, compresi gli appuntamenti che gli ha procurato un setter"
-                  }
-                >
-                  {/* LA SCRITTA DICE COSA STAI GUARDANDO, non cosa succede
-                      premendo. E parla di AZIONI, non di colonne: le colonne
-                      che cambiano sono quattro piu' due tassi, e un elenco le
-                      direbbe sempre per difetto. */}
-                  {propriLoading ? "Conto..." : kpiPropri ? "Da azioni proprie" : "Da azioni del team"}
-                </button>
-              </div>
-            )}
+            {/* IL COMANDO DELLE DUE VISTE NON STA PIU' QUI: e' dentro la
+                tabella, nella banda sopra le colonne che cambia. Sopra il
+                riquadro sembrava promettere un cambio su tutta la tabella,
+                mentre ne tocca sette colonne e le sole righe di Programmi. */}
             <Card>
               {useHubspot && (dealsLoading || boomLoading) ? (
                 <div className="flex h-64 items-center justify-center text-sm text-slate-500">
@@ -1649,17 +1706,42 @@ export default function DashboardEnterprise({
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card>
             <ChartTitle
-              title="Latenza"
-              description="Tempo medio fra assegnazione e prima chiamata"
+              title="Tempo di risposta"
+              description="Dal momento in cui un lead da chiamare viene affidato a quando riceve la prima telefonata, nelle sole ore in cui si puo' telefonare"
             />
             <div className="mt-4 h-[315px]">
-              <ReactivityGauge value={kpis.reattivitaMediaMin} max={300} />
+              <ReactivityGauge value={rispostaMostrata?.medianaMin ?? 0} max={300} />
             </div>
-            <div className="mt-3 text-sm text-gray-600">
-              Media Periodo:{" "}
-              <span className="font-semibold text-gray-900">
-                {formatFloat(kpis.reattivitaMediaMin, 1)} min
-              </span>
+            <div className="mt-3 space-y-1 text-sm text-gray-600">
+              <div>
+                Mediana:{" "}
+                <span className="font-semibold text-gray-900">
+                  {rispostaMostrata && rispostaMostrata.chiamati > 0
+                    ? formatDurata(rispostaMostrata.medianaMin)
+                    : rispostaCarica
+                      ? "..."
+                      : "nessun dato"}
+                </span>
+                {rispostaMostrata && rispostaMostrata.chiamati > 0 ? (
+                  <span className="text-gray-500">
+                    {" "}
+                    su {formatInt(rispostaMostrata.chiamati)} lead chiamati
+                  </span>
+                ) : null}
+              </div>
+              <div>
+                Affidati e mai chiamati:{" "}
+                <span className="font-semibold text-gray-900">
+                  {rispostaMostrata && rispostaMostrata.maturi > 0
+                    ? `${formatInt(rispostaMostrata.nonChiamati)} su ${formatInt(rispostaMostrata.maturi)} (${formatPct(rispostaMostrata.quotaNonChiamati / 100, 0)})`
+                    : "-"}
+                </span>
+              </div>
+              {rispostaMostrata && rispostaMostrata.chiamati === 0 && !rispostaCarica ? (
+                <div className="text-xs text-gray-500">
+                  La storia delle assegnazioni parte dal 29 ottobre 2026.
+                </div>
+              ) : null}
             </div>
           </Card>
           <Card>
