@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { riempiOrigine } from "@/lib/assegnazioni/origine";
 import { getDb } from "@/lib/db";
 import { assegnazioniDalFoglio } from "@/lib/tempoRisposta/foglio";
 
@@ -47,6 +48,14 @@ async function tabella() {
   await db.query(`ALTER TABLE assegnazione_evento ADD COLUMN IF NOT EXISTS stato_lead text`);
   await db.query(`ALTER TABLE assegnazione_evento ADD COLUMN IF NOT EXISTS stato_prec text`);
   await db.query(`ALTER TABLE assegnazione_evento ADD COLUMN IF NOT EXISTS da_app boolean`);
+  // DA DOVE NASCE L'ASSEGNAZIONE: flusso, app, manuale, integrazione, fusione.
+  // Vedi src/lib/assegnazioni/origine.ts per cosa vuol dire ciascuna e perche'
+  // nessun altro segnale - data di conversione, countdown, dispatch - sa
+  // distinguerle.
+  await db.query(`ALTER TABLE assegnazione_evento ADD COLUMN IF NOT EXISTS origine text`);
+  await db.query(`ALTER TABLE assegnazione_evento ADD COLUMN IF NOT EXISTS origine_id text`);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_assegnazione_senza_origine
+                    ON assegnazione_evento (ts DESC) WHERE origine IS NULL`);
   // La misura cerca la prima chiamata A QUEL CONTATTO dopo l'assegnazione:
   // senza questo indice e' una scansione delle 356.471 chiamate per ogni lead.
   await db.query(`CREATE INDEX IF NOT EXISTS idx_chiamata_contatto ON chiamata (contact_id, ts)`);
@@ -126,6 +135,23 @@ export async function GET(req: NextRequest) {
        WHERE a.ts >= now() - interval '7 days' OR a.da_app IS NULL
     `);
 
+    /**
+     * SI IMPARA DA DOVE NASCONO LE ASSEGNAZIONI, un pezzo per giro.
+     *
+     * Ogni giro ne sistema fino a tremila: le nuove della notte sono poche
+     * centinaia, quindi di fatto il resto della quota va a recuperare lo
+     * storico e in qualche giro l'archivio e' in pari da solo. E' lo stesso
+     * modo in cui si marcano i lead chiesti all'app - niente script da
+     * lanciare a mano, niente giorno in cui qualcuno si accorge che manca.
+     *
+     * COSTA UNA LETTURA OGNI CINQUANTA CONTATTI e non tocca niente di quello
+     * che c'e' gia': scrive solo righe che hanno l'origine vuota.
+     */
+    const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
+    const origini = token
+      ? await riempiOrigine(db, token, 3000, (r) => console.log("[cron/assegnazioni]", r))
+      : { guardate: 0, scritte: 0, senzaAggancio: 0 };
+
     const { rows: fine } = await db.query<{ n: string; a: string | null; b: string | null }>(
       `SELECT count(*) n,
               to_char(min(ts) AT TIME ZONE 'Europe/Rome', 'YYYY-MM-DD') a,
@@ -139,7 +165,8 @@ export async function GET(req: NextRequest) {
       nuove: Number(fine[0].n) - prima,
       inArchivio: Number(fine[0].n),
       storiaDa: fine[0].a,
-      finoA: fine[0].b
+      finoA: fine[0].b,
+      origini
     });
   } catch (e) {
     const perche = e instanceof Error ? e.message : String(e);
