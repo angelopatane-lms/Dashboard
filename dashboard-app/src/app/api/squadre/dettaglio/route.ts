@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { chiaveNome } from "@/lib/nomi";
+import { GET as agendaDegliAdvisor } from "@/app/api/advisor-agenda/route";
 
 /**
  * L'AGENDA DI UN GIORNO PER LE PAGINE SQUADRE: chi ha cosa in calendario.
@@ -46,9 +47,16 @@ const HUBSPOT_API = "https://api.hubapi.com";
  * SI APPOGGIA A `/api/advisor-agenda`, che questo lavoro lo fa gia' per la
  * pagina Advisor: ricerca delle riunioni, nome del contatto preso dal titolo,
  * esito, riunioni spostate. Rifarlo qui vorrebbe dire mantenere due volte la
- * stessa lettura e vedere le due pagine divergere al primo dettaglio. Il giro
- * in piu' su HTTP costa poco: quella rotta tiene un minuto di memoria, e qui
- * sopra ce ne sono altri due.
+ * stessa lettura e vedere le due pagine divergere al primo dettaglio.
+ *
+ * LA SI CHIAMA COME FUNZIONE, NON COME INDIRIZZO, e non e' un dettaglio.
+ * Quella rotta sta dietro la password della Dashboard - il middleware la
+ * protegge come tutte le altre - quindi una fetch su HTTP si prendeva un 401
+ * e questa rotta rispondeva 502. In locale non si vedeva, perche' in locale
+ * la password non c'e'. Le alternative erano due: togliere la protezione a
+ * quell'indirizzo, cioe' aprire a chiunque le agende di tutti, oppure saltare
+ * la rete. Saltare la rete non toglie niente a nessuno ed e' anche piu'
+ * veloce: nessun giro, nessun cookie, nessun segreto in piu' da custodire.
  */
 type RigaAgenda = {
   /** Null quando il nome dell'agenda non si ritrova fra i proprietari. */
@@ -82,8 +90,11 @@ function senzaIlNomeDellAdvisor(titolo: string, advisor: string) {
   return pulito || titolo;
 }
 
-async function agendaDelGiorno(origine: string, giorno: string) {
-  const res = await fetch(`${origine}/api/advisor-agenda?giorno=${giorno}`, { cache: "no-store" });
+async function agendaDelGiorno(giorno: string) {
+  // L'indirizzo serve solo a costruire la richiesta: nessuno lo chiama
+  // davvero, la funzione gira qui dentro.
+  const finta = new NextRequest(new URL(`https://interno/api/advisor-agenda?giorno=${giorno}`));
+  const res = await agendaDegliAdvisor(finta);
   if (!res.ok) throw new Error(`advisor-agenda risponde ${res.status}`);
   const dati = await res.json();
   if (dati?.error) throw new Error(String(dati.error));
@@ -123,7 +134,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const db = getDb();
-    const righe = await agendaDelGiorno(req.nextUrl.origin, giorno);
+    const righe = await agendaDelGiorno(giorno);
 
     /*
      * DAL NOME ALL'ID, perche' l'agenda parla per nomi e le squadre per id.
