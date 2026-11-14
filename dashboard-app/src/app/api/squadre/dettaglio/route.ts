@@ -173,6 +173,16 @@ function mezzanotteRoma(giorno: string): Date {
 
 type Occupato = { advisorId: string; inizioMin: number; fineMin: number };
 
+/**
+ * TRE NUMERI PER CAPIRE DOVE SI E' ROTTO, senza aprire i log.
+ *
+ * "Non si vedono le fasce" ha tre cause diverse e indistinguibili da fuori:
+ * il foglio non da' nessun Calendar ID, Google non si fa leggere, oppure le
+ * agende sono davvero vuote. Questi numeri viaggiano dentro la risposta e le
+ * separano in un colpo solo.
+ */
+const ULTIMO = { agendeChieste: 0, agendeConImpegni: 0, agendeIlleggibili: 0 };
+
 async function occupatoDelGiorno(giorno: string): Promise<Occupato[]> {
   const righe = await fetchCsv(
     `https://docs.google.com/spreadsheets/d/${FOGLIO_UTENTI}/export?format=csv&gid=${GID_UTENTI}`,
@@ -189,7 +199,11 @@ async function occupatoDelGiorno(giorno: string): Promise<Occupato[]> {
 
   const da = mezzanotteRoma(giorno);
   const a = new Date(da.getTime() + 86_400_000);
-  const { impegni } = await fasceOccupate([...new Set([...agendeDi.values()].flat())], da, a);
+  const calendari = [...new Set([...agendeDi.values()].flat())];
+  const { impegni, illeggibili } = await fasceOccupate(calendari, da, a);
+  ULTIMO.agendeChieste = calendari.length;
+  ULTIMO.agendeConImpegni = [...impegni.values()].filter((v) => v.length).length;
+  ULTIMO.agendeIlleggibili = illeggibili.size;
 
   const fuori: Occupato[] = [];
   for (const [advisorId, sue] of agendeDi) {
@@ -256,17 +270,34 @@ export async function GET(req: NextRequest) {
      */
     let occupato: Occupato[] = [];
     let occupatoLetto = true;
+    let occupatoErrore: string | null = null;
     try {
       occupato = await occupatoDelGiorno(giorno);
     } catch (e) {
       occupatoLetto = false;
-      console.error("[squadre/dettaglio] agende google", e instanceof Error ? e.message : e);
+      // IL MOTIVO VIAGGIA FINO ALLA PAGINA, non solo nei log. Chi guarda la
+      // pagina non ha accesso ai log di Vercel, e "non si sono lette" senza
+      // il perche' costa un giro di domande per ogni volta che succede.
+      occupatoErrore = e instanceof Error ? e.message : String(e);
+      console.error("[squadre/dettaglio] agende google", occupatoErrore);
     }
 
     // UNA GIORNATA VUOTA E' UNA RISPOSTA, non un errore: un sabato senza
     // appuntamenti deve arrivare come elenco vuoto, non come niente.
     return NextResponse.json(
-      { generato: new Date().toISOString(), giorno, righe, occupato, occupatoLetto },
+      {
+        generato: new Date().toISOString(),
+        giorno,
+        righe,
+        occupato,
+        occupatoLetto,
+        occupatoErrore,
+        // Quante agende sono state interrogate: se qui c'e' zero, il foglio
+        // non ha dato nessun Calendar ID e il problema non e' Google.
+        agendeChieste: ULTIMO.agendeChieste,
+        agendeConImpegni: ULTIMO.agendeConImpegni,
+        agendeIlleggibili: ULTIMO.agendeIlleggibili
+      },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (e) {
