@@ -14,6 +14,20 @@ import { assegnazioniDalFoglio } from "@/lib/tempoRisposta/foglio";
  * scheda Tracking Eventi - che le ha tutte - parte dal 29 ottobre 2026 e non
  * promette di restare. Questo giro ne fa un dato nostro, che si accumula.
  *
+ * QUANDO GIRA, dal 14 novembre 2026: alle 2:20 la passata di rete, e poi ogni
+ * ora dalle 8 alle 21 italiane (`0 7-20` in UTC, come tutti i cron di Vercel).
+ * Prima girava solo di notte, e le pagine che mostrano "quanti assegnati
+ * vengono dal marketing" del giorno in corso leggevano un registro fermo alle
+ * 3 del mattino: zero tutta la mattina, che non vuol dire nessuno ma nessuno
+ * li ha contati. La sorgente invece e' viva - la scheda Tracking Eventi la
+ * scrive un webhook - quindi mancava solo chi la travasa.
+ *
+ * L'ORA E' SCELTA AL MINUTO 0, non a caso: in quello stesso minuto gira il
+ * giro orario del progetto Squadre, che sveglia Neon. Cadendo dentro quella
+ * finestra questo giro non aggiunge accensioni - Neon si paga a ore di
+ * accensione e si spegne dopo cinque minuti di inattivita', quindi al minuto
+ * 20 sarebbero state quattordici accensioni nuove al giorno.
+ *
  * SI RILEGGONO DUE GIORNI, non solo il giorno nuovo: il foglio lo scrive un
  * webhook, e un webhook puo' arrivare in ritardo o il giro di una notte puo'
  * saltare. Due giorni di sovrapposizione costano qualche decina di KB e

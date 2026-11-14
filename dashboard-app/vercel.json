@@ -47,6 +47,10 @@
     {
       "path": "/api/cron/assegnazioni",
       "schedule": "20 2 * * *"
+    },
+    {
+      "path": "/api/cron/assegnazioni",
+      "schedule": "0 7-20 * * *"
     }
   ]
 }
