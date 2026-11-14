@@ -53,8 +53,21 @@ let tenuto: { token: string; scadenza: number } | null = null;
 async function accessToken(): Promise<string> {
   const utente = String(process.env.GOOGLE_CALENDAR_UTENTE ?? "").trim().replace(/^["']|["']$/g, "");
   if (!utente) {
+    /*
+     * QUANDO MANCA, SI DICE ANCHE COSA C'E'.
+     *
+     * "Manca GOOGLE_CALENDAR_UTENTE" e' vero ma non aiuta: la variabile puo'
+     * essere nel progetto sbagliato, nell'ambiente sbagliato, scritta con un
+     * nome diverso, o messa dopo l'ultimo deploy. I NOMI delle variabili
+     * GOOGLE che la funzione vede separano questi casi in un colpo solo, e
+     * sono nomi: nessun valore esce di qui.
+     */
+    const viste = Object.keys(process.env)
+      .filter((k) => k.toUpperCase().startsWith("GOOGLE"))
+      .sort()
+      .join(", ");
     throw new Error(
-      "Manca GOOGLE_CALENDAR_UTENTE: senza impersonare nessuno il service account vede solo la propria agenda, che e' vuota"
+      `Manca GOOGLE_CALENDAR_UTENTE (la funzione vede: ${viste || "nessuna variabile GOOGLE"})`
     );
   }
   // Trenta secondi di margine: un token che scade a meta' chiamata e' un
