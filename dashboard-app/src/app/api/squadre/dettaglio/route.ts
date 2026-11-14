@@ -148,13 +148,20 @@ const AGENDE_IN_PIU: Record<string, string[]> = {
 };
 
 /**
- * UNA FASCIA LUNGA MEZZA GIORNATA NON E' UN'AGENDA PIENA.
+ * RESTANO FUORI SOLO LE GIORNATE INTERE.
  *
- * Ferie, "Casa", i blocchi da nove ore: dicono dov'e' la persona, non che
- * stia facendo consulenze. Disegnate riempirebbero la colonna di grigio e
- * coprirebbero proprio la lettura che si cerca.
+ * Ferie e permessi arrivano da freeBusy come 00:00-24:00: disegnati
+ * riempirebbero la colonna di grigio e coprirebbero proprio la lettura che
+ * si cerca.
+ *
+ * LA SOGLIA ERA DI SEI ORE E NON ANDAVA BENE. Misurato su Nora D'Ascanio il
+ * 12 novembre 2026: aveva un blocco dalle 13:00 alle 23:45 - dieci ore e
+ * tre quarti - e quel pomeriggio non era disponibile per davvero. Tenerlo
+ * fuori significava mostrare libero un pomeriggio chiuso, cioe' l'errore
+ * che tutta questa lettura serve a evitare. A dodici ore passano i blocchi
+ * lunghi ma veri, e restano fuori le giornate intere.
  */
-const TROPPO_LUNGA_MIN = 6 * 60;
+const TROPPO_LUNGA_MIN = 12 * 60;
 
 /** La mezzanotte di Roma di un giorno, qualunque fuso abbia il server. */
 function mezzanotteRoma(giorno: string): Date {
