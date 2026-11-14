@@ -51,23 +51,38 @@ function credenziali(): Credenziali {
 let tenuto: { token: string; scadenza: number } | null = null;
 
 async function accessToken(): Promise<string> {
-  const utente = String(process.env.GOOGLE_CALENDAR_UTENTE ?? "").trim().replace(/^["']|["']$/g, "");
-  if (!utente) {
-    /*
-     * QUANDO MANCA, SI DICE ANCHE COSA C'E'.
-     *
-     * "Manca GOOGLE_CALENDAR_UTENTE" e' vero ma non aiuta: la variabile puo'
-     * essere nel progetto sbagliato, nell'ambiente sbagliato, scritta con un
-     * nome diverso, o messa dopo l'ultimo deploy. I NOMI delle variabili
-     * GOOGLE che la funzione vede separano questi casi in un colpo solo, e
-     * sono nomi: nessun valore esce di qui.
-     */
+  /*
+   * L'UTENTE IMPERSONATO HA UN VALORE PREDEFINITO, e non e' pigrizia.
+   *
+   * Non e' un segreto: e' l'indirizzo del dominio che possiede le agende
+   * aziendali degli advisor, scritto in chiaro anche nei commenti della
+   * pagina di prenotazione. Il segreto e' solo la chiave del service account,
+   * che resta una variabile e senza la quale qui non si fa niente.
+   *
+   * Tenerlo solo in una variabile e' costato un pomeriggio: la chiave era
+   * arrivata su Vercel e questa no, e l'agenda restava senza le fasce senza
+   * che si capisse perche'. La variabile continua a vincere quando c'e',
+   * cosi' l'indirizzo si puo' cambiare senza toccare il codice.
+   */
+  const utente =
+    String(process.env.GOOGLE_CALENDAR_UTENTE ?? "").trim().replace(/^["']|["']$/g, "") ||
+    "info@leonardoleone.it";
+  /*
+   * LA CHIAVE INVECE RESTA OBBLIGATORIA, e l'errore dice cosa c'e'.
+   *
+   * "Manca la variabile" e' vero ma non aiuta: puo' essere nel progetto
+   * sbagliato, nell'ambiente sbagliato, scritta con un altro nome, o messa
+   * dopo l'ultimo deploy. I NOMI delle variabili GOOGLE che la funzione vede
+   * separano questi casi in un colpo solo, e sono nomi: nessun valore esce
+   * di qui.
+   */
+  if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
     const viste = Object.keys(process.env)
       .filter((k) => k.toUpperCase().startsWith("GOOGLE"))
       .sort()
       .join(", ");
     throw new Error(
-      `Manca GOOGLE_CALENDAR_UTENTE (la funzione vede: ${viste || "nessuna variabile GOOGLE"})`
+      `Manca GOOGLE_SERVICE_ACCOUNT_JSON (la funzione vede: ${viste || "nessuna variabile GOOGLE"})`
     );
   }
   // Trenta secondi di margine: un token che scade a meta' chiamata e' un
