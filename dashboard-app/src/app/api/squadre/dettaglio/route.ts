@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { chiaveNome } from "@/lib/nomi";
+import { fetchCsv } from "@/lib/csv";
+import { fasceOccupate } from "@/lib/google/freebusy";
 import { GET as agendaDegliAdvisor } from "@/app/api/advisor-agenda/route";
 
 /**
@@ -118,6 +120,95 @@ async function agendaDelGiorno(giorno: string) {
   return righe;
 }
 
+/**
+ * LE AGENDE GOOGLE DIETRO LE RIUNIONI DI HUBSPOT.
+ *
+ * L'agenda nasce dalle riunioni del CRM, cioe' da quello che passa dal link
+ * di prenotazione. Ma un advisor che si segna una consulenza a mano sul
+ * proprio calendario, su HubSpot non lascia niente: il 13 novembre 2026, a
+ * fronte di 28 riunioni, sui calendari c'erano 46 impegni in piu' - 18 col
+ * nome di una persona - e Roberta Cettolo, che di consulenze ne aveva sei,
+ * sulla pagina risultava "agenda libera" tutto il giorno.
+ *
+ * ARRIVANO SOLO LE FASCE, senza titolo: vedi lib/google/freebusy. Dicono
+ * quando la persona e' occupata, non da cosa.
+ *
+ * I CALENDARI VENGONO DAL FOGLIO "Hubspot User List", colonna Calendar ID:
+ * la stessa fonte che dice chi lavora qui. Le seconde agende sono scritte
+ * qui sotto, come in agende-extra.json della pagina di prenotazione.
+ */
+const FOGLIO_UTENTI = "1XKvzK20x9DkIyJVHBNTYUHxV21kmrdWH0AshNkkgLHQ";
+const GID_UTENTI = "0";
+
+/** Chi tiene impegni anche su un secondo account. Chiave: id proprietario. */
+const AGENDE_IN_PIU: Record<string, string[]> = {
+  // Nora D'Ascanio, dal 10/11/2026: dei 52 slot che il suo link offriva, 4
+  // erano gia' occupati sulla seconda agenda.
+  "1325480413": ["nora.dascanio@leonemasterschool.it"]
+};
+
+/**
+ * UNA FASCIA LUNGA MEZZA GIORNATA NON E' UN'AGENDA PIENA.
+ *
+ * Ferie, "Casa", i blocchi da nove ore: dicono dov'e' la persona, non che
+ * stia facendo consulenze. Disegnate riempirebbero la colonna di grigio e
+ * coprirebbero proprio la lettura che si cerca.
+ */
+const TROPPO_LUNGA_MIN = 6 * 60;
+
+/** La mezzanotte di Roma di un giorno, qualunque fuso abbia il server. */
+function mezzanotteRoma(giorno: string): Date {
+  const presunto = Date.parse(`${giorno}T00:00:00Z`);
+  const letto = Date.parse(
+    new Intl.DateTimeFormat("sv-SE", {
+      timeZone: "Europe/Rome",
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+    })
+      .format(new Date(presunto))
+      .replace(" ", "T") + "Z"
+  );
+  return new Date(presunto + (presunto - letto));
+}
+
+type Occupato = { advisorId: string; inizioMin: number; fineMin: number };
+
+async function occupatoDelGiorno(giorno: string): Promise<Occupato[]> {
+  const righe = await fetchCsv(
+    `https://docs.google.com/spreadsheets/d/${FOGLIO_UTENTI}/export?format=csv&gid=${GID_UTENTI}`,
+    { next: { revalidate: 0 } }
+  );
+
+  const agendeDi = new Map<string, string[]>();
+  for (const r of righe) {
+    const id = (r["Hubspot ID"] ?? "").toString().trim();
+    if (!id) continue;
+    const sue = [(r["Calendar ID"] ?? "").toString().trim(), ...(AGENDE_IN_PIU[id] ?? [])].filter(Boolean);
+    if (sue.length) agendeDi.set(id, sue);
+  }
+
+  const da = mezzanotteRoma(giorno);
+  const a = new Date(da.getTime() + 86_400_000);
+  const { impegni } = await fasceOccupate([...new Set([...agendeDi.values()].flat())], da, a);
+
+  const fuori: Occupato[] = [];
+  for (const [advisorId, sue] of agendeDi) {
+    for (const calendario of sue) {
+      for (const f of impegni.get(calendario) ?? []) {
+        const inizioMin = Math.round((f.inizio - da.getTime()) / 60_000);
+        const fineMin = Math.round((f.fine - da.getTime()) / 60_000);
+        if (fineMin - inizioMin >= TROPPO_LUNGA_MIN) continue;
+        fuori.push({
+          advisorId,
+          inizioMin: Math.max(0, inizioMin),
+          fineMin: Math.min(24 * 60, fineMin)
+        });
+      }
+    }
+  }
+  return fuori;
+}
+
 export async function GET(req: NextRequest) {
   const atteso = process.env.SQUADRE_SECRET;
   if (!atteso) {
@@ -154,10 +245,28 @@ export async function GET(req: NextRequest) {
       for (const r of righe) r.advisorId = perNome.get(chiaveNome(r.advisor)) ?? null;
     }
 
+    /*
+     * LE AGENDE GOOGLE NON FERMANO L'AGENDA SE NON SI LEGGONO.
+     *
+     * Sono un di piu': senza credenziali, o se Google non risponde, restano
+     * le riunioni del CRM - che e' quello che la pagina mostrava prima. Un
+     * errore qui non deve far sparire tutto il resto, ma si annota, perche'
+     * un'agenda che sembra libera per un guasto e' peggio di una incompleta
+     * che lo dichiara.
+     */
+    let occupato: Occupato[] = [];
+    let occupatoLetto = true;
+    try {
+      occupato = await occupatoDelGiorno(giorno);
+    } catch (e) {
+      occupatoLetto = false;
+      console.error("[squadre/dettaglio] agende google", e instanceof Error ? e.message : e);
+    }
+
     // UNA GIORNATA VUOTA E' UNA RISPOSTA, non un errore: un sabato senza
     // appuntamenti deve arrivare come elenco vuoto, non come niente.
     return NextResponse.json(
-      { generato: new Date().toISOString(), giorno, righe },
+      { generato: new Date().toISOString(), giorno, righe, occupato, occupatoLetto },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (e) {
