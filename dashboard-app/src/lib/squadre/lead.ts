@@ -43,6 +43,15 @@ export type LeadFinestra = {
   /** Quante persone compaiono in piu' di una categoria: la differenza fra la
    *  somma delle righe e il totale, pronta da spiegare in pagina. */
   inPiuCategorie: number;
+  /**
+   * I CONTI DI UN INSIEME DI CATEGORIE, deduplicati dentro l'insieme.
+   *
+   * Serve perche' una squadra puo' avere piu' categorie e un riepilogo ne
+   * somma cinque: sommare le righe di `perCategoria` riporterebbe il doppio
+   * conteggio che questa lettura esiste per togliere. Chi chiama dichiara i
+   * suoi insiemi e li ritrova qui per nome.
+   */
+  perGruppo: Record<string, ContoLead>;
 };
 
 const QUERY = `
@@ -78,7 +87,8 @@ export async function leadDelPeriodo(
   db: Pool,
   da: string,
   a: string,
-  categorie: string[]
+  categorie: string[],
+  gruppi: Record<string, string[]> = {}
 ): Promise<LeadFinestra> {
   const volute = new Set(categorie.map((c) => c.trim().toUpperCase()).filter(Boolean));
   const { rows } = await db.query<{ persona: string; campagna: string; nuovo: boolean }>(QUERY, [da, a]);
@@ -86,6 +96,17 @@ export async function leadDelPeriodo(
   const per = new Map<string, { gen: Set<string>; unici: Set<string> }>();
   const tuttiGen = new Set<string>();
   const tuttiNuovi = new Set<string>();
+  // Un insieme di persone per gruppo, con dentro le categorie che il gruppo
+  // dichiara: e' l'unico modo di avere il conto vero di una squadra con due
+  // categorie, o di cinque squadre insieme.
+  const diGruppo = new Map<string, { quali: Set<string>; gen: Set<string>; unici: Set<string> }>();
+  for (const [nome, quali] of Object.entries(gruppi)) {
+    diGruppo.set(nome, {
+      quali: new Set(quali.map((c) => c.trim().toUpperCase()).filter(Boolean)),
+      gen: new Set<string>(),
+      unici: new Set<string>()
+    });
+  }
   for (const r of rows) {
     const cat = guessCategoria(r.campagna).toUpperCase();
     if (volute.size && !volute.has(cat)) continue;
@@ -95,6 +116,11 @@ export async function leadDelPeriodo(
     per.set(cat, v);
     tuttiGen.add(r.persona);
     if (r.nuovo) tuttiNuovi.add(r.persona);
+    for (const g of diGruppo.values()) {
+      if (!g.quali.has(cat)) continue;
+      g.gen.add(r.persona);
+      if (r.nuovo) g.unici.add(r.persona);
+    }
   }
 
   const perCategoria: Record<string, ContoLead> = {};
@@ -104,9 +130,13 @@ export async function leadDelPeriodo(
     somma += v.gen.size;
   }
 
+  const perGruppo: Record<string, ContoLead> = {};
+  for (const [nome, g] of diGruppo) perGruppo[nome] = { generati: g.gen.size, unici: g.unici.size };
+
   return {
     perCategoria,
     totale: { generati: tuttiGen.size, unici: tuttiNuovi.size },
-    inPiuCategorie: Math.max(0, somma - tuttiGen.size)
+    inPiuCategorie: Math.max(0, somma - tuttiGen.size),
+    perGruppo
   };
 }
