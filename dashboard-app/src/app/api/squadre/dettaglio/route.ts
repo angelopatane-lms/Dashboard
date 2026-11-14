@@ -1,43 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { PIPELINE_HT } from "@/lib/report/giornaliero";
+import { chiaveNome } from "@/lib/nomi";
 
 /**
- * GLI APPUNTAMENTI E LE CONSULENZE DI UN GIORNO, UNO PER UNO.
+ * L'AGENDA DI UN GIORNO PER LE PAGINE SQUADRE: chi ha cosa in calendario.
  *
- * A COSA SERVE. Sulle pagine squadre i due quadranti dicono quanti; chi guarda
- * una giornata vuole sapere anche QUALI - a che ora, con chi, procurato da chi
- * e tenuto da chi. Finche' il numero era solo un numero, per vederci dentro
- * bisognava aprire HubSpot e rifare a mano il filtro, che e' il momento in cui
- * si smette di fidarsi della pagina.
+ * A COSA SERVE. Il quadrante Appuntamenti dice quanti; chi guarda una
+ * giornata vuole sapere anche QUANDO - a che ora, per quanto, con chi, e
+ * soprattutto dove restano i buchi. Finche' il numero era solo un numero, per
+ * vederci dentro bisognava aprire HubSpot e rifare a mano il filtro, che e' il
+ * momento in cui si smette di fidarsi della pagina.
  *
- * UN GIORNO SOLO, per adesso. Non e' un limite tecnico ma una scelta: su una
- * giornata sono trenta appuntamenti e dieci consulenze, che si leggono in due
- * chiamate e stanno in una finestra; su un mese sarebbero mille righe, nessuno
- * le scorre e le letture su HubSpot diventerebbero venti.
+ * UN GIORNO SOLO, e non e' un limite tecnico: su una giornata sono venti
+ * riunioni che stanno in una tabella; su un mese sarebbero mille righe che
+ * nessuno scorre.
  *
- * LE DUE DEFINIZIONI SONO LE STESSE DEI QUADRANTI, e questo e' il punto:
- *
- *   appuntamento  una trattativa NATA in quel giorno, attribuita a chi l'ha
- *                 fissata - il setter se c'e', altrimenti il proprietario.
- *                 E' la regola di calcolaFinestra(), quindi l'elenco e il
- *                 numero sopra non possono divergere.
- *
- *   consulenza    una trattativa SVOLTA in quel giorno, al proprietario che
- *                 l'ha tenuta. E' svolteComeProprietario, la stessa colonna
- *                 che il quadrante somma.
- *
- * DUE ORARI DIVERSI, e si distinguono. Per un appuntamento conta QUANDO SI
- * TERRA' - la data e ora sulla trattativa - che non e' l'ora in cui e' stato
- * preso: uno fissato alle 10:26 puo' essere per giovedi' alle 15. Si mandano
- * entrambi, perche' uno dice la giornata del cliente e l'altro quella del
- * setter. Per una consulenza l'orario e' quello in cui risulta svolta.
- *
- * ICMD RESTA FUORI, e non per dimenticanza: gli advisor eventi vendono al
- * telefono e non aprono trattative in pipeline Appuntamenti - i loro numeri li
- * ricostruiamo dai movimenti dello Stato Lead - quindi su quella squadra
- * l'elenco sarebbe vuoto mentre il quadrante mostra decine di appuntamenti. La
- * pagina lo dice invece di far sembrare un guasto.
+ * C'ERA ANCHE UN ELENCO DELLE CONSULENZE SVOLTE, aperto dall'altro quadrante,
+ * costruito sulle trattative. Tolto su richiesta della direzione, che da
+ * questa pagina vuole una cosa sola: quanto e' pieno il calendario degli
+ * advisor. Con lui se ne sono andate le letture dei contatti e delle
+ * trattative, che servivano solo a quello.
  */
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -45,77 +27,84 @@ export const maxDuration = 60;
 
 const HUBSPOT_API = "https://api.hubapi.com";
 
-type Riga = {
-  dealId: string;
-  contattoId: string | null;
-  /** Il nome e cognome del contatto, quando HubSpot lo ha. */
+/**
+ * L'AGENDA DI UNA GIORNATA: a che ora, con chi, e quanto resta libero.
+ *
+ * NON E' LO STESSO INSIEME DEI DUE QUADRANTI, e la differenza e' il punto.
+ * Il quadrante Appuntamenti conta le trattative NATE in quel giorno - quante
+ * ne hanno fissate - mentre un'agenda mostra quelle che SI TENGONO in quel
+ * giorno, fissate chissa' quando. Un appuntamento preso venerdi' per lunedi'
+ * sta nel quadrante di venerdi' e nell'agenda di lunedi': sono due domande
+ * diverse, "quanto hanno procurato" e "quanto e' pieno il calendario".
+ *
+ * VIENE DALLE RIUNIONI, NON DALLE TRATTATIVE. Le riunioni di HubSpot sono
+ * l'unica fonte che ha un'ora di inizio E una di fine, quindi l'unica con cui
+ * si puo' dire quanto e' occupata un'agenda: le durate non sono tutte uguali -
+ * c'e' chi fa 60 minuti, chi 45, chi 30 - e un'ora dedotta a tavolino
+ * mostrerebbe pieno un calendario mezzo libero, o il contrario.
+ *
+ * SI APPOGGIA A `/api/advisor-agenda`, che questo lavoro lo fa gia' per la
+ * pagina Advisor: ricerca delle riunioni, nome del contatto preso dal titolo,
+ * esito, riunioni spostate. Rifarlo qui vorrebbe dire mantenere due volte la
+ * stessa lettura e vedere le due pagine divergere al primo dettaglio. Il giro
+ * in piu' su HTTP costa poco: quella rotta tiene un minuto di memoria, e qui
+ * sopra ce ne sono altri due.
+ */
+type RigaAgenda = {
+  /** Null quando il nome dell'agenda non si ritrova fra i proprietari. */
+  advisorId: string | null;
+  advisor: string;
   contatto: string;
-  setterId: string | null;
-  proprietarioId: string | null;
-  /** L'ora italiana in cui la trattativa e' nata: quando e' stato fissato. */
-  oraFissata: string | null;
-  /** L'istante dell'appuntamento, o quello in cui la consulenza risulta svolta. */
-  quando: string | null;
-  prodotto: string | null;
+  /** "09:30", pronti da scrivere. */
+  inizio: string;
+  fine: string;
+  /** Minuti dalla mezzanotte di Roma: con questi si posano le card. */
+  inizioMin: number;
+  fineMin: number;
+  /** appuntamento | svolta | no_show, per il colore della card. */
+  tipo: string;
 };
 
 /**
- * L'orario dell'appuntamento e la sua pipeline, a blocchi di cento trattative.
+ * Dal titolo della riunione si toglie il nome dell'advisor.
  *
- * LA PIPELINE SERVE A TOGLIERE QUELLO CHE IL QUADRANTE NON CONTA: il numero
- * sopra l'elenco viene da una ricerca su HubSpot limitata ad Appuntamenti High
- * Ticket, mentre il nostro archivio tiene anche trattative di altre pipeline.
- * Sul 13 novembre 2026 erano 29 su 30 - una sola riga di scarto, che pero' e'
- * esattamente il genere di scarto che fa perdere fiducia in un elenco.
+ * HubSpot le intitola "Contatto and Advisor", e qualcuno le rinomina con la
+ * "e" italiana: in una colonna che ha gia' il nome dell'advisor in cima,
+ * quella coda occupa meta' della card e dice una cosa sola, che si sapeva.
+ * La pagina Advisor toglie solo la forma inglese, e qui serviva anche l'altra.
  */
-async function datiDegliAppuntamenti(token: string, dealId: string[]) {
-  const fuori = new Map<string, { quando: string | null; pipeline: string | null }>();
-  for (let i = 0; i < dealId.length; i += 100) {
-    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/deals/batch/read`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        // DUE CAMPI PER LA DATA, NON UNO: sono sfasati di due ore e nessuno dei
-        // due da solo copre tutte le trattative. Stessa coppia del report
-        // giornaliero e della fotografia delle squadre.
-        properties: ["data_e_ora_appuntamento", "data_appuntamento", "pipeline"],
-        inputs: dealId.slice(i, i + 100).map((id) => ({ id }))
-      })
-    });
-    if (!res.ok) continue;
-    const dati = await res.json();
-    for (const d of dati.results ?? []) {
-      const p = d.properties ?? {};
-      const grezzo = (p.data_e_ora_appuntamento ?? "").trim() || (p.data_appuntamento ?? "").trim();
-      fuori.set(String(d.id), {
-        quando: grezzo || null,
-        pipeline: (p.pipeline ?? "").trim() || null
-      });
-    }
-  }
-  return fuori;
+function senzaIlNomeDellAdvisor(titolo: string, advisor: string) {
+  if (!titolo || !advisor) return titolo;
+  const coda = new RegExp(`\\s+(?:and|e|&|con)\\s+${advisor.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "i");
+  const pulito = titolo.replace(coda, "").trim();
+  // Se del titolo non resta niente - una riunione intitolata col solo nome
+  // dell'advisor - si tiene quello che c'era: meglio ripetuto che vuoto.
+  return pulito || titolo;
 }
 
-/** Nome e cognome, a blocchi di cento contatti. */
-async function nomiDeiContatti(token: string, contattoId: string[]) {
-  const fuori = new Map<string, string>();
-  for (let i = 0; i < contattoId.length; i += 100) {
-    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/contacts/batch/read`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        properties: ["firstname", "lastname"],
-        inputs: contattoId.slice(i, i + 100).map((id) => ({ id }))
-      })
+async function agendaDelGiorno(origine: string, giorno: string) {
+  const res = await fetch(`${origine}/api/advisor-agenda?giorno=${giorno}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`advisor-agenda risponde ${res.status}`);
+  const dati = await res.json();
+  if (dati?.error) throw new Error(String(dati.error));
+  const righe: RigaAgenda[] = [];
+  for (const e of dati.eventi ?? []) {
+    if (typeof e?.inizioMin !== "number") continue;
+    const advisor = String(e.operatore ?? "").trim();
+    righe.push({
+      advisorId: null,
+      advisor,
+      contatto: senzaIlNomeDellAdvisor(String(e.titolo ?? "").trim(), advisor),
+      inizio: String(e.inizio ?? ""),
+      fine: String(e.fine ?? ""),
+      inizioMin: e.inizioMin,
+      // Una fine mancante o al contrario non deve produrre una card alta zero:
+      // meglio il quarto d'ora minimo, che almeno si vede e si clicca.
+      fineMin: typeof e.fineMin === "number" && e.fineMin > e.inizioMin ? e.fineMin : e.inizioMin + 15,
+      tipo: String(e.tipo ?? "appuntamento")
     });
-    if (!res.ok) continue;
-    const dati = await res.json();
-    for (const c of dati.results ?? []) {
-      const nome = `${c.properties?.firstname ?? ""} ${c.properties?.lastname ?? ""}`.trim();
-      if (nome) fuori.set(String(c.id), nome);
-    }
   }
-  return fuori;
+  return righe;
 }
 
 export async function GET(req: NextRequest) {
@@ -134,113 +123,30 @@ export async function GET(req: NextRequest) {
 
   try {
     const db = getDb();
-    const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN ?? "";
+    const righe = await agendaDelGiorno(req.nextUrl.origin, giorno);
 
     /*
-     * IL GIORNO E' QUELLO DI ROMA, non quello del database, che e' in GMT:
-     * senza questa conversione le trattative nate fra mezzanotte e le due
-     * finirebbero nel giorno prima, e sono proprio quelle che un elenco di
-     * giornata fa notare.
+     * DAL NOME ALL'ID, perche' l'agenda parla per nomi e le squadre per id.
+     *
+     * Le riunioni portano il nome del proprietario, mentre le pagine squadre
+     * riconoscono le persone dai loro id HubSpot - alias compresi, per chi
+     * ne ha due. L'aggancio passa da chiaveNome(), la stessa normalizzazione
+     * usata in tutto il resto: senza di quella un apostrofo tipografico
+     * basta a far sparire una colonna.
      */
-    const leggi = async (campo: "creata_ts" | "svolta_ts"): Promise<Riga[]> => {
-      const { rows } = await db.query<{
-        deal_id: string;
-        contact_id: string | null;
-        setter_id: string | null;
-        proprietario_id: string | null;
-        ora: string | null;
-        quando: Date | null;
-        prodotto: string | null;
-      }>(
-        `SELECT t.deal_id::text AS deal_id,
-                t.contact_id::text AS contact_id,
-                t.setter_id::text AS setter_id,
-                t.proprietario_id::text AS proprietario_id,
-                to_char(t.creata_ts AT TIME ZONE 'Europe/Rome', 'HH24:MI') AS ora,
-                t.${campo} AS quando,
-                t.prodotto
-           FROM trattativa t
-          WHERE t.${campo} >= ($1::date::timestamp AT TIME ZONE 'Europe/Rome')
-            AND t.${campo} < (($1::date + INTERVAL '1 day')::timestamp AT TIME ZONE 'Europe/Rome')
-          ORDER BY t.${campo}`,
-        [giorno]
-      );
-      return rows.map((r) => ({
-        dealId: r.deal_id,
-        contattoId: r.contact_id,
-        contatto: "",
-        setterId: r.setter_id,
-        proprietarioId: r.proprietario_id,
-        oraFissata: r.ora,
-        quando: r.quando ? r.quando.toISOString() : null,
-        prodotto: r.prodotto
-      }));
-    };
-
-    let appuntamenti = await leggi("creata_ts");
-    const consulenze = await leggi("svolta_ts");
-
-    /*
-     * GLI ORARI E LA PIPELINE PRIMA DI TUTTO IL RESTO: la pipeline decide
-     * quali righe restano, e i nomi dei contatti si leggono dopo, per non
-     * chiedere a HubSpot il nome di qualcuno che poi si scarta.
-     */
-    if (token && appuntamenti.length) {
-      const dati = await datiDegliAppuntamenti(token, appuntamenti.map((r) => r.dealId));
-      appuntamenti = appuntamenti.filter((r) => {
-        const d = dati.get(r.dealId);
-        // Quello che HubSpot non ci fa leggere resta nell'elenco: una riga in
-        // piu' si vede e si spiega, una riga mancante no.
-        if (!d) return true;
-        if (d.pipeline && d.pipeline !== PIPELINE_HT) return false;
-        // La trattativa e' nata in questo giorno, ma la data dell'appuntamento
-        // puo' non esserci: resta vuota invece di mostrare l'ora in cui e'
-        // nata, che e' un'altra cosa e sta nel suo campo.
-        r.quando = d.quando;
-        return true;
-      });
-    }
-
-    const tutte = [...appuntamenti, ...consulenze];
-
-    // I NOMI DELLE PERSONE DAL DATABASE, non da HubSpot: la tabella li ha gia'
-    // tutti, e un setter di un'altra squadra - che capita - altrimenti
-    // resterebbe un numero.
-    const idPersone = [
-      ...new Set(tutte.flatMap((r) => [r.setterId, r.proprietarioId]).filter(Boolean))
-    ] as string[];
-    const nomiPersone: Record<string, string> = {};
-    if (idPersone.length) {
+    if (righe.length) {
       const { rows } = await db.query<{ id: string; nome: string }>(
-        `SELECT id::text AS id, nome FROM proprietario WHERE id = ANY($1::bigint[])`,
-        [idPersone]
+        `SELECT id::text AS id, nome FROM proprietario WHERE nome IS NOT NULL`
       );
-      for (const r of rows) nomiPersone[r.id] = r.nome;
+      const perNome = new Map<string, string>();
+      for (const r of rows) perNome.set(chiaveNome(r.nome), r.id);
+      for (const r of righe) r.advisorId = perNome.get(chiaveNome(r.advisor)) ?? null;
     }
 
-    /*
-     * I NOMI DEI CONTATTI E GLI ORARI VENGONO DA HUBSPOT, e sono la parte che
-     * puo' mancare: senza token si manda l'elenco comunque, con gli orari che
-     * il database ha. Un elenco senza i nomi e' meno utile; un elenco che non
-     * si apre perche' manca una variabile e' peggio.
-     */
-    if (token) {
-      const nomi = await nomiDeiContatti(
-        token,
-        [...new Set(tutte.map((r) => r.contattoId).filter(Boolean))] as string[]
-      );
-      for (const r of tutte) if (r.contattoId) r.contatto = nomi.get(r.contattoId) ?? "";
-    }
-
+    // UNA GIORNATA VUOTA E' UNA RISPOSTA, non un errore: un sabato senza
+    // appuntamenti deve arrivare come elenco vuoto, non come niente.
     return NextResponse.json(
-      {
-        generato: new Date().toISOString(),
-        giorno,
-        nomiPersone,
-        conHubspot: Boolean(token),
-        appuntamenti,
-        consulenze
-      },
+      { generato: new Date().toISOString(), giorno, righe },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (e) {
