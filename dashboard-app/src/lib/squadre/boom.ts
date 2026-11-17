@@ -23,6 +23,9 @@
  * stessa vendita non si conta due volte.
  */
 import { CHIUSURE_TIPOLOGIE, BOOM_TIPOLOGIE } from "@/lib/hubspotRegole";
+import { campagnaEffettiva } from "@/lib/campagnaEffettiva";
+import { guessCategoria } from "@/lib/campaignCategory";
+import { categoriaProdotto, CATEGORIE_PRODOTTO } from "@/lib/squadre/prodotti";
 import { estremiRoma, sfoglia } from "@/lib/report/giornaliero";
 
 const HUBSPOT = "https://api.hubapi.com";
@@ -42,7 +45,35 @@ export type Soldi = {
   rate: number;
 };
 
-export type SoldiDiPersona = { advisor: Soldi; setter: Soldi };
+/**
+ * I SOLDI DI UNA PERSONA IN UN GIORNO, TRE VOLTE.
+ *
+ * `advisor` e `setter` sono tutto quello che quella persona ha chiuso o
+ * procurato, ed e' il numero di sempre: il filtro "Categoria" delle pagine
+ * squadre, nel modo *persona*, legge questi e nient'altro.
+ *
+ * `perProdotto` e `perCampagna` sono gli stessi soldi divisi per categoria -
+ * REM, DIV COACH, MBE MKTG, MBE MNGT, MBE SALES - una volta secondo il
+ * prodotto venduto e una secondo la campagna da cui l'incasso viene. Chi
+ * disegna somma la categoria della propria squadra, che `squadre.json`
+ * dichiara una volta sola in `categorie`.
+ *
+ * SI DIVIDE QUI E NON SI MANDANO I RECORD. Un elenco di incassi sarebbe piu'
+ * flessibile, ma su una finestra lunga diventano migliaia di righe con
+ * dentro prodotto e campagna di ogni vendita: dati che al browser non
+ * servono e che su quelle pagine viaggiano con i nomi delle persone accanto.
+ *
+ * LE CATEGORIE ASSENTI NON COMPAIONO, e nemmeno i lati: un giorno senza
+ * vendite REM non porta una chiave "REM" a zero, e un incasso di cui non si
+ * sa il setter non porta un `setter` di zeri. Chi legge somma quello che
+ * trova. Misurato su 48 giorni di storico: 129 KB tenendo i lati vuoti.
+ */
+export type SoldiDiPersona = {
+  advisor: Soldi;
+  setter: Soldi;
+  perProdotto?: Record<string, { advisor?: Soldi; setter?: Soldi }>;
+  perCampagna?: Record<string, { advisor?: Soldi; setter?: Soldi }>;
+};
 
 export type BoomFinestra = {
   letto: string;
@@ -132,7 +163,15 @@ export async function calcolaBoom(
       "boom_stage",
       "hubspot_owner_id",
       "setter",
-      "id_trattativa"
+      "id_trattativa",
+      // IL PRODOTTO E LA CAMPAGNA, per il filtro "Categoria". Sono proprieta'
+      // dello stesso oggetto: non costano una chiamata in piu'. La campagna
+      // sono tre campi e non uno, perche' per gli incassi nati prima del 27
+      // agosto 2026 quello buono e' `track_last` - vedi campagnaEffettiva().
+      "prodotto",
+      "id_campagna_track",
+      "id_campagna_track_last",
+      "hs_createdate"
     ],
     400
   );
@@ -144,6 +183,9 @@ export async function calcolaBoom(
   const dedotti = senzaSetter.length ? await setterDalleTrattative(token, senzaSetter) : new Map();
   racconta(`incassi: ${incassi.length}, senza setter ${senzaSetter.length}, dedotti ${dedotti.size}`);
 
+  /** Il vocabolario del filtro: le categorie che una squadra ha davvero. */
+  const sueCategorie = new Set(CATEGORIE_PRODOTTO.map((c) => c.etichetta));
+
   const giorni: Record<string, Record<string, SoldiDiPersona>> = {};
   const lato = (giorno: string, chi: string, quale: "advisor" | "setter"): Soldi | null => {
     const id = (chi ?? "").trim();
@@ -151,6 +193,35 @@ export async function calcolaBoom(
     giorni[giorno] ??= {};
     giorni[giorno][id] ??= { advisor: vuoti(), setter: vuoti() };
     return giorni[giorno][id][quale];
+  };
+
+  /**
+   * La stessa cella, ma dentro una categoria.
+   *
+   * Si crea solo quando quell'incasso ha davvero una categoria: le vendite di
+   * prodotti che non sono di nessuna squadra - MEP, LIFE, Academy, i biglietti
+   * ICMD - non entrano in nessuna chiave, e nel modo prodotto non si vedono.
+   * E' il senso del filtro.
+   */
+  const latoDi = (
+    dove: "perProdotto" | "perCampagna",
+    categoria: string | null,
+    giorno: string,
+    chi: string,
+    quale: "advisor" | "setter"
+  ): Soldi | null => {
+    const id = (chi ?? "").trim();
+    if (!id || !categoria) return null;
+    // La cella principale esiste sempre prima: la crea `lato` qui sopra, che
+    // viene chiamata per lo stesso incasso.
+    const cella = giorni[giorno]?.[id];
+    if (!cella) return null;
+    const per = (cella[dove] ??= {});
+    const voce = (per[categoria] ??= {});
+    // SOLO IL LATO CHE RICEVE: per ogni incasso si tocca un lato alla volta,
+    // e creare anche l'altro vorrebbe dire spedire meta' risposta di zeri.
+    voce[quale] ??= vuoti();
+    return voce[quale]!;
   };
 
   for (const b of incassi) {
@@ -169,11 +240,42 @@ export async function calcolaBoom(
       dedotti.get((b.properties.id_trattativa ?? "").trim()) ||
       "";
 
+    // LE DUE CATEGORIE DI QUESTO INCASSO, per il filtro delle pagine squadre.
+    // `null` vuol dire "di nessuna squadra", e in quel caso l'incasso resta
+    // soltanto nel totale della persona: e' quello che il filtro deve fare.
+    const catProdotto = categoriaProdotto(b.properties.prodotto);
+    // SOLO LE CATEGORIE CHE UNA SQUADRA HA. guessCategoria risponde sempre
+    // qualcosa - MEP, ICMD, Imprenditoria, "Altro", "Nessuna" - e nessuna di
+    // quelle e' la categoria di una delle cinque squadre commerciali: tenerle
+    // vorrebbe dire spedire a ogni pagina mezza dozzina di chiavi che nessuno
+    // legge, con i nomi delle persone accanto. Il vocabolario e' quello dei
+    // prodotti, cosi' le due dimensioni del filtro parlano la stessa lingua.
+    const trovata = guessCategoria(
+      campagnaEffettiva(
+        b.properties.id_campagna_track,
+        b.properties.id_campagna_track_last,
+        Date.parse(b.properties.hs_createdate ?? "")
+      )
+    );
+    const catCampagna = sueCategorie.has(trovata) ? trovata : null;
+
     for (const [chi, quale] of [
       [proprietario, "advisor"],
       [setter, "setter"]
     ] as const) {
-      const v = lato(g, chi, quale);
+      const principale = lato(g, chi, quale);
+      if (!principale) continue;
+      // LO STESSO INCASSO IN TRE POSTI: il totale della persona, la sua
+      // categoria di prodotto e la sua categoria di campagna. Non sono tre
+      // somme diverse - sono la stessa somma scritta tre volte - quindi la
+      // regola sta in una funzione sola: scriverla tre volte vorrebbe dire
+      // che fra sei mesi due copie dicono una cosa e la terza un'altra.
+      const celle = [
+        principale,
+        latoDi("perProdotto", catProdotto, g, chi, quale),
+        latoDi("perCampagna", catCampagna, g, chi, quale)
+      ];
+      for (const v of celle) {
       if (!v) continue;
       /**
        * IL VENDUTO E' L'INCASSATO, MENO GLI STORNI. Deciso l'11 novembre 2026.
@@ -207,6 +309,7 @@ export async function calcolaBoom(
         // Lo storno toglie quello che aveva aggiunto, qualunque tipologia sia:
         // un rimborso su una rata e' denaro uscito come gli altri.
         if (stornato) v.vendutoStornato += importo;
+      }
       }
     }
   }
