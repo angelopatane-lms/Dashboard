@@ -21,22 +21,23 @@
  * nome lo dica. Il giorno che si vuole il contrario, si aggiunge il frammento
  * qui e vale subito in tutte e due le pagine.
  *
- * I BIGLIETTI ICMD NON SONO IL PRODOTTO DI NESSUNA SQUADRA. Deciso da Angelo
- * il 17 novembre 2026: nel modo prodotto si guardano solo gli high ticket.
- * Sono dichiarati qui sopra in un elenco a parte - e non semplicemente
- * omessi - perche' un prodotto che resta fuori per scelta e uno che resta
- * fuori perche' nessuno l'ha mai classificato si leggono uguali, e fra sei
- * mesi nessuno saprebbe piu' quale dei due era.
+ * I BIGLIETTI ICMD SONO UNA CATEGORIA COME LE ALTRE, e la squadra
+ * dell'evento e' una squadra come le altre: `squadre.json` le da' gia'
+ * `categorie: ["ICMD"]`, quindi "il prodotto della squadra" per lei sono i
+ * biglietti, senza che qui serva un caso speciale.
  *
- * IL FILTRO E' SOLO DELLE CINQUE SQUADRE COMMERCIALI. Deciso da Angelo lo
- * stesso giorno: sulla pagina ICMD, che vende biglietti e non percorsi, il
- * filtro non compare - non c'e' un "prodotto della squadra" da confrontare, e
- * un filtro che sulla sua pagina puo' solo azzerare i numeri non serve a
- * nessuno. Quella pagina resta come e' oggi.
+ * Ci si e' arrivati per esclusione, il 17 novembre 2026. Prima i biglietti
+ * erano tenuti fuori da tutti i modi del filtro, che era giusto per le cinque
+ * squadre commerciali - un biglietto da 300 EUR non e' il loro percorso - ma
+ * creava il problema specchiato: la pagina ICMD mostrava gli high ticket
+ * venduti dai suoi. Misurato: dal 1 ottobre le sue quattro persone hanno
+ * fatto 125 chiusure di biglietti per 38.398 EUR e 3 vendite di altro per
+ * 39.318 - cioe' meta' dei loro euro era roba di altre squadre.
+ *
+ * Con ICMD fra le categorie ogni squadra resta a casa sua, e chi vuole il
+ * totale intero di una persona lo guarda sulla Dashboard, dove quei numeri
+ * non si filtrano mai.
  */
-
-/** I prodotti che restano fuori per scelta, non per dimenticanza. */
-const ESCLUSI = ["icmd"];
 
 type DefProdotto = { etichetta: string; contiene: string[] };
 
@@ -48,6 +49,9 @@ type DefProdotto = { etichetta: string; contiene: string[] };
  * diverse, l'ordine di questo elenco e' la risposta.
  */
 const DEFS: DefProdotto[] = [
+  // ICMD per primo: "ICMD Gold", "ICMD x 2 + Hotel" e simili non contengono
+  // nessuno degli altri frammenti, ma l'ordine dice qual e' la regola.
+  { etichetta: "ICMD", contiene: ["icmd"] },
   { etichetta: "REM", contiene: ["rem 2.0", "real estate"] },
   { etichetta: "DIV COACH", contiene: ["diventa coach", "div coach"] },
   { etichetta: "MBE MKTG", contiene: ["mbe marketing"] },
@@ -65,7 +69,6 @@ const DEFS: DefProdotto[] = [
 export function categoriaProdotto(prodotto: string | null | undefined): string | null {
   const nome = String(prodotto ?? "").trim().toLowerCase().replace(/\s+/g, " ");
   if (!nome) return null;
-  if (ESCLUSI.some((f) => nome.includes(f))) return null;
   for (const def of DEFS) {
     if (def.contiene.some((f) => nome.includes(f))) return def.etichetta;
   }
@@ -74,6 +77,8 @@ export function categoriaProdotto(prodotto: string | null | undefined): string |
 
 /**
  * E' un biglietto dell'evento, non un percorso.
+ *
+ * Resta per chi deve distinguerli senza passare dalle categorie.
  *
  * Serve al modo *campagna*, che guarda da dove viene il lead e non cosa e'
  * stato venduto: senza questo, un biglietto ICMD comprato da un lead arrivato
@@ -87,8 +92,7 @@ export function categoriaProdotto(prodotto: string | null | undefined): string |
  * biglietti ai propri lead.
  */
 export function eBigliettoEvento(prodotto: string | null | undefined): boolean {
-  const nome = String(prodotto ?? "").trim().toLowerCase();
-  return Boolean(nome) && ESCLUSI.some((f) => nome.includes(f));
+  return categoriaProdotto(prodotto) === "ICMD";
 }
 
 /** Le categorie e i loro frammenti, per chi deve mostrarle o provarle. */

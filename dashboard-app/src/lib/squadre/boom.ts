@@ -25,7 +25,7 @@
 import { CHIUSURE_TIPOLOGIE, BOOM_TIPOLOGIE } from "@/lib/hubspotRegole";
 import { campagnaEffettiva } from "@/lib/campagnaEffettiva";
 import { guessCategoria } from "@/lib/campaignCategory";
-import { categoriaProdotto, eBigliettoEvento, CATEGORIE_PRODOTTO } from "@/lib/squadre/prodotti";
+import { categoriaProdotto, CATEGORIE_PRODOTTO } from "@/lib/squadre/prodotti";
 import { estremiRoma, sfoglia } from "@/lib/report/giornaliero";
 
 const HUBSPOT = "https://api.hubapi.com";
@@ -73,17 +73,6 @@ export type SoldiDiPersona = {
   setter: Soldi;
   perProdotto?: Record<string, { advisor?: Soldi; setter?: Soldi }>;
   perCampagna?: Record<string, { advisor?: Soldi; setter?: Soldi }>;
-  /**
-   * I SOLI BIGLIETTI DELL'EVENTO, da togliere.
-   *
-   * Il filtro non li vuole in nessuno dei tre modi - deciso da Angelo il 17
-   * novembre 2026 - e anche il modo *persona*, che mostra tutto il resto, li
-   * lascia fuori. Si mandano come insieme a parte invece di spedire un terzo
-   * totale gia' ripulito: cosi' chi legge sottrae quando serve, e chi non
-   * sottrae - la pagina della squadra ICMD, che di biglietti vive - continua
-   * a vedere i numeri interi senza sapere che questa chiave esiste.
-   */
-  biglietti?: { advisor?: Soldi; setter?: Soldi };
 };
 
 export type BoomFinestra = {
@@ -206,17 +195,6 @@ export async function calcolaBoom(
     return giorni[giorno][id][quale];
   };
 
-  /** I biglietti dell'evento di quella persona, in quel giorno, da quel lato. */
-  const latoBiglietti = (giorno: string, chi: string, quale: "advisor" | "setter"): Soldi | null => {
-    const id = (chi ?? "").trim();
-    if (!id) return null;
-    const cella = giorni[giorno]?.[id];
-    if (!cella) return null;
-    const voce = (cella.biglietti ??= {});
-    voce[quale] ??= vuoti();
-    return voce[quale]!;
-  };
-
   /**
    * La stessa cella, ma dentro una categoria.
    *
@@ -279,14 +257,7 @@ export async function calcolaBoom(
         Date.parse(b.properties.hs_createdate ?? "")
       )
     );
-    // ANCHE QUI SOLO HIGH TICKET. Il modo campagna guarda da dove viene il
-    // lead, quindi un biglietto ICMD comprato da un lead arrivato con una
-    // campagna REM finirebbe nella riga di REM: dal 1 ottobre sono 17
-    // biglietti, una chiusura su cinque di quelle che il filtro mostrerebbe.
-    // Deciso da Angelo il 17 novembre 2026, per la stessa ragione per cui i
-    // biglietti sono gia' fuori dal modo prodotto.
-    const catCampagna =
-      sueCategorie.has(trovata) && !eBigliettoEvento(b.properties.prodotto) ? trovata : null;
+    const catCampagna = sueCategorie.has(trovata) ? trovata : null;
 
     for (const [chi, quale] of [
       [proprietario, "advisor"],
@@ -302,8 +273,7 @@ export async function calcolaBoom(
       const celle = [
         principale,
         latoDi("perProdotto", catProdotto, g, chi, quale),
-        latoDi("perCampagna", catCampagna, g, chi, quale),
-        eBigliettoEvento(b.properties.prodotto) ? latoBiglietti(g, chi, quale) : null
+        latoDi("perCampagna", catCampagna, g, chi, quale)
       ];
       for (const v of celle) {
       if (!v) continue;
