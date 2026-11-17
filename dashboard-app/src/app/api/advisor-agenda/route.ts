@@ -291,11 +291,20 @@ function tipoDa(esito: string | null | undefined): TipoEvento {
 }
 
 /**
- * L'appuntamento e' stato creato a mano invece che da una pagina di prenotazione.
+ * L'appuntamento e' stato creato a mano da una persona dentro HubSpot.
  *
- * COME SI RICONOSCE: quando un contatto prenota da una pagina, HubSpot mette da
- * solo l'esito a "SCHEDULED". Se la riunione viene creata a mano nel CRM o
- * arriva dal calendario, quel campo resta vuoto perche' nessuno lo compila.
+ * COME SI RICONOSCE, dal 17 novembre 2026: lo dice `hs_meeting_source`, e
+ * l'unico valore che significa "l'ha scritta qualcuno a mano" e' CRM_UI.
+ *
+ * PRIMA LA REGOLA ERA L'ESITO VUOTO, e ha funzionato finche' le riunioni
+ * nascevano dentro HubSpot: chi prenota da una sua pagina si porta dietro
+ * `hs_meeting_outcome = SCHEDULED`, chi scrive a mano no. Il 13 novembre 2026
+ * la pagina di prenotazione ha cambiato strada - l'appuntamento nasce su
+ * Google Calendar e HubSpot lo importa - e da quel giorno le nostre riunioni
+ * arrivano con fonte BIDIRECTIONAL_SYNC e l'esito vuoto: comparivano tutte
+ * col segno rosso di "creata a mano". Misurato: il 16 novembre 24 su 26,
+ * contro 3 su 19 il 12. Non erano dati sbagliati, era una regola scritta per
+ * un mondo che era cambiato tre giorni prima.
  *
  * PERCHE' MERITA UN SEGNO E NON UN COLORE. Fino a ieri l'agenda dipingeva queste
  * riunioni di giallo chiamandole "interne", perche' quasi sempre lo erano - la
@@ -305,7 +314,8 @@ function tipoDa(esito: string | null | undefined): TipoEvento {
  * Il modo in cui una riunione e' nata non dice se sia una consulenza: quello lo
  * dicono il contatto e lo stato, e restano affidati al colore.
  */
-const creataAMano = (esito: string | null | undefined): boolean => !(esito ?? "").trim();
+const creataAMano = (fonte: string | null | undefined): boolean =>
+  String(fonte ?? "").trim().toUpperCase() === "CRM_UI";
 
 /** I contatti di ogni meeting, un'unica chiamata ogni duecento. */
 async function contattiDeiMeeting(token: string, ids: string[]): Promise<Map<string, number[]>> {
@@ -1723,6 +1733,7 @@ async function riunioniSpostate(
           "hs_meeting_end_time",
           "hubspot_owner_id",
           "hs_meeting_outcome",
+          "hs_meeting_source",
           "hs_createdate"
         ],
         propertiesWithHistory: ["hs_meeting_start_time", "hs_meeting_end_time"],
@@ -1878,6 +1889,7 @@ export async function GET(req: NextRequest) {
             "hs_meeting_end_time",
             "hubspot_owner_id",
             "hs_meeting_outcome",
+            "hs_meeting_source",
             "hs_createdate"
           ],
           limit: 100,
@@ -1918,6 +1930,7 @@ export async function GET(req: NextRequest) {
               "hs_meeting_end_time",
               "hubspot_owner_id",
               "hs_meeting_outcome",
+              "hs_meeting_source",
               "hs_createdate"
             ],
             inputs: daLeggere.slice(i, i + 50).map((id) => ({ id }))
@@ -2423,7 +2436,7 @@ export async function GET(req: NextRequest) {
               })
             }
           : {}),
-        ...(creataAMano(p.hs_meeting_outcome) ? { manuale: true } : {}),
+        ...(creataAMano(p.hs_meeting_source) ? { manuale: true } : {}),
         ...(presenza ? { presenza: presenza as "presentato" | "solo-advisor" | "non-si-sa" } : {})
       });
       idDiEvento.push(idTrascrizioneSua);
