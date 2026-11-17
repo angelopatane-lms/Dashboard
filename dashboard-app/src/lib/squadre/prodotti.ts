@@ -72,6 +72,25 @@ export function categoriaProdotto(prodotto: string | null | undefined): string |
   return null;
 }
 
+/**
+ * E' un biglietto dell'evento, non un percorso.
+ *
+ * Serve al modo *campagna*, che guarda da dove viene il lead e non cosa e'
+ * stato venduto: senza questo, un biglietto ICMD comprato da un lead arrivato
+ * con una campagna REM entrerebbe nella riga di REM, e il filtro conterebbe
+ * biglietti in una pagina che ha appena finito di escluderli dall'altro modo.
+ *
+ * Misurato dal 1 ottobre al 17 novembre 2026: sono 17 biglietti per 6.100
+ * EUR, contro 65 chiusure e 280.653 EUR di high ticket. In euro e' il 2%, nel
+ * conteggio delle chiusure una su cinque - e su MBE Marketing dieci su
+ * ventotto, cioe' la differenza fra una squadra che chiude e una che vende
+ * biglietti ai propri lead.
+ */
+export function eBigliettoEvento(prodotto: string | null | undefined): boolean {
+  const nome = String(prodotto ?? "").trim().toLowerCase();
+  return Boolean(nome) && ESCLUSI.some((f) => nome.includes(f));
+}
+
 /** Le categorie e i loro frammenti, per chi deve mostrarle o provarle. */
 export const CATEGORIE_PRODOTTO: ReadonlyArray<{ etichetta: string; frammenti: readonly string[] }> =
   DEFS.map((d) => ({ etichetta: d.etichetta, frammenti: d.contiene }));

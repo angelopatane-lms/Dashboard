@@ -327,6 +327,17 @@ export type DalFoglio = {
   utenti: string[];
   /** giorno -> id -> quello che il foglio dice di lui quel giorno. */
   giorni: Record<string, Record<string, VociFoglio>>;
+  /**
+   * id -> nome, come il foglio lo scrive.
+   *
+   * Serve alle righe degli OSPITI sulla pagina ICMD: chi vende un biglietto
+   * senza stare in quella squadra ci compare lo stesso, e un id nudo in
+   * tabella non dice niente a nessuno. Il nome si legge di qui e non da
+   * /crm/v3/owners perche' il foglio e' gia' aperto - zero chiamate in piu' -
+   * e perche' quelle chiamate, l'11 novembre 2026, erano la causa del 429
+   * che lasciava vuote le colonne dei soldi.
+   */
+  nomi: Record<string, string>;
 };
 
 export async function dalFoglio(da: string, a: string): Promise<DalFoglio> {
@@ -358,11 +369,14 @@ export async function dalFoglio(da: string, a: string): Promise<DalFoglio> {
 
   const utenti: string[] = [];
   const perNome = new Map<string, string>();
+  const nomi: Record<string, string> = {};
   for (const r of righeUtenti) {
     const id = (r["Hubspot ID"] ?? "").toString().trim();
     if (!id) continue;
     utenti.push(id);
-    const nome = chiaveNome((r["User"] ?? "").toString());
+    const scritto = (r["User"] ?? "").toString().trim();
+    if (scritto) nomi[id] = scritto;
+    const nome = chiaveNome(scritto);
     if (nome && !perNome.has(nome)) perNome.set(nome, id);
   }
 
@@ -389,7 +403,7 @@ export async function dalFoglio(da: string, a: string): Promise<DalFoglio> {
     }
   }
 
-  return { utenti, giorni };
+  return { utenti, giorni, nomi };
 }
 
 /**

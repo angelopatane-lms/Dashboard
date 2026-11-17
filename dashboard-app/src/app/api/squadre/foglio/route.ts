@@ -47,9 +47,9 @@ export async function GET(req: NextRequest) {
   const da = q.get("da") ?? piuGiorni(a, -(quanti - 1));
 
   try {
-    const { giorni, utenti } = await dalFoglio(da, a);
+    const { giorni, utenti, nomi } = await dalFoglio(da, a);
     return NextResponse.json(
-      { generato: new Date().toISOString(), finestra: { da, a }, giorni, utenti },
+      { generato: new Date().toISOString(), finestra: { da, a }, giorni, utenti, nomi },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (e) {
