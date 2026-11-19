@@ -81,6 +81,9 @@ export async function personeCopilot(chiave: string): Promise<PersonaCopilot[]> 
  * confronto esatto fra "Di Prisco" e "di Prisco" ha gia' spento in silenzio un
  * controllo incrociato il 10 ottobre.
  */
+/** L'indirizzo dell'utente HubSpot "Auto Pilot", l'unico a cui va la riga Autopilot. */
+export const EMAIL_AUTOPILOT = "autopilotlms@gmail.com";
+
 export function agganciaPersone(
   copilot: PersonaCopilot[],
   candidati: Candidato[]
@@ -98,7 +101,18 @@ export function agganciaPersone(
     // lavoro della macchina. Si agganciano solo le righe `human`; quelle senza
     // `kind` si agganciano come prima, per non perdere nessuno se un giorno il
     // campo mancasse.
-    if (p.kind && p.kind !== "human") return { copilot: p, nostro: null, via: null };
+    //
+    // L'UNICA ECCEZIONE E' L'UTENTE HUBSPOT "Auto Pilot" (deciso da Angelo il
+    // 19 novembre 2026, per vederne i numeri fra i chatter). Si aggancia SOLO
+    // per il suo indirizzo: la riga di Copilot porta anche quello di Mihai
+    // Pislaru, e con la regola normale i messaggi della macchina potevano
+    // finire sotto di lui.
+    if (p.kind && p.kind !== "human") {
+      const suo = p.kind === "autopilot" ? perEmail.get(EMAIL_AUTOPILOT) : undefined;
+      return suo
+        ? { copilot: p, nostro: suo, via: "email" as const }
+        : { copilot: p, nostro: null, via: null };
+    }
     for (const e of p.emails ?? []) {
       const trovato = perEmail.get(e.trim().toLowerCase());
       if (trovato) return { copilot: p, nostro: trovato, via: "email" as const };
