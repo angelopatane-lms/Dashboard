@@ -371,6 +371,19 @@ export function primaVinta(storici: Record<string, Voce[]>, idFaseVinta: string)
 }
 
 /**
+ * I setter corretti a posteriori (tabella `setter_corretto`): vincono sulla
+ * cronologia, per la trattativa e per i suoi no-show. Vedi lo schema.
+ */
+async function settersCorretti(dealIds: number[]): Promise<Map<number, number>> {
+  if (!dealIds.length) return new Map();
+  const { rows } = await getDb().query<{ deal_id: string; setter_id: string }>(
+    `SELECT deal_id::text, setter_id::text FROM setter_corretto WHERE deal_id = ANY($1::bigint[])`,
+    [dealIds]
+  );
+  return new Map(rows.map((r) => [Number(r.deal_id), Number(r.setter_id)]));
+}
+
+/**
  * Chi era il setter a una certa data.
  *
  * PERCHE' DALLA CRONOLOGIA E NON DAL VALORE ATTUALE. La proprieta' `setter`
@@ -732,10 +745,11 @@ export async function aggiornaUnaTrattativa(
   const rinviata = ripianificataAl(r.properties ?? {}, idFaseRipianificata);
   const stato = faseAttuale(r.properties ?? {}, r.propertiesWithHistory ?? {});
   const proprietario = Number(String(r.properties?.hubspot_owner_id ?? "").trim()) || null;
-  const setterId = setterAllaData(r.propertiesWithHistory ?? {}, creata);
+  const corretto = (await settersCorretti([Number(r.id)])).get(Number(r.id));
+  const setterId = corretto ?? setterAllaData(r.propertiesWithHistory ?? {}, creata);
   const noShow = ingressiNoShow(r.propertiesWithHistory ?? {}, idFaseNoShow, idFaseRipianificata).map((ts) => ({
     ts,
-    setterId: setterAllaData(r.propertiesWithHistory ?? {}, ts)
+    setterId: corretto ?? setterAllaData(r.propertiesWithHistory ?? {}, ts)
   }));
 
   await risolviIdCampagne([campagna]);
@@ -951,6 +965,14 @@ export async function sincronizzaTrattative(
           });
         }
         if (!righe.length) continue;
+
+        const corretti = await settersCorretti(righe.map((x) => x.dealId));
+        for (const x of righe) {
+          const c = corretti.get(x.dealId);
+          if (c === undefined) continue;
+          x.setterId = c;
+          for (const n of x.noShow) n.setterId = c;
+        }
 
         await risolviIdCampagne(righe.map((x) => x.campagna));
 

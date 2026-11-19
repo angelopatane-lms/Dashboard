@@ -265,6 +265,21 @@ ALTER TABLE no_show ADD COLUMN IF NOT EXISTS setter_id BIGINT;
 
 CREATE INDEX IF NOT EXISTS idx_no_show_setter ON no_show (setter_id) WHERE setter_id IS NOT NULL;
 
+-- IL SETTER CORRETTO A POSTERIORI, che vince sulla cronologia.
+--
+-- La regola "il setter di allora" non distingue un passaggio di mano da una
+-- correzione: se si scopre dopo che un appuntamento l'aveva procurato un altro,
+-- la cronologia dice ancora il nome sbagliato alla data dell'appuntamento.
+-- Successo il 19/11/2026: 40 trattative di novembre passate da Bartolo ad
+-- Auto Pilot su HubSpot, ma no-show e consulenze restavano a Bartolo.
+-- Una riga qui vale per la trattativa e per tutti i suoi no-show.
+CREATE TABLE IF NOT EXISTS setter_corretto (
+  deal_id    BIGINT PRIMARY KEY,
+  setter_id  BIGINT      NOT NULL,
+  motivo     TEXT,
+  creato_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- I proprietari HubSpot, per dare un nome agli id.
 --
 -- Serve perche' l'API /crm/v3/owners esclude di default gli utenti
