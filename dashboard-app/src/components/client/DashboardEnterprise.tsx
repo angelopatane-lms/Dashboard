@@ -259,6 +259,35 @@ export default function DashboardEnterprise({
   // Appuntamenti mostrava solo quelli che l'advisor si era fissato da solo.
   // I Boom invece costano una lettura di HubSpot e si chiedono solo quando il
   // pulsante e' acceso: `boom=0` taglia quella parte.
+  /**
+   * LE CONNESSIONI CHE I SETTER HANNO MESSO NELLA FILIERA DI CIASCUN ADVISOR.
+   *
+   * Servono al denominatore di "% Appuntamento" nella vista complessiva: il
+   * numeratore comprende gli appuntamenti procurati dai setter, quindi il
+   * denominatore deve comprendere le loro connessioni. Vedi
+   * src/app/api/advisor-filiera/route.ts, che spiega anche perche' e' una
+   * ripartizione e cosa misura davvero.
+   */
+  const [daiSetter, setDaiSetter] = useState<Record<string, number> | null>(null);
+  useEffect(() => {
+    if ((operatorLabel ?? "Advisor") !== "Advisor") return;
+    const dal = filters.from ?? defaultFrom;
+    const al = filters.to ?? defaultTo;
+    let annullato = false;
+    fetch(`/api/advisor-filiera?from=${dal}&to=${al}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (annullato) return;
+        // SE NON ARRIVA NON SI INVENTA NIENTE: la colonna torna al
+        // denominatore di prima, che e' sbagliato ma noto.
+        setDaiSetter(d && !d.error ? d.daiSetter ?? null : null);
+      })
+      .catch(() => {});
+    return () => {
+      annullato = true;
+    };
+  }, [operatorLabel, filters.from, filters.to, defaultFrom, defaultTo]);
+
   const servonoPropri = !soloTabella || true;
   useEffect(() => {
     if (!servonoPropri || (operatorLabel ?? "Advisor") !== "Advisor") return;
@@ -266,7 +295,7 @@ export default function DashboardEnterprise({
     const al = filters.to ?? defaultTo;
     let annullato = false;
     setPropriLoading(true);
-    fetch(`/api/advisor-propri?from=${dal}&to=${al}${kpiPropri ? "" : "&boom=0"}`)
+    fetch(`/api/advisor-propri?from=${dal}&to=${al}`)
       .then((r) => r.json())
       .then((data) => {
         if (annullato) return;
@@ -782,18 +811,31 @@ export default function DashboardEnterprise({
    * ma noto: meglio di un filtro che non seleziona piu' niente.
    */
   const righeTeam = useMemo(() => {
-    if (!filters.team) return operatorSummaryAll;
+    /**
+     * SCELTO UN ADVISOR, IN TABELLA C'E' SOLO LUI.
+     *
+     * Il filtro in cima restringe gia' i numeri - gli altri comparivano tutti
+     * a zero - ma la tabella continuava a elencare l'intera squadra: venti
+     * righe vuote intorno all'unica piena, e il totale in fondo uguale alla
+     * sua riga. Chiesto da Angelo il 19/11/2026.
+     */
+    const solo = (filters.operatore ?? "").trim();
+    const perPersona = (lista: typeof operatorSummaryAll) =>
+      solo ? lista.filter((r) => chiaveNome(r.operatore) === chiaveNome(solo)) : lista;
+    if (!filters.team) return perPersona(operatorSummaryAll);
     if (sottoTeamDelPeriodo) {
       const voluto = (NOME_SOTTO_TEAM[filters.team] ?? filters.team).toLowerCase();
-      return operatorSummaryAll.filter(
-        (r) => (sottoTeamDelPeriodo[chiaveNome(r.operatore)] ?? "").toLowerCase() === voluto
+      return perPersona(
+        operatorSummaryAll.filter(
+          (r) => (sottoTeamDelPeriodo[chiaveNome(r.operatore)] ?? "").toLowerCase() === voluto
+        )
       );
     }
     // I valori del secondo gruppo, uno per pagina: "eventi" sulla Advisor
     // (il Team Eventi) e "chatter" sulla Setter.
     const sotto = filters.team === "eventi" || filters.team === "chatter";
-    return operatorSummaryAll.filter((r) => secondoGruppo(r.operatore) === sotto);
-  }, [operatorSummaryAll, filters.team, secondoGruppo, sottoTeamDelPeriodo]);
+    return perPersona(operatorSummaryAll.filter((r) => secondoGruppo(r.operatore) === sotto));
+  }, [operatorSummaryAll, filters.team, filters.operatore, secondoGruppo, sottoTeamDelPeriodo]);
 
   /**
    * I numeri dei chatter da Sales Copilot: servono se in tabella c'e' almeno
@@ -1569,7 +1611,7 @@ export default function DashboardEnterprise({
                   Caricamento dei dati in corso...
                 </div>
               ) : (
-              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeAdvisor={svolteProprietario ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} sottoTeamPerPersona={sottoTeamDelPeriodo} fuoriSquadra={fuoriSquadraSet} kpiChatter={kpiChatter ?? undefined} avvisoChatter={avvisoChatter} propri={propri} propriAccesi={kpiPropri} esportaHref={soloTabella ? null : `/api/esporta/operatori?from=${filters.from ?? defaultFrom}&to=${filters.to ?? defaultTo}&ruolo=${operatorLabel ?? "Advisor"}`} esportaPeriodo={periodoScritto} />
+              <OperatorStatsTable data={righeTeam} hubspotOverrides={useHubspot ? hubspotOverrides : undefined} trattativeOverrides={useHubspot && trattativeOverrides !== null ? trattativeOverrides : undefined} precomputedTotals={filters.team ? undefined : hubspotTotals ?? undefined} hubspotLoading={useHubspot ? boomLoading : false} trattativeLoading={useHubspot ? dealsLoading : false} operatorLabel={operatorLabel ?? "Advisor"} noShowOverrides={noShowSetter ?? undefined} svolteOverrides={svolteSetter ?? undefined} consulenzeAdvisor={svolteProprietario ?? undefined} telefonici={telefonici ?? undefined} obiettivi={obiettivi} meseObiettivo={meseObiettivo} onSalvaObiettivo={soloTabella ? undefined : salvaObiettivo} onApriTeam={gestioneTeam && !soloTabella ? setPersonaTeam : undefined} sottoTeamPerPersona={sottoTeamDelPeriodo} fuoriSquadra={fuoriSquadraSet} kpiChatter={kpiChatter ?? undefined} avvisoChatter={avvisoChatter} propri={propri} propriAccesi={kpiPropri} onPropri={setKpiPropri} daiSetter={daiSetter ?? undefined} esportaHref={soloTabella ? null : `/api/esporta/operatori?from=${filters.from ?? defaultFrom}&to=${filters.to ?? defaultTo}&ruolo=${operatorLabel ?? "Advisor"}`} esportaPeriodo={periodoScritto} />
               )}
             </Card>
           </div>

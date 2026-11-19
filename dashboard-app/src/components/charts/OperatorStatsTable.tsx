@@ -386,6 +386,8 @@ export default function OperatorStatsTable({
   svolteOverrides,
   propri,
   propriAccesi,
+  onPropri,
+  daiSetter,
   consulenzeAdvisor,
   meseObiettivo,
   onSalvaObiettivo,
@@ -476,6 +478,16 @@ export default function OperatorStatsTable({
   /** Se il pulsante e' su "Da azioni proprie". Senza, `propri` serve solo a
    *  dare la colonna Appuntamenti con quelli ricevuti. */
   propriAccesi?: boolean;
+  /** Cambia vista. Il comando vive dentro la tabella, sopra le colonne che
+   *  cambia: vedi la banda nell'intestazione. */
+  onPropri?: (acceso: boolean) => void;
+  /**
+   * Le connessioni che i setter hanno messo nella filiera di ogni advisor,
+   * ripartite in proporzione agli appuntamenti fissati a ciascuno. Vanno al
+   * denominatore di "% Appuntamento" nella vista complessiva, dove il
+   * numeratore comprende gli appuntamenti procurati da loro.
+   */
+  daiSetter?: Record<string, number>;
   trattativeOverrides?: Record<string, number>;
   precomputedTotals?: { chiusure: number; boom: number };
   hubspotLoading?: boolean;
@@ -568,7 +580,6 @@ export default function OperatorStatsTable({
      non e' undefined, e' un errore che ferma la pagina. Successo il
      11 novembre 2026: "Cannot access 'propriDi' before initialization",
      schermata rossa al posto della tabella. */
-  const adv = Boolean(propri && propriAccesi && !isSetterView);
   /**
    * ASSEGNATI, CHIAMATE E CONNESSIONI SI SPENGONO NELLA VISTA DEL TEAM.
    *
@@ -587,6 +598,59 @@ export default function OperatorStatsTable({
    * e' ricavato, fino al Boom.
    */
   const spenteTre = Boolean(propri && !propriAccesi && !isSetterView);
+
+  /**
+   * IL RIQUADRO CHE CIRCONDA LE COLONNE DELLO SWITCH.
+   *
+   * La banda in cima disegna gli angoli di sopra; questi due bordi scendono
+   * lungo i fianchi e il tfoot li chiude sotto. Serve a dire, senza parole,
+   * quali colonne cambiano premendo il pulsante: da Appuntamenti a Resa.
+   * Assegnati, Chiamate e Connessioni restano fuori a sinistra, l'Obiettivo
+   * fuori a destra.
+   */
+  /**
+   * LA CORNICE C'E' SOLO NELLA VISTA COMPLESSIVA, e sparisce premendo
+   * l'icona accanto al titolo: e' lei a dire in che vista siamo, al posto
+   * dei due pulsanti che stavano sulla banda. Cornice = advisor + setter,
+   * niente cornice = solo advisor.
+   */
+  const riquadro = Boolean(onPropri && propri && !isSetterView && !propriAccesi);
+  /**
+   * IL COLORE DICE IN CHE VISTA SIAMO.
+   *
+   * Dentro la cornice, "advisor + setter" tiene la mappa di calore - celle
+   * azzurre e arancioni come nel resto della tabella - mentre "solo advisor"
+   * le lascia bianche. Non serve un colore nuovo ne' una scritta: il blocco
+   * acceso e' quello complessivo, il blocco spento e' quello dell'advisor da
+   * solo. Chiesto da Angelo il 19/11/2026, al posto dei due pulsanti.
+   */
+
+  /** La prima e l'ultima colonna dentro il riquadro: Appuntamenti e Resa.
+   *  Contate, non cercate per nome: i titoli cambiano con la vista. */
+  const PRIMA_DENTRO = 3;
+  /** Il lato di sopra della cornice: la stessa ombra interna della linea
+   *  neutra sotto i titoli, nel grigio della cornice. */
+  const LINEA_CORNICE = "shadow-[inset_0_-2px_0_0_#94a3b8]";
+  /**
+   * IL DENOMINATORE DI "% APPUNTAMENTO" SEGUE IL NUMERATORE.
+   *
+   * Nella vista complessiva gli appuntamenti comprendono quelli procurati dai
+   * setter, quindi alle connessioni dell'advisor si sommano le loro - la quota
+   * che hanno speso per lui. Senza, Roberta Scicchitano veniva 42 su 17, e una
+   * percentuale tagliata a cento mostrava un tranquillo "100,00%" al posto di
+   * un rapporto che non esiste.
+   *
+   * SOLO PER CHI HA SETTER, e solo quando il dato e' arrivato: altrimenti si
+   * torna alle sole connessioni sue.
+   */
+  const denominatoreFiliera = (r: OperatorSummary) => {
+    const base = denominatoreTasso(r) ?? 0;
+    if (!daiSetter || isSetterView || propriAccesi || !haSetter(r)) return base;
+    return base + (daiSetter[normKey(r.operatore)] ?? 0);
+  };
+  const BORDO_SX = riquadro ? " border-l-2 !border-l-slate-500" : "";
+  const BORDO_DX = riquadro ? " border-r-2 !border-r-slate-500" : "";
+  const BORDO_GIU = riquadro ? " border-b-2 !border-b-slate-500" : "";
 
   /**
    * LO SWITCH RIGUARDA SOLO IL TEAM PROGRAMMI.
@@ -915,16 +979,18 @@ export default function OperatorStatsTable({
    * mettendo il segno di percentuale in coda - APP. ADV, APP ADV %, CONS. ADV
    * - i titoli stanno nello spazio di prima.
    */
-  const SIGLE: Record<string, string> = {
-    Appuntamenti: "App. ADV",
-    "% Appuntamento": "App ADV %",
-    Consulenze: "Cons. ADV",
-    Chiusure: "Chius. ADV",
-    "% Chiusura": "Chius. ADV %",
-    Boom: "Boom ADV",
-    Resa: "Resa ADV"
-  };
-  const ADV = (nome: string) => (adv ? SIGLE[nome] ?? `${nome} ADV` : nome);
+  /**
+   * I TITOLI NON CAMBIANO CON LA VISTA.
+   *
+   * Fino al 19/11/2026 in "solo advisor" le sette colonne prendevano la sigla
+   * ADV - App. ADV, Cons. ADV, Chius. ADV - per dire che il numero era un
+   * altro. Adesso lo dice la cornice, che c'e' nella vista complessiva e
+   * sparisce in quella propria: due segnali per la stessa cosa sono uno di
+   * troppo, e i titoli che si riscrivevano facevano ballare la tabella sotto
+   * gli occhi di chi stava confrontando due righe. ADV resta come funzione
+   * sola, cosi' le colonne continuano a dichiararsi da un punto solo.
+   */
+  const ADV = (nome: string) => nome;
 
   const colonne: Array<{ label: string; valore: (r: OperatorSummary) => number | null }> = [
     // I primi tre titoli cambiano quando si guarda il solo gruppo chat: il
@@ -950,7 +1016,7 @@ export default function OperatorStatsTable({
     },
     { label: ADV("Appuntamenti"), valore: (r) => effAppuntamenti(r) },
     {
-      label: propri && !propriAccesi && !isSetterView ? "App ADV %" : ADV("% Appuntamento"),
+      label: ADV("% Appuntamento"),
       /**
        * LA COLONNA CAMBIA DOMANDA INSIEME ALLA VISTA.
        *
@@ -979,12 +1045,16 @@ export default function OperatorStatsTable({
        * 17 faceva 253%, che tagliato a cento compariva come un tranquillo
        * "100,00%".
        */
-      valore: (r) =>
-        propri && !propriAccesi && !isSetterView
-          ? haSetter(r)
-            ? taglia(tassoPresa(propri.appuntamenti[normKey(r.operatore)] ?? 0, effAppuntamenti(r)))
-            : null
-          : taglia(tassoPresa(effAppuntamenti(r), denominatoreTasso(r) ?? 0))
+      /**
+       * CHI NON HA SETTER NON SI ACCORGE DELLO SWITCH.
+       *
+       * Era l'ultima cella che cambiava per il team Eventi: trattino nella
+       * vista complessiva, numero in quella propria. Per loro "complessivo" e
+       * "proprio" sono la stessa cosa - ogni appuntamento se lo fissano da
+       * soli - quindi la percentuale e' sempre la stessa: appuntamenti sulle
+       * connessioni. Chiesto da Angelo il 19/11/2026.
+       */
+      valore: (r) => taglia(tassoPresa(effAppuntamenti(r), denominatoreFiliera(r)))
     },
     {
       label: isSetterView ? "No Show" : ADV("Consulenze"),
@@ -1208,7 +1278,11 @@ export default function OperatorStatsTable({
    */
   const apre = new Map<string, { etichetta: string | null; linea: boolean }>();
   gruppi.forEach((g, i) => {
-    if (i === 0 && !g.etichetta) return;
+    // IL PRIMO GRUPPO NON SI INTESTA MAI, abbia o no un nome: e' quello
+    // standard della pagina - i Programmi fra gli advisor, i non telefonici
+    // fra i setter - e un titolo sopra direbbe una cosa che si da' per
+    // scontata. I titoli servono a staccare quelli che vengono dopo.
+    if (i === 0) return;
     apre.set(g.righe[0].operatore, { etichetta: g.etichetta, linea: i > 0 });
   });
 
@@ -1265,7 +1339,10 @@ export default function OperatorStatsTable({
     // Il tetto d'altezza serve alla riga delle intestazioni per restare ferma:
     // vedi INTESTAZIONE_FERMA. Qui le righe sono poche e quasi sempre ci stanno
     // tutte, quindi il piu' delle volte non si vede nemmeno la barra.
-    <div className="max-h-[75vh] overflow-auto">
+    /* UN LIVELLO TUTTO SUO, per i bordi della cornice: le colonne sono larghe
+       in percentuale, quindi i bordi cadono su posizioni con la virgola e
+       scorrendo il browser li ridisegnava ora pieni ora quasi spariti. */
+    <div className="max-h-[75vh] overflow-auto [transform:translateZ(0)]">
       {/* width al 100% con un minimo: su schermo largo le colonne crescono in
           proporzione restando uguali fra loro, su schermo stretto si scorre. */}
       <table
@@ -1289,6 +1366,14 @@ export default function OperatorStatsTable({
           ))}
         </colgroup>
         <thead>
+          {/* IL LATO DI SOPRA DELLA CORNICE E' IL BORDO DI SOTTO DELL'INTESTAZIONE.
+              Prima era una striscia a parte, sopra i titoli: l'intestazione
+              resta bloccata in cima mentre la striscia scorreva via con le
+              righe, e scendendo il lato di sopra spariva. Bloccare anche la
+              striscia apriva un buco nelle colonne che non lo erano, dove i
+              numeri passavano dietro. Disegnato sull'intestazione sta fermo per
+              forza: e' lei a non muoversi mai. Deciso con Angelo il 19/11/2026,
+              dopo averle provate tutte. */}
           <tr className="text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
             <th
               className={`${INTESTAZIONE_ANGOLO} ${LINEA_SOTTO} bg-white py-2 pr-4 pl-0 text-left`}
@@ -1309,9 +1394,47 @@ export default function OperatorStatsTable({
               ) : (
                 operatorLabel
               )}
+              {/* LO SWITCH E' QUESTA ICONA, accanto al titolo.
+                  Due figure vuol dire che i numeri comprendono il lavoro dei
+                  setter - e allora la cornice racchiude le colonne che lo
+                  comprendono; una figura sola vuol dire solo l'advisor, e la
+                  cornice sparisce. Nessuna scritta: lo stato si legge dalla
+                  cornice, l'icona serve solo a cambiarlo. */}
+              {onPropri && propri && !isSetterView ? (
+                <button
+                  type="button"
+                  onClick={() => onPropri(!propriAccesi)}
+                  title={propriAccesi ? "solo advisor" : "advisor + setter"}
+                  aria-pressed={Boolean(propriAccesi)}
+                  className={`ml-1.5 rounded p-0.5 align-middle transition-colors ${
+                    propriAccesi
+                      ? "text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                      : "text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M16 19v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    {propriAccesi ? null : (
+                      <>
+                        <path d="M22 19v-2a4 4 0 0 0-3-3.87" />
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                      </>
+                    )}
+                  </svg>
+                </button>
+              ) : null}
             </th>
-            {colonne.map((c) => {
+            {colonne.map((c, i) => {
               const attiva = ordina === c.label;
+              // L'ultima dentro il riquadro e' la Resa: penultima colonna,
+              // perche' l'Obiettivo resta fuori.
+              const dentroSx = riquadro && i === PRIMA_DENTRO;
+              const dentroDx = riquadro && i === colonne.length - 2;
+              /** Le colonne racchiuse: il loro bordo di sotto fa da lato di
+               *  sopra della cornice. */
+              const dentroCornice =
+                riquadro && i >= PRIMA_DENTRO && i <= colonne.length - 2;
               return (
                 <th
                   key={c.label}
@@ -1326,9 +1449,34 @@ export default function OperatorStatsTable({
                   // whitespace-nowrap: la colonna e' larga quanto la sua
                   // intestazione, quindi andare a capo non serve a niente e
                   // sfalsa l'altezza della riga dei titoli.
-                  className={`${INTESTAZIONE_FERMA} ${LINEA_SOTTO} cursor-pointer select-none whitespace-nowrap px-2 py-2 leading-tight transition hover:text-black ${
-                    attiva ? "bg-neutral-100 text-black" : "bg-white"
-                  }`}
+                  /**
+                   * I TITOLI DELLE COLONNE RACCHIUSE SI ROVESCIANO.
+                   *
+                   * Bianco su grigio quando la cornice c'e', cioe' quando i
+                   * numeri comprendono il lavoro dei setter; normali quando
+                   * sparisce. Il blocco scuro fa da tetto alla cornice, ed e'
+                   * bloccato in cima: scorrendo non se ne va, che era il
+                   * difetto di tutte le versioni precedenti.
+                   *
+                   * I FIANCHI PARTONO DA QUI, dello stesso grigio di quelli
+                   * che scendono lungo le righe: cosi' la verticale e' una
+                   * sola, dalla testata fino alla chiusura in fondo.
+                   *
+                   * LA COLONNA ORDINATA RESTA RICONOSCIBILE, con un grigio piu'
+                   * scuro invece del chiaro: con l'inversione il grigio chiaro
+                   * si sarebbe confuso con lo sfondo delle altre.
+                   */
+                  className={`${INTESTAZIONE_FERMA} ${
+                    dentroCornice ? "" : LINEA_SOTTO
+                  } cursor-pointer select-none whitespace-nowrap px-2 py-2 leading-tight transition ${
+                    dentroCornice
+                      ? attiva
+                        ? "bg-slate-600 text-white"
+                        : "bg-slate-500 text-white hover:bg-slate-600"
+                      : attiva
+                        ? "bg-neutral-100 text-black hover:text-black"
+                        : "bg-white hover:text-black"
+                  }${dentroSx ? BORDO_SX : ""}${dentroDx ? BORDO_DX : ""}`}
                 >
                   {c.label}
                 </th>
@@ -1337,7 +1485,21 @@ export default function OperatorStatsTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {ordinate.map((r) => {
+          {ordinate.map((r, iRiga) => {
+            /**
+             * IL RIQUADRO RACCHIUDE SOLO IL TEAM PROGRAMMI.
+             *
+             * E' l'unico gruppo che lo switch cambia: gli altri i setter non
+             * ce li hanno, i due numeri coincidono e una cornice intorno alle
+             * loro righe prometterebbe un cambio che non avviene. Si chiude
+             * sotto l'ultima riga del gruppo, non in fondo alla tabella.
+             */
+            const dentroRiquadro = riquadro && haSetter(r);
+            /** Le tre colonne si spengono SOLO per chi lo switch lo riguarda:
+             *  sulle righe del team Eventi restano nere come sempre. */
+            const spenteQui = spenteTre && haSetter(r);
+            const prossima = ordinate[iRiga + 1];
+            const ultimaDentro = dentroRiquadro && !(prossima && haSetter(prossima));
             const sezione = apre.get(r.operatore);
             const etichettaSezione = sezione?.etichetta ?? null;
             // Solo nella vista mista: quando ci sono soltanto chatter i titoli
@@ -1356,12 +1518,7 @@ export default function OperatorStatsTable({
              * percentuali qui si tagliano a cento, in pagina compariva un
              * tranquillo "100,00%" al posto di un rapporto che non esiste.
              */
-            const tp =
-              propri && !propriAccesi && !isSetterView
-                ? haSetter(r)
-                  ? tassoPresa(propri.appuntamenti[normKey(r.operatore)] ?? 0, effAppuntamenti(r))
-                  : null
-                : tassoPresa(effAppuntamenti(r), denominatoreTasso(r) ?? 0);
+            const tp = tassoPresa(effAppuntamenti(r), denominatoreFiliera(r));
             const tc = tassoChiusura(effChiusure(r), effConsulenzeChiusura(r));
             // Quanti dei suoi appuntamenti si sono tenuti. Il denominatore sono
             // gli appuntamenti, quindi dipende dal caricamento delle trattative
@@ -1434,13 +1591,34 @@ export default function OperatorStatsTable({
                       />
                     </>
                   ) : (
-                    <td
-                      colSpan={29}
-                      className={`p-0${sezione.linea ? " border-t-2 border-slate-300" : ""}`}
-                    />
+                    <>
+                      <td
+                        colSpan={3}
+                        className={`p-0${sezione.linea ? " border-t-2 border-slate-300" : ""}`}
+                      />
+                      {/* Le sette colonne dentro il riquadro: qui i fianchi
+                          devono continuare, o la cornice si spezza proprio
+                          dove comincia il gruppo. */}
+                      <td
+                        colSpan={7}
+                        className={`p-0${sezione.linea ? " border-t-2 border-slate-300" : ""}${
+                          dentroRiquadro ? `${BORDO_SX}${BORDO_DX}` : ""
+                        }`}
+                      />
+                      <td
+                        colSpan={19}
+                        className={`p-0${sezione.linea ? " border-t-2 border-slate-300" : ""}`}
+                      />
+                    </>
                   )}
                 </tr>
               ) : null}
+              {/* CHI NON E' NEL TEAM PROGRAMMI NON VIENE TOCCATO DALLO
+                  SWITCH: stessi numeri, stesso aspetto, nessun segno. Per un
+                  momento quelle righe erano state sbiadite per dire "questa
+                  non cambia", ma un gruppo che non c'entra non deve nemmeno
+                  accorgersi che esiste un interruttore: la riga di Eventi
+                  dev'essere identica nelle due viste. */}
               <tr
                 className={`group transition-colors hover:bg-slate-50/70${uscito ? " opacity-60" : ""}`}
                 title={uscito ? `${r.operatore} oggi non è più in questa squadra` : undefined}
@@ -1485,9 +1663,9 @@ export default function OperatorStatsTable({
                     sono ancora quelli del telefono e il numero di HubSpot e' la
                     risposta giusta alla domanda che pongono. */}
                 <td
-                  className={`border-r border-white px-2 py-1.5 text-right tabular-nums${spenteTre ? " text-slate-400" : ""}`}
+                  className={`border-r border-white px-2 py-1.5 text-right tabular-nums${spenteQui ? " text-slate-400" : ""}`}
                   style={{
-                    background: spenteTre
+                    background: spenteQui
                       ? undefined
                       : soloChatter
                       ? heatBg(chatterAssegnati(r) ?? 0, maxValues.assegnati)
@@ -1522,9 +1700,9 @@ export default function OperatorStatsTable({
                   )}
                 </td>
                 <td
-                  className={`border-r border-white px-2 py-1.5 text-right tabular-nums${spenteTre ? " text-slate-400" : ""}`}
+                  className={`border-r border-white px-2 py-1.5 text-right tabular-nums${spenteQui ? " text-slate-400" : ""}`}
                   style={{
-                    background: spenteTre
+                    background: spenteQui
                       ? undefined
                       : soloChatter
                       ? heatBg(chatterMessaggi(r) ?? 0, maxValues.chiamate)
@@ -1562,9 +1740,9 @@ export default function OperatorStatsTable({
                     "Qualificati" - perche' cambia anche il numero: vedi
                     INTESTAZIONI_CHATTER e CHATTER_QUALIFICATI. */}
                 <td
-                  className={`border-r border-white px-2 py-1.5 text-right tabular-nums${spenteTre ? " text-slate-400" : ""}`}
+                  className={`border-r border-white px-2 py-1.5 text-right tabular-nums${spenteQui ? " text-slate-400" : ""}`}
                   style={{
-                    background: spenteTre
+                    background: spenteQui
                       ? undefined
                       : soloChatter
                       ? heatBg(chatterQualificati(r) ?? 0, maxValues.connessioni)
@@ -1599,13 +1777,19 @@ export default function OperatorStatsTable({
                   )}
                 </td>
                 <td
-                  className="border-r border-white px-2 py-1.5 text-right tabular-nums"
+                  className={`border-r border-white px-2 py-1.5 text-right tabular-nums${
+                    dentroRiquadro ? BORDO_SX : ""
+                  }${ultimaDentro ? BORDO_GIU : ""}`}
                   style={{ background: trattativeLoading ? undefined : heatBg(effAppuntamenti(r), maxValues.appuntamenti) }}
                 >
-                  {trattativeLoading ? <span className="text-slate-400">–</span> : formatInt(effAppuntamenti(r))}
+                  {trattativeLoading ? (
+                    <span className="text-slate-400">–</span>
+                  ) : (
+                    formatInt(effAppuntamenti(r))
+                  )}
                 </td>
                 <td
-                  className="border-r border-white px-2 py-1.5 text-right font-semibold tabular-nums"
+                  className={`border-r border-white px-2 py-1.5 text-right font-semibold tabular-nums${ultimaDentro ? BORDO_GIU : ""}`}
                   style={{ background: rateBg(taglia(tp)) }}
                   title={
                     tp !== null && tp > 1
@@ -1620,7 +1804,7 @@ export default function OperatorStatsTable({
                   {tp !== null ? formatPct(taglia(tp) as number, 2) : <span className="text-slate-400">–</span>}
                 </td>
                 <td
-                  className="border-r border-white px-2 py-1.5 text-right tabular-nums"
+                  className={`border-r border-white px-2 py-1.5 text-right tabular-nums${ultimaDentro ? BORDO_GIU : ""}`}
                   style={{ background: heatBg(isSetterView ? effNoShow(r) : effConsulenze(r), maxValues.consulenze) }}
                 >
                   {formatInt(isSetterView ? effNoShow(r) : effConsulenze(r))}
@@ -1653,13 +1837,17 @@ export default function OperatorStatsTable({
                   </>
                 ) : null}
                 <td
-                  className="border-r border-white px-2 py-1.5 text-right tabular-nums"
+                  className={`border-r border-white px-2 py-1.5 text-right tabular-nums${ultimaDentro ? BORDO_GIU : ""}`}
                   style={{ background: hubspotLoading ? undefined : heatBg(effChiusure(r), maxValues.chiusure) }}
                 >
-                  {hubspotLoading ? <span className="text-slate-400">–</span> : formatInt(effChiusure(r))}
+                  {hubspotLoading ? (
+                    <span className="text-slate-400">–</span>
+                  ) : (
+                    formatInt(effChiusure(r))
+                  )}
                 </td>
                 <td
-                  className="border-r border-white px-2 py-1.5 text-right font-semibold tabular-nums"
+                  className={`border-r border-white px-2 py-1.5 text-right font-semibold tabular-nums${ultimaDentro ? BORDO_GIU : ""}`}
                   style={{ background: hubspotLoading ? undefined : rateBg(taglia(tc)) }}
                   title={
                     tc !== null && tc > 1
@@ -1667,17 +1855,29 @@ export default function OperatorStatsTable({
                       : undefined
                   }
                 >
-                  {hubspotLoading ? <span className="text-slate-400">–</span> : tc !== null ? formatPct(taglia(tc) as number, 2) : <span className="text-slate-400">–</span>}
+                  {hubspotLoading ? (
+                    <span className="text-slate-400">–</span>
+                  ) : tc !== null ? (
+                    formatPct(taglia(tc) as number, 2)
+                  ) : (
+                    <span className="text-slate-400">–</span>
+                  )}
                 </td>
                 <td
-                  className="border-r border-white px-2 py-1.5 text-right tabular-nums"
+                  className={`border-r border-white px-2 py-1.5 text-right tabular-nums${ultimaDentro ? BORDO_GIU : ""}`}
                   style={{ background: hubspotLoading ? undefined : heatBg(effBoom(r), maxValues.boom) }}
                 >
-                  {hubspotLoading ? <span className="text-slate-400">–</span> : formatEur(effBoom(r))}
+                  {hubspotLoading ? (
+                    <span className="text-slate-400">–</span>
+                  ) : (
+                    formatEur(effBoom(r))
+                  )}
                 </td>
                 {isSetterView ? null : (
                   <td
-                    className="border-r border-white px-2 py-1.5 text-right tabular-nums"
+                    className={`border-r border-white px-2 py-1.5 text-right tabular-nums${
+                      dentroRiquadro ? BORDO_DX : ""
+                    }${ultimaDentro ? BORDO_GIU : ""}`}
                     style={{
                       background: hubspotLoading
                         ? undefined
@@ -1693,20 +1893,25 @@ export default function OperatorStatsTable({
                     )}
                   </td>
                 )}
+                {/* L'OBIETTIVO DEL TEAM EVENTI SI CONTA IN CHIUSURE, non in
+                    euro: vendono il low ticket al telefono e il traguardo del
+                    mese e' un numero di vendite, non un incasso. Scritto in
+                    euro - "50 EUR" accanto a "60.000 EUR" - sembrava un
+                    obiettivo ridicolo invece che un'altra unita' di misura. */}
                 {onSalvaObiettivo ? (
                   <CellaObiettivo
                     valore={effObiettivo(r)}
                     mese={meseObiettivo ?? null}
                     persona={r.operatore}
                     salva={onSalvaObiettivo}
-                    formatta={formatEur}
+                    formatta={inFondo(r.operatore) ? formatInt : formatEur}
                   />
                 ) : (
                   // Senza chi la salvi resta una colonna di lettura: meglio di
                   // una cella che accetta un numero e lo butta via.
                   <td className="border-r border-white px-2 py-1.5 text-right tabular-nums">
                     {effObiettivo(r) !== null ? (
-                      formatEur(effObiettivo(r) as number)
+                      (inFondo(r.operatore) ? formatInt : formatEur)(effObiettivo(r) as number)
                     ) : (
                       <span className="text-slate-400">–</span>
                     )}
