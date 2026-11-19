@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { periodiSquadra, teamDelGiorno } from "@/lib/utenti/periodiTeam";
 
 /**
  * QUANTO TEMPO PASSA FRA L'ASSEGNAZIONE DI UN LEAD E LA PRIMA TELEFONATA.
@@ -39,7 +40,30 @@ import { getDb } from "@/lib/db";
  *     un altro gesto, e mescolarlo abbassava il numero senza dire niente di
  *     vero su nessuno dei due. L'app tiene l'elenco dei contatti di ogni
  *     richiesta, quindi sono riconoscibili con certezza, non per indizi;
- *  7. CHI NON E' STATO CHIAMATO STA FUORI dalla media. Mettercelo con un
+ *  7. ASSEGNAZIONE VUOL DIRE UN PROPRIETARIO NUOVO, E DEVE ESSERE UN ADVISOR
+ *     O UN SETTER. Due condizioni, decise il 13 novembre 2026, e nessuna
+ *     delle due e' una rifinitura:
+ *       - NUOVO. Quando un lead si riconverte, il workflow riscrive il
+ *         proprietario anche se e' lo stesso di prima: l'orologio ripartiva
+ *         su un lead che non ha cambiato mano. Sono 317 casi;
+ *       - ADVISOR O SETTER, in quel giorno. Il team lo dice la storia delle
+ *         squadre (./utenti/periodiTeam.ts), non la fotografia di oggi: con
+ *         la fotografia di oggi il lavoro di chi e' uscito dall'azienda
+ *         sparirebbe dal passato, ed e' il caso di 111 assegnazioni a Ilaria
+ *         Pisanu e 76 a Vincenzo Meglioli, fatte quando erano in squadra.
+ *     Insieme togliono 484 righe su 7.902: la mediana si muove da 2,1 a 2,2
+ *     ore. Non e' per il numero che si fa, e' perche' la domanda e' "quanto
+ *     tempo ci mette chi deve chiamare": un passaggio a un account senza
+ *     squadra, o a se stessi, non e' una consegna da misurare.
+ *
+ *     CHI RESTA FUORI MERITA UNO SGUARDO, non un filtro e via: il 13 novembre
+ *     erano 47 lead affidati a Vincenzo Meglioli DOPO che era stato
+ *     archiviato - l'ultimo alle 22:44 della sera prima - di cui 29 ancora
+ *     in mano a lui e mai chiamati, e 31 a Salvo Trifiro', che lavora (14
+ *     chiamate) ma su HubSpot non ha nessun team, quindi in nessuna tabella
+ *     della dashboard compare. Questo filtro li nasconde dalla media: non li
+ *     risolve. Vanno guardati da fuori.
+ *  8. CHI NON E' STATO CHIAMATO STA FUORI dalla media. Mettercelo con un
  *     tetto di 24 ore - come si faceva prima - mescola due informazioni
  *     opposte: Marvin Alessandrin col tetto risultava a 24 ore, senza
  *     risulta a 4; non e' lento, chiama pochi lead ma in fretta. Quanti lead
@@ -61,6 +85,14 @@ import { getDb } from "@/lib/db";
  * che torna da una seconda conversione; vale come un lead nuovo.
  */
 const STATI_DA_CHIAMARE = ["New", "Riconvertito"];
+
+/**
+ * I team il cui mestiere e' telefonare a un lead. Il nome e' quello che scrive
+ * HubSpot, come lo riporta la storia delle squadre: Customer Success, Junior
+ * Customer Success e Coach LMS restano fuori, e un account senza squadra -
+ * che su HubSpot capita anche a chi lavora - resta fuori anche lui.
+ */
+const TEAM_CHE_CHIAMANO = new Set(["Advisor", "Setter"]);
 
 const APERTURA = 7;
 const CHIUSURA = 21;
@@ -156,6 +188,7 @@ export async function tempoRisposta(dal: string, al: string): Promise<TempoRispo
     // e dentro il solo periodo non si vedrebbe.
     `WITH a AS (
        SELECT contatto_id, ts, proprietario_id, nome, stato_lead,
+              lag(proprietario_id) OVER (PARTITION BY contatto_id ORDER BY ts) AS prec,
               lead(ts) OVER (PARTITION BY contatto_id ORDER BY ts) AS prossima
          FROM assegnazione_evento
         WHERE COALESCE(da_app, false) = false
@@ -172,9 +205,36 @@ export async function tempoRisposta(dal: string, al: string): Promise<TempoRispo
        FROM a
       WHERE a.ts >= ($1::timestamp AT TIME ZONE 'Europe/Rome')
         AND a.ts <  ($2::timestamp AT TIME ZONE 'Europe/Rome')
-        AND a.stato_lead = ANY($3::text[])`,
+        AND a.stato_lead = ANY($3::text[])
+        -- Un'assegnazione e' un cambio di proprietario VERSO UN PROPRIETARIO
+        -- NUOVO: senza proprietario non c'e' nessuno da misurare, e con lo
+        -- stesso di prima non e' cambiata nessuna mano.
+        AND a.proprietario_id IS NOT NULL
+        AND (a.prec IS NULL OR a.prec <> a.proprietario_id)`,
     [`${dal} 00:00:00`, `${al} 00:00:00`, STATI_DA_CHIAMARE]
   );
+
+  /**
+   * IN CHE SQUADRA ERA CIASCUNO, giorno per giorno. Si legge una volta per
+   * tutte le righe: i TRATTI ("dal 3 giugno al 7 novembre e' stato Advisor")
+   * rispondono su qualunque data senza altre letture.
+   *
+   * SE LA STORIA NON RISPONDE non si scarta nessuno: un numero da rivedere e'
+   * meglio di una pagina che dice zero.
+   */
+  const periodi = await periodiSquadra();
+
+  /**
+   * IL NOME DEL PROPRIETARIO, RECUPERATO DALL'ID quando la riga non lo porta.
+   * Il foglio Tracking Eventi a volte scrive il proprietario e non il nome -
+   * sono 70 righe su 13.000 - e la storia delle squadre risponde al nome.
+   * Lo stesso id ha quasi sempre altre righe che il nome ce l'hanno.
+   */
+  const nomeDi = new Map<string, string>();
+  for (const r of rows) {
+    const n = (r.nome ?? "").trim();
+    if (r.prop && n && !nomeDi.has(r.prop)) nomeDi.set(r.prop, n);
+  }
 
   // "Adesso" come orologio nudo di Roma, per sapere chi ha avuto il tempo.
   const adesso = orologio(
@@ -189,7 +249,14 @@ export async function tempoRisposta(dal: string, al: string): Promise<TempoRispo
   for (const r of rows) {
     const inizio = primoOrarioUtile(orologio(r.ass));
     if (!Number.isFinite(inizio)) continue;
-    const nome = (r.nome ?? "").trim();
+    const nome = (r.nome ?? "").trim() || (r.prop ? nomeDi.get(r.prop) ?? "" : "");
+
+    // CHI RICEVE DEVE ESSERE UN ADVISOR O UN SETTER, in quel giorno.
+    if (periodi) {
+      const team = nome ? teamDelGiorno(periodi, nome, r.ass.slice(0, 10)) : null;
+      if (!TEAM_CHE_CHIAMANO.has(team ?? "")) continue;
+    }
+
     const chiave = r.prop ?? nome ?? "?";
     if (!per.has(chiave)) per.set(chiave, { nome, prop: r.prop, v: [], muti: 0 });
     const p = per.get(chiave)!;
