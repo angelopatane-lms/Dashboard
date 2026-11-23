@@ -327,3 +327,180 @@ export async function calcolaBoom(
     giorni
   };
 }
+
+/**
+ * L'ELENCO DEI BOOM DI UNA PERSONA, uno per riga.
+ *
+ * PERCHE' A PARTE E NON DENTRO `calcolaBoom`. Quella funzione risponde a ogni
+ * apertura di pagina e manda SOMME, di proposito: un elenco di incassi su una
+ * finestra lunga sono migliaia di righe con dentro il nome di ogni cliente, e
+ * su quelle pagine viaggerebbero sempre, lette o no. Questo elenco invece
+ * arriva solo quando qualcuno preme "Chiusure" su una scheda, e riguarda una
+ * persona sola in un periodo solo.
+ *
+ * DUE RICERCHE PERCHE' HUBSPOT NON HA L'OR fra gruppi di filtri diversi in
+ * modo comodo: una per i Boom che ha venduto, una per quelli che ha
+ * procurato. Le righe che compaiono in tutte e due - ha fatto i due mestieri
+ * sullo stesso incasso - si uniscono per id.
+ */
+export type BoomDiPersona = {
+  id: string;
+  giorno: string;
+  cliente: string;
+  prodotto: string;
+  tipologia: string;
+  importo: number;
+  stornato: boolean;
+  proprietario: string;
+  setter: string;
+  /** I nomi, risolti qui: la pagina conosce solo la sua squadra. */
+  proprietarioNome?: string;
+  setterNome?: string;
+  idTrattativa: string;
+  /** "venduto", "procurato" o tutti e due. */
+  ruolo: string[];
+};
+
+export async function elencoBoomDiPersona(
+  token: string,
+  da: string,
+  a: string,
+  idPersona: string
+): Promise<BoomDiPersona[]> {
+  const estremi = { da: estremiRoma(da).da, a: estremiRoma(a).a };
+  const campi = [
+    "data_di_pagamento", "importo", "tipologia_di_incasso", "boom_stage",
+    "hubspot_owner_id", "setter", "prodotto", "nome_cliente", "cognome_cliente", "email", "id_trattativa"
+  ];
+  const finestra = [
+    { propertyName: "data_di_pagamento", operator: "GTE", value: String(estremi.da) },
+    { propertyName: "data_di_pagamento", operator: "LT", value: String(estremi.a) }
+  ];
+
+  const perId = new Map<string, BoomDiPersona>();
+  for (const [campo, ruolo] of [["hubspot_owner_id", "venduto"], ["setter", "procurato"]] as const) {
+    const righe = await sfoglia(
+      token,
+      BOOM,
+      [...finestra, { propertyName: campo, operator: "EQ", value: idPersona }],
+      campi,
+      20
+    );
+    for (const b of righe) {
+      const p = b.properties;
+      const gia = perId.get(b.id);
+      if (gia) {
+        gia.ruolo.push(ruolo);
+        continue;
+      }
+      perId.set(b.id, {
+        id: b.id,
+        giorno: giornoRoma(p.data_di_pagamento),
+        cliente: [p.nome_cliente, p.cognome_cliente].filter(Boolean).join(" ").trim() || (p.email ?? ""),
+        prodotto: (p.prodotto ?? "").trim(),
+        tipologia: (p.tipologia_di_incasso ?? "").trim(),
+        importo: Number(p.importo) || 0,
+        stornato: (p.boom_stage ?? "").trim() === RIMBORSO,
+        proprietario: (p.hubspot_owner_id ?? "").trim(),
+        setter: (p.setter ?? "").trim(),
+        idTrattativa: (p.id_trattativa ?? "").trim(),
+        ruolo: [ruolo]
+      });
+    }
+  }
+
+  const righe = [...perId.values()];
+
+  /**
+   * IL NOME DEL CLIENTE QUANDO IL BOOM NON CE L'HA.
+   *
+   * `nome_cliente` e `cognome_cliente` sono spesso vuoti - li compila il
+   * modulo di iscrizione, gli altri Boom no - e restava l'email. Si va a
+   * prendere il CONTATTO collegato, che il nome ce l'ha per davvero.
+   *
+   * NON IL NOME DELLA TRATTATIVA, che era il ripiego di prima: "REM 2.0 x 1
+   * - Gabriele Chiesa" e' il nome di una vendita, non di una persona, e in
+   * una colonna intitolata Cliente si legge male.
+   *
+   * DUE CHIAMATE IN TUTTO: le associazioni di tutti i Boom senza nome, e poi
+   * i contatti trovati, letti in blocco.
+   */
+  const senzaNome = righe.filter((r) => !r.cliente || r.cliente.includes("@"));
+  if (senzaNome.length) {
+    try {
+      const ass = await fetch(`${HUBSPOT}/crm/v4/associations/${BOOM}/contacts/batch/read`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ inputs: senzaNome.slice(0, 100).map((r) => ({ id: r.id })) })
+      });
+      const perBoom = new Map<string, string>();
+      if (ass.ok) {
+        const d = (await ass.json()) as {
+          results?: Array<{ from: { id: string }; to: Array<{ toObjectId: string }> }>;
+        };
+        for (const r of d.results ?? []) {
+          const primo = (r.to ?? [])[0];
+          if (primo) perBoom.set(r.from.id, String(primo.toObjectId));
+        }
+      }
+      const idContatti = [...new Set([...perBoom.values()])];
+      if (idContatti.length) {
+        const c = await fetch(`${HUBSPOT}/crm/v3/objects/contacts/batch/read`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({
+            properties: ["firstname", "lastname", "email"],
+            inputs: idContatti.slice(0, 100).map((id) => ({ id }))
+          })
+        });
+        if (c.ok) {
+          const d = (await c.json()) as { results?: Array<{ id: string; properties: Record<string, string> }> };
+          const nomi = new Map(
+            (d.results ?? []).map((x) => [
+              x.id,
+              [x.properties.firstname, x.properties.lastname].filter(Boolean).join(" ").trim()
+            ])
+          );
+          for (const riga of senzaNome) {
+            const nome = nomi.get(perBoom.get(riga.id) ?? "");
+            if (nome) riga.cliente = nome;
+          }
+        }
+      }
+    } catch {
+      // Senza il contatto resta l'email: l'elenco si apre lo stesso.
+    }
+  }
+
+  /**
+   * I NOMI DEI PROPRIETARI, al posto degli id. Sono pochi - le persone che
+   * hanno venduto quello che questa ha procurato - e si leggono uno per uno
+   * invece che sfogliando l'elenco intero, che e' quello che a novembre 2026
+   * ha fatto scattare il 429 sulla rotta dei Boom.
+   */
+  const idOwner = [...new Set(righe.flatMap((r) => [r.proprietario, r.setter]).filter(Boolean))];
+  const nomiOwner = new Map<string, string>();
+  for (const id of idOwner) {
+    try {
+      const r = await fetch(`${HUBSPOT}/crm/v3/owners/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store"
+      });
+      if (!r.ok) continue;
+      const o = (await r.json()) as { firstName?: string; lastName?: string; email?: string };
+      const nome = [o.firstName, o.lastName].filter(Boolean).join(" ").trim() || (o.email ?? "");
+      if (nome) nomiOwner.set(id, nome);
+    } catch {
+      // Resta l'id: meglio un numero che una riga senza colonna.
+    }
+  }
+  for (const riga of righe) {
+    riga.proprietarioNome = nomiOwner.get(riga.proprietario) ?? riga.proprietario;
+    riga.setterNome = nomiOwner.get(riga.setter) ?? riga.setter;
+  }
+
+  // Dal piu' recente: in un elenco di incassi si cerca quasi sempre l'ultimo.
+  return righe.sort((x, y) => (x.giorno < y.giorno ? 1 : x.giorno > y.giorno ? -1 : 0));
+}
