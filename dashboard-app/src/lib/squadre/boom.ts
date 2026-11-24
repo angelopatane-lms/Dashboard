@@ -73,6 +73,20 @@ export type SoldiDiPersona = {
   setter: Soldi;
   perProdotto?: Record<string, { advisor?: Soldi; setter?: Soldi }>;
   perCampagna?: Record<string, { advisor?: Soldi; setter?: Soldi }>;
+  /**
+   * GLI STESSI SOLDI, SOLO QUELLI DEI CONTATTI PERSONALI.
+   *
+   * Sono i Boom con `tipo_di_vendita` = "Contatto Personale", cioe' le
+   * vendite su contatti che la persona ha portato lei: il piano Setter
+   * (sez. E) le paga il 20% dell'incassato, a ogni livello, e la pagina
+   * squadre lo somma al Guadagno. Chiesto da Angelo il 24 novembre 2026.
+   *
+   * SENZA I BIGLIETTI ICMD, che hanno il loro regime - 70% del netto fuori
+   * D.B., 30% dentro - e non sono high ticket. Si escludono qui e non da
+   * chi disegna, perche' da fuori l'intersezione "personale e non ICMD" non
+   * si potrebbe ricostruire da due somme separate.
+   */
+  personale?: { advisor?: Soldi; setter?: Soldi };
 };
 
 export type BoomFinestra = {
@@ -171,7 +185,10 @@ export async function calcolaBoom(
       "prodotto",
       "id_campagna_track",
       "id_campagna_track_last",
-      "hs_createdate"
+      "hs_createdate",
+      // CHI HA PORTATO IL CONTATTO, per il 20% del piano Setter: e' una
+      // proprieta' dello stesso oggetto e non costa una chiamata in piu'.
+      "tipo_di_vendita"
     ],
     400
   );
@@ -224,6 +241,23 @@ export async function calcolaBoom(
     return voce[quale]!;
   };
 
+  /**
+   * La stessa cella, nel ripiano dei contatti personali.
+   *
+   * Non ha categoria: e' una sola voce per persona e per lato, perche' la
+   * domanda a cui risponde e' una sola - quanto ha incassato su contatti
+   * suoi - e un dizionario per prodotto raddoppierebbe il peso per niente.
+   */
+  const latoPersonale = (giorno: string, chi: string, quale: "advisor" | "setter"): Soldi | null => {
+    const id = (chi ?? "").trim();
+    if (!id) return null;
+    const cella = giorni[giorno]?.[id];
+    if (!cella) return null;
+    const voce = (cella.personale ??= {});
+    voce[quale] ??= vuoti();
+    return voce[quale]!;
+  };
+
   for (const b of incassi) {
     const g = giornoRoma(b.properties.data_di_pagamento);
     if (!g || g < da || g > a) continue;
@@ -259,6 +293,23 @@ export async function calcolaBoom(
     );
     const catCampagna = sueCategorie.has(trovata) ? trovata : null;
 
+    /**
+     * IL CONTATTO PERSONALE, scritto a mano su `tipo_di_vendita`.
+     *
+     * Si confronta senza badare a maiuscole e spazi doppi: e' un menu, ma
+     * nello storico la stessa etichetta compare scritta in piu' modi.
+     *
+     * ATTENZIONE: il "Flusso di Verifica Contatto Personale su Boom"
+     * (HubSpot 2027808984) RISCRIVE questo campo a "Telefonica" dopo 22
+     * minuti quando il contatto non ha `proprietario_contatto_personale` -
+     * un campo compilato su 136 contatti su 561.211. Un Boom declassato
+     * cosi' qui non si vede piu', e il 20% non viene pagato: il rimedio e'
+     * compilare il campo sul contatto, non cercarlo da questa parte.
+     */
+    const personale = /^contatto\s+personale$/i.test(
+      (b.properties.tipo_di_vendita ?? "").trim()
+    ) && catProdotto !== "ICMD";
+
     for (const [chi, quale] of [
       [proprietario, "advisor"],
       [setter, "setter"]
@@ -273,7 +324,8 @@ export async function calcolaBoom(
       const celle = [
         principale,
         latoDi("perProdotto", catProdotto, g, chi, quale),
-        latoDi("perCampagna", catCampagna, g, chi, quale)
+        latoDi("perCampagna", catCampagna, g, chi, quale),
+        personale ? latoPersonale(g, chi, quale) : null
       ];
       for (const v of celle) {
       if (!v) continue;
